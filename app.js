@@ -276,6 +276,15 @@ function renderList(listType, data) {
       imdbLink.textContent = 'View on IMDb';
       left.appendChild(imdbLink);
     }
+    if (item.trailerUrl) {
+      const trailerLink = document.createElement('a');
+      trailerLink.href = item.trailerUrl;
+      trailerLink.target = '_blank';
+      trailerLink.rel = 'noopener noreferrer';
+      trailerLink.className = 'meta-link';
+      trailerLink.textContent = 'Watch Trailer';
+      left.appendChild(trailerLink);
+    }
     if (item.plot) {
       const plot = document.createElement('div');
       plot.className = 'plot-summary';
@@ -356,6 +365,8 @@ async function addItemFromForm(listType, form) {
     };
     if (notes) item.notes = notes;
     if (year) item.year = year;
+    const baseTrailerUrl = buildTrailerUrl(title, year);
+    if (baseTrailerUrl) item.trailerUrl = baseTrailerUrl;
 
     if (listType === 'books') {
       if (creatorValue) item.author = creatorValue;
@@ -382,6 +393,10 @@ async function addItemFromForm(listType, form) {
         if (metadata.Type && metadata.Type !== 'N/A') item.imdbType = metadata.Type;
         const metascore = metadata.Metascore && metadata.Metascore !== 'N/A' ? metadata.Metascore : null;
         if (metascore) item.metascore = metascore;
+        if (!item.trailerUrl) {
+          const trailerFromMeta = buildTrailerUrl(metadata.Title || title, extractPrimaryYear(metadata.Year));
+          if (trailerFromMeta) item.trailerUrl = trailerFromMeta;
+        }
       }
     }
 
@@ -412,6 +427,12 @@ function extractPrimaryYear(value) {
   if (!value) return '';
   const match = String(value).match(/\d{4}/);
   return match ? match[0] : '';
+}
+
+function buildTrailerUrl(title, year) {
+  if (!title) return '';
+  const query = `${title} ${year ? year + ' ' : ''}trailer`.trim();
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
 }
 
 function debounce(fn, wait = 250) {
