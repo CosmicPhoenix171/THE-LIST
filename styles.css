@@ -73,6 +73,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   padding:1rem;
   box-shadow:0 16px 30px rgba(4,9,15,0.26);
 }
+.filter-bar{display:flex;align-items:center;gap:.75rem;margin-bottom:.85rem}
+.filter-bar input{flex:1;background:var(--surface-600);border:1px solid var(--border);padding:.6rem .75rem;border-radius:10px;color:var(--text-100);transition:border-color .2s ease,box-shadow .2s ease}
+.filter-bar input:focus{outline:none;border-color:var(--primary-300);box-shadow:0 0 0 3px rgba(61,169,245,0.16)}
 .add-form input,.add-form select,.add-form textarea{
   background:var(--surface-600);
   border:1px solid var(--border);
@@ -110,6 +113,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .card .plot-summary,.card .notes{color:var(--text-300);font-size:.9rem}
 .card .meta-link{display:inline-block;margin-top:.1rem;margin-right:.75rem;color:var(--primary-400);font-weight:600;font-size:.82rem;text-decoration:none}
 .card .meta-link:hover{color:#8bd6ff;text-decoration:underline}
+.actor-line{color:var(--text-300);font-size:.85rem;line-height:1.3;margin-top:.1rem}
 .status-chip{display:inline-flex;align-items:center;justify-content:center;padding:.2rem .55rem;border-radius:999px;font-size:.75rem;font-weight:700;letter-spacing:.02em;border:1px solid rgba(255,255,255,0.05);align-self:flex-start}
 .status-planned{background:rgba(101,183,247,0.12);color:#9bd6ff}
 .status-watching{background:rgba(245,197,104,0.14);color:#f9d58b}
@@ -132,6 +136,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .wheel-result-details{display:flex;flex-direction:column;gap:.45rem;min-width:0}
 .wheel-result-title{font-weight:700;font-size:1.05rem;line-height:1.25}
 .wheel-result-meta{color:var(--text-500);font-size:.85rem}
+.wheel-result-cast{color:var(--text-300);font-size:.85rem;line-height:1.3}
 .wheel-result-summary{color:var(--text-300);font-size:.9rem}
 .wheel-result-notes{color:var(--text-100);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);padding:.55rem .65rem;border-radius:9px;font-size:.85rem}
 .wheel-result-links{display:flex;flex-wrap:wrap;gap:.6rem}
@@ -152,6 +157,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   .topbar{flex-direction:column;align-items:flex-start;gap:.6rem;padding:1rem}
   .tabs{padding:.75rem 1rem .4rem}
   .main{padding:1rem 1.1rem 2rem}
+  .filter-bar{flex-direction:column;align-items:stretch}
   .add-form{grid-template-columns:1fr;}
   .add-form button{width:100%;justify-self:stretch}
   .card{grid-template-columns:60px 1fr;}

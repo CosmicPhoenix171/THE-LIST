@@ -246,10 +246,12 @@ function renderList(listType, data) {
   if (filterValue && supportsActorFilter) {
     filtered = entries.filter(([, item]) => {
       if (!item) return false;
-      const actorField = Array.isArray(item.actors)
-        ? item.actors.join(' ').toLowerCase()
-        : String(item.actors || '').toLowerCase();
-      return actorField.includes(filterValue);
+      const tokens = Array.isArray(item.actors) ? item.actors : parseActorsList(item.actors);
+      if (tokens && tokens.length) {
+        return tokens.some(name => String(name).toLowerCase().includes(filterValue));
+      }
+      const fallback = String(item.actors || '').toLowerCase();
+      return fallback.includes(filterValue);
     });
   }
 
@@ -257,7 +259,7 @@ function renderList(listType, data) {
     const message = supportsActorFilter && filterValue
       ? 'No items match this actor filter yet.'
       : 'No items yet. Add something!';
-    container.innerHTML = `<div class="small">${message}</div>`;
+    container.innerHTML = '<div class="small">' + message + '</div>';
     return;
   }
 
@@ -319,16 +321,14 @@ function renderList(listType, data) {
       left.appendChild(meta);
     }
 
-    if (item.actors && Array.isArray(item.actors) && item.actors.length && listType !== 'books') {
-      const actorLine = document.createElement('div');
-      actorLine.className = 'actor-line';
-      actorLine.textContent = `Cast: ${item.actors.slice(0, 5).join(', ')}`;
-      left.appendChild(actorLine);
-    } else if (item.actors && typeof item.actors === 'string' && item.actors.trim() && listType !== 'books') {
-      const actorLine = document.createElement('div');
-      actorLine.className = 'actor-line';
-      actorLine.textContent = `Cast: ${item.actors}`;
-      left.appendChild(actorLine);
+    if (listType !== 'books') {
+      const actorPreview = buildActorPreview(item.actors, 5);
+      if (actorPreview) {
+        const actorLine = document.createElement('div');
+        actorLine.className = 'actor-line';
+        actorLine.textContent = `Cast: ${actorPreview}`;
+        left.appendChild(actorLine);
+      }
     }
 
     if (item.imdbUrl) {
@@ -504,6 +504,17 @@ function parseActorsList(raw) {
       if (!unique.has(name)) unique.add(name);
     });
   return Array.from(unique).slice(0, 12);
+}
+
+function buildActorPreview(value, limit = 5) {
+  if (!value) return '';
+  const list = Array.isArray(value)
+    ? value.filter(Boolean).map(name => String(name).trim()).filter(Boolean)
+    : parseActorsList(value);
+  if (!list.length) return '';
+  const preview = list.slice(0, limit);
+  const truncated = list.length > limit;
+  return `${preview.join(', ')}${truncated ? '…' : ''}`;
 }
 
 function buildTrailerUrl(title, year) {
@@ -979,6 +990,16 @@ function renderWheelResult(item, listType) {
     meta.className = 'wheel-result-meta';
     meta.textContent = metaText;
     details.appendChild(meta);
+  }
+
+  if (listType !== 'books') {
+    const castText = buildActorPreview(item.actors, 6);
+    if (castText) {
+      const cast = document.createElement('div');
+      cast.className = 'wheel-result-cast';
+      cast.textContent = `Cast: ${castText}`;
+      details.appendChild(cast);
+    }
   }
 
   if (item.plot) {

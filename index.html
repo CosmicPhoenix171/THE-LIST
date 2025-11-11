@@ -39,6 +39,9 @@
         <!-- Section: Movies -->
         <section id="movies" class="section">
           <h2>Movies</h2>
+          <div class="filter-bar">
+            <input type="search" placeholder="Filter by actor..." data-role="actor-filter" data-list="movies" aria-label="Filter movies by actor" />
+          </div>
           <form class="add-form" data-list="movies">
             <div class="input-suggest">
               <input name="title" placeholder="Title" autocomplete="off" required />
@@ -61,6 +64,9 @@
         <!-- Section: TV Shows -->
         <section id="tvShows" class="section hidden">
           <h2>TV Shows</h2>
+          <div class="filter-bar">
+            <input type="search" placeholder="Filter by actor..." data-role="actor-filter" data-list="tvShows" aria-label="Filter TV shows by actor" />
+          </div>
           <form class="add-form" data-list="tvShows">
             <div class="input-suggest">
               <input name="title" placeholder="Title" autocomplete="off" required />
@@ -83,6 +89,9 @@
         <!-- Section: Anime -->
         <section id="anime" class="section hidden">
           <h2>Anime</h2>
+          <div class="filter-bar">
+            <input type="search" placeholder="Filter by actor..." data-role="actor-filter" data-list="anime" aria-label="Filter anime by voice actor" />
+          </div>
           <form class="add-form" data-list="anime">
             <div class="input-suggest">
               <input name="title" placeholder="Title" autocomplete="off" required />
