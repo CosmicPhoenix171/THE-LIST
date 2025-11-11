@@ -246,14 +246,18 @@ function renderList(listType, data) {
     }
     const left = document.createElement('div');
     left.className = 'card-body';
-    left.style.flex = '1';
+    const header = document.createElement('div');
+    header.className = 'card-header';
     const title = document.createElement('div');
     title.className = 'title';
     title.textContent = item.title || '(no title)';
+    header.appendChild(title);
+    if (item.status) {
+      header.appendChild(buildStatusChip(item.status));
+    }
     const meta = document.createElement('div');
     meta.className = 'meta';
     const metaParts = [];
-    if (item.status) metaParts.push(item.status);
     if (item.year) metaParts.push(item.year);
     if (listType === 'books') {
       if (item.author) metaParts.push(item.author);
@@ -261,7 +265,7 @@ function renderList(listType, data) {
       if (item.director) metaParts.push(item.director);
       if (item.imdbRating) metaParts.push(`IMDb ${item.imdbRating}`);
     }
-    left.appendChild(title);
+    left.appendChild(header);
     const metaText = metaParts.filter(Boolean).join(' • ');
     if (metaText) {
       meta.textContent = metaText;
@@ -307,9 +311,7 @@ function renderList(listType, data) {
     editBtn.addEventListener('click', () => openEditModal(listType, id, item));
 
     const delBtn = document.createElement('button');
-    delBtn.className = 'btn';
-    delBtn.style.background = 'transparent';
-    delBtn.style.border = '1px solid rgba(255,255,255,0.04)';
+  delBtn.className = 'btn ghost';
     delBtn.textContent = 'Delete';
     delBtn.addEventListener('click', () => deleteItem(listType, id));
 
@@ -433,6 +435,28 @@ function buildTrailerUrl(title, year) {
   if (!title) return '';
   const query = `${title} ${year ? year + ' ' : ''}trailer`.trim();
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+}
+
+function buildStatusChip(status) {
+  const chip = document.createElement('span');
+  chip.className = 'status-chip';
+  const trimmed = String(status || '').trim();
+  const normalized = trimmed.toLowerCase();
+  let label = trimmed || 'Planned';
+  let modifier = 'status-planned';
+  if (normalized.startsWith('watch') || normalized.startsWith('read')) {
+    label = 'Watching/Reading';
+    modifier = 'status-watching';
+  } else if (normalized.startsWith('complete')) {
+    label = 'Completed';
+    modifier = 'status-completed';
+  } else if (normalized.startsWith('drop')) {
+    label = 'Dropped';
+    modifier = 'status-dropped';
+  }
+  chip.classList.add(modifier);
+  chip.textContent = label;
+  return chip;
 }
 
 function debounce(fn, wait = 250) {
