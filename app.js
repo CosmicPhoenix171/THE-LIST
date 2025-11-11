@@ -834,7 +834,112 @@ function clearWheelAnimation() {
   wheelSpinnerEl.innerHTML = '';
 }
 
-function animateWheelSequence(candidates, chosenIndex) {
+function renderWheelResult(item, listType) {
+  if (!item) {
+    wheelResultEl.textContent = '';
+    return;
+  }
+
+  const actionVerb = listType === 'books' ? 'read' : 'watch';
+  wheelResultEl.innerHTML = '';
+
+  const heading = document.createElement('div');
+  heading.className = 'wheel-result-heading';
+  heading.textContent = `You should ${actionVerb} next:`;
+  wheelResultEl.appendChild(heading);
+
+  const card = document.createElement('div');
+  card.className = 'wheel-result-card';
+
+  const posterWrap = document.createElement('div');
+  posterWrap.className = 'poster';
+  if (item.poster) {
+    const img = document.createElement('img');
+    img.src = item.poster;
+    img.alt = `${item.title || 'Item'} artwork`;
+    img.loading = 'lazy';
+    posterWrap.appendChild(img);
+  } else {
+    posterWrap.classList.add('placeholder');
+    posterWrap.textContent = 'No artwork';
+  }
+  card.appendChild(posterWrap);
+
+  const details = document.createElement('div');
+  details.className = 'wheel-result-details';
+
+  const header = document.createElement('div');
+  header.className = 'card-header wheel-result-header';
+  const title = document.createElement('div');
+  title.className = 'wheel-result-title';
+  title.textContent = item.title || '(no title)';
+  header.appendChild(title);
+  if (item.status) {
+    header.appendChild(buildStatusChip(item.status));
+  }
+  details.appendChild(header);
+
+  const metaParts = [];
+  if (item.year) metaParts.push(item.year);
+  if (listType === 'books') {
+    if (item.author) metaParts.push(item.author);
+  } else {
+    if (item.director) metaParts.push(item.director);
+    if (item.imdbRating) metaParts.push(`IMDb ${item.imdbRating}`);
+    if (item.runtime) metaParts.push(item.runtime);
+  }
+  const metaText = metaParts.filter(Boolean).join(' • ');
+  if (metaText) {
+    const meta = document.createElement('div');
+    meta.className = 'wheel-result-meta';
+    meta.textContent = metaText;
+    details.appendChild(meta);
+  }
+
+  if (item.plot) {
+    const summary = document.createElement('div');
+    summary.className = 'wheel-result-summary';
+    const plot = item.plot.trim();
+    summary.textContent = plot.length > 260 ? `${plot.slice(0, 257)}…` : plot;
+    details.appendChild(summary);
+  }
+
+  if (item.notes) {
+    const notes = document.createElement('div');
+    notes.className = 'wheel-result-notes';
+    notes.textContent = item.notes;
+    details.appendChild(notes);
+  }
+
+  const links = document.createElement('div');
+  links.className = 'wheel-result-links';
+  if (item.imdbUrl) {
+    const imdbLink = document.createElement('a');
+    imdbLink.href = item.imdbUrl;
+    imdbLink.target = '_blank';
+    imdbLink.rel = 'noopener noreferrer';
+    imdbLink.className = 'meta-link';
+    imdbLink.textContent = 'View on IMDb';
+    links.appendChild(imdbLink);
+  }
+  if (item.trailerUrl) {
+    const trailerLink = document.createElement('a');
+    trailerLink.href = item.trailerUrl;
+    trailerLink.target = '_blank';
+    trailerLink.rel = 'noopener noreferrer';
+    trailerLink.className = 'meta-link';
+    trailerLink.textContent = 'Watch Trailer';
+    links.appendChild(trailerLink);
+  }
+  if (links.children.length) {
+    details.appendChild(links);
+  }
+
+  card.appendChild(details);
+  wheelResultEl.appendChild(card);
+}
+
+function animateWheelSequence(candidates, chosenIndex, listType) {
   const len = candidates.length;
   if (len === 0) return;
   const chosenItem = candidates[chosenIndex];
@@ -860,7 +965,7 @@ function animateWheelSequence(candidates, chosenIndex) {
       wheelSpinnerEl.appendChild(span);
       if (isFinal) {
         wheelSpinnerEl.classList.remove('spinning');
-        wheelResultEl.textContent = `You should watch/read: ${item.title}`;
+        renderWheelResult(item, listType);
         spinTimeouts = [];
       }
     }, totalDelay);
@@ -877,7 +982,7 @@ function spinWheel(listType) {
     return;
   }
   clearWheelAnimation();
-  wheelResultEl.textContent = '';
+  wheelResultEl.innerHTML = '';
   wheelSpinnerEl.classList.remove('hidden');
   wheelSpinnerEl.classList.add('spinning');
   const placeholder = document.createElement('span');
@@ -899,7 +1004,7 @@ function spinWheel(listType) {
       return;
     }
     const chosenIndex = Math.floor(Math.random() * candidates.length);
-    animateWheelSequence(candidates, chosenIndex);
+    animateWheelSequence(candidates, chosenIndex, listType);
   }).catch(err => {
     console.error('Wheel load failed', err);
     clearWheelAnimation();
