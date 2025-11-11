@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>THE LIST ™</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Login screen -->
+    <div id="login-screen" class="centered-screen">
+      <div class="login-card">
+        <h1>THE LIST <span class="tm">™</span></h1>
+        <p class="subtitle">Track your media lists privately</p>
+        <button id="google-signin" class="btn primary">Sign in with Google</button>
+        <p class="small">You will be asked to sign in with your Google account. Only you can see your lists.</p>
+      </div>
+    </div>
+
+    <!-- Main app -->
+    <div id="app" class="hidden">
+      <header class="topbar">
+        <div class="brand">THE LIST <span class="tm">™</span></div>
+        <div class="user-info">
+          <span id="user-name"></span>
+          <button id="sign-out" class="btn secondary">Sign out</button>
+        </div>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab active" data-section="movies">Movies</button>
+        <button class="tab" data-section="tvShows">TV Shows</button>
+        <button class="tab" data-section="anime">Anime</button>
+        <button class="tab" data-section="books">Books</button>
+        <button class="tab" data-section="wheel">Wheel Spinner</button>
+      </nav>
+
+      <main class="main">
+        <!-- Section: Movies -->
+        <section id="movies" class="section">
+          <h2>Movies</h2>
+          <form class="add-form" data-list="movies">
+            <input name="title" placeholder="Title" required />
+            <select name="status">
+              <option>Planned</option>
+              <option>Watching/Reading</option>
+              <option>Completed</option>
+              <option>Dropped</option>
+            </select>
+            <textarea name="notes" placeholder="Notes (optional)"></textarea>
+            <button type="submit" class="btn primary">Add</button>
+          </form>
+          <div class="list" id="movies-list"></div>
+        </section>
+
+        <!-- Section: TV Shows -->
+        <section id="tvShows" class="section hidden">
+          <h2>TV Shows</h2>
+          <form class="add-form" data-list="tvShows">
+            <input name="title" placeholder="Title" required />
+            <select name="status">
+              <option>Planned</option>
+              <option>Watching/Reading</option>
+              <option>Completed</option>
+              <option>Dropped</option>
+            </select>
+            <textarea name="notes" placeholder="Notes (optional)"></textarea>
+            <button type="submit" class="btn primary">Add</button>
+          </form>
+          <div class="list" id="tvShows-list"></div>
+        </section>
+
+        <!-- Section: Anime -->
+        <section id="anime" class="section hidden">
+          <h2>Anime</h2>
+          <form class="add-form" data-list="anime">
+            <input name="title" placeholder="Title" required />
+            <select name="status">
+              <option>Planned</option>
+              <option>Watching/Reading</option>
+              <option>Completed</option>
+              <option>Dropped</option>
+            </select>
+            <textarea name="notes" placeholder="Notes (optional)"></textarea>
+            <button type="submit" class="btn primary">Add</button>
+          </form>
+          <div class="list" id="anime-list"></div>
+        </section>
+
+        <!-- Section: Books -->
+        <section id="books" class="section hidden">
+          <h2>Books</h2>
+          <form class="add-form" data-list="books">
+            <input name="title" placeholder="Title" required />
+            <select name="status">
+              <option>Planned</option>
+              <option>Watching/Reading</option>
+              <option>Completed</option>
+              <option>Dropped</option>
+            </select>
+            <textarea name="notes" placeholder="Notes (optional)"></textarea>
+            <button type="submit" class="btn primary">Add</button>
+          </form>
+          <div class="list" id="books-list"></div>
+        </section>
+
+        <!-- Section: Wheel Spinner -->
+        <section id="wheel" class="section hidden">
+          <h2>Wheel Spinner</h2>
+          <div class="spinner-controls">
+            <select id="wheel-source">
+              <option value="movies">Movies</option>
+              <option value="tvShows">TV Shows</option>
+              <option value="anime">Anime</option>
+              <option value="books">Books</option>
+            </select>
+            <button id="spin-wheel" class="btn primary">Spin the Wheel</button>
+          </div>
+          <div id="wheel-area" class="wheel-area">
+            <div id="wheel-spinner" class="wheel-spinner hidden"></div>
+            <div id="wheel-result" class="wheel-result"></div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Edit modal container (injected dynamically) -->
+      <div id="modal-root"></div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
