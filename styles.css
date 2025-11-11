@@ -60,9 +60,11 @@ h1{margin:0 0 .25rem 0;font-size:1.75rem}
 .card .meta-link:hover{text-decoration:underline}
 
 .wheel-area{margin-top:1rem;display:flex;flex-direction:column;gap:1rem;align-items:center}
-.wheel-spinner{width:140px;height:140px;border-radius:50%;border:8px solid rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center}
-.wheel-spinner.spin{animation:spin 1.6s cubic-bezier(.22,.9,.26,1)}
-@keyframes spin{from{transform:rotate(0)}to{transform:rotate(720deg)}}
+.wheel-spinner{width:180px;height:180px;border-radius:50%;border:8px solid rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;padding:1rem;text-align:center;font-weight:600;font-size:1rem;letter-spacing:0.3px;background:radial-gradient(circle at 30% 30%,rgba(110,231,183,0.25),transparent 65%),rgba(8,20,32,0.75);box-shadow:0 16px 30px rgba(4,9,20,0.45);transition:transform 0.3s ease}
+.wheel-spinner.spinning{animation:wheelPulse 0.7s ease-in-out infinite alternate}
+@keyframes wheelPulse{from{transform:scale(1);box-shadow:0 16px 30px rgba(4,9,20,0.45);}to{transform:scale(1.05);box-shadow:0 20px 36px rgba(4,9,20,0.55);}}
+.wheel-spinner .spin-text{display:block;width:100%;color:#fff;line-height:1.4}
+.wheel-spinner .spin-text.final{color:var(--accent);font-size:1.15rem}
 .wheel-result{min-height:48px;font-weight:700}
 
 /* modal styles */

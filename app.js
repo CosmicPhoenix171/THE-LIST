@@ -72,6 +72,7 @@ let appInitialized = false;
 let currentUser = null;
 const listeners = {};
 let omdbWarningShown = false;
+let spinTimeouts = [];
 
 // DOM references
 const loginScreen = document.getElementById('login-screen');
@@ -589,31 +590,86 @@ function openEditModal(listType, itemId, item) {
   function closeModal() { modalRoot.innerHTML = ''; }
 }
 
+function clearWheelAnimation() {
+  spinTimeouts.forEach(id => clearTimeout(id));
+  spinTimeouts = [];
+  wheelSpinnerEl.classList.remove('spinning');
+  wheelSpinnerEl.innerHTML = '';
+}
+
+function animateWheelSequence(candidates, chosenIndex) {
+  const len = candidates.length;
+  if (len === 0) return;
+  const chosenItem = candidates[chosenIndex];
+  const iterations = Math.max(28, len * 5);
+  let pointer = Math.floor(Math.random() * len);
+  const sequence = [];
+  for (let i = 0; i < iterations; i++) {
+    sequence.push(candidates[pointer % len]);
+    pointer++;
+  }
+  sequence.push(chosenItem);
+
+  let delay = 90;
+  let totalDelay = 0;
+
+  sequence.forEach((item, idx) => {
+    const timeout = setTimeout(() => {
+      const isFinal = idx === sequence.length - 1;
+      wheelSpinnerEl.innerHTML = '';
+      const span = document.createElement('span');
+      span.className = `spin-text${isFinal ? ' final' : ''}`;
+      span.textContent = item.title || '(no title)';
+      wheelSpinnerEl.appendChild(span);
+      if (isFinal) {
+        wheelSpinnerEl.classList.remove('spinning');
+        wheelResultEl.textContent = `You should watch/read: ${item.title}`;
+        spinTimeouts = [];
+      }
+    }, totalDelay);
+    spinTimeouts.push(timeout);
+    totalDelay += delay;
+    delay = Math.min(delay + 25, 280);
+  });
+}
+
 // Wheel spinner logic
 function spinWheel(listType) {
-  if (!currentUser) return alert('Not signed in');
+  if (!currentUser) {
+    alert('Not signed in');
+    return;
+  }
+  clearWheelAnimation();
   wheelResultEl.textContent = '';
   wheelSpinnerEl.classList.remove('hidden');
-  wheelSpinnerEl.classList.add('spin');
+  wheelSpinnerEl.classList.add('spinning');
+  const placeholder = document.createElement('span');
+  placeholder.className = 'spin-text';
+  placeholder.textContent = 'Spinning…';
+  wheelSpinnerEl.appendChild(placeholder);
 
-  // load items once
   const listRef = ref(db, `users/${currentUser.uid}/${listType}`);
   get(listRef).then(snap => {
     const data = snap.val() || {};
     const candidates = Object.values(data).filter(it => ['Planned','Watching/Reading'].includes(it.status));
-    // short animation
-    setTimeout(() => {
-      wheelSpinnerEl.classList.remove('spin');
-      if (candidates.length === 0) {
-        wheelResultEl.textContent = 'No items available to spin. Add some first!';
-      } else {
-        const chosen = candidates[Math.floor(Math.random() * candidates.length)];
-        wheelResultEl.textContent = `You should watch/read: ${chosen.title}`;
-      }
-    }, 1400);
+    if (candidates.length === 0) {
+      clearWheelAnimation();
+      const emptyState = document.createElement('span');
+      emptyState.className = 'spin-text';
+      emptyState.textContent = 'Add items to spin!';
+      wheelSpinnerEl.appendChild(emptyState);
+      wheelResultEl.textContent = 'No items available to spin. Add some first!';
+      return;
+    }
+    const chosenIndex = Math.floor(Math.random() * candidates.length);
+    animateWheelSequence(candidates, chosenIndex);
   }).catch(err => {
     console.error('Wheel load failed', err);
-    wheelSpinnerEl.classList.remove('spin');
+    clearWheelAnimation();
+    const errorState = document.createElement('span');
+    errorState.className = 'spin-text';
+    errorState.textContent = 'Unable to load items.';
+    wheelSpinnerEl.appendChild(errorState);
     wheelResultEl.textContent = 'Unable to load items.';
   });
 }
