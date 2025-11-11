@@ -73,6 +73,8 @@ let currentUser = null;
 const listeners = {};
 let omdbWarningShown = false;
 let spinTimeouts = [];
+const actorFilters = { movies: '', tvShows: '', anime: '' };
+const listCaches = {};
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const OMDB_TYPE_MAP = {
   movies: 'movie',
@@ -127,6 +129,18 @@ function initFirebase() {
     });
   });
 
+  document.querySelectorAll('[data-role="actor-filter"]').forEach(input => {
+    const listType = input.dataset.list;
+    input.addEventListener('input', () => {
+      if (!listType || !(listType in actorFilters)) return;
+      actorFilters[listType] = input.value;
+      const cached = listCaches[listType];
+      if (cached) {
+        renderList(listType, cached);
+      }
+    });
+  });
+
   // Wheel
   document.getElementById('spin-wheel').addEventListener('click', () => {
     const src = document.getElementById('wheel-source').value;
@@ -162,6 +176,7 @@ function handleAuthState() {
 function showLogin() {
   loginScreen.classList.remove('hidden');
   appRoot.classList.add('hidden');
+  resetFilterState();
 }
 
 function showAppForUser(user) {
@@ -395,6 +410,8 @@ async function addItemFromForm(listType, form) {
         if (metadata.Type && metadata.Type !== 'N/A') item.imdbType = metadata.Type;
         const metascore = metadata.Metascore && metadata.Metascore !== 'N/A' ? metadata.Metascore : null;
         if (metascore) item.metascore = metascore;
+        const castList = parseActorsList(metadata.Actors);
+        if (castList.length) item.actors = castList;
         if (!item.trailerUrl) {
           const trailerFromMeta = buildTrailerUrl(metadata.Title || title, extractPrimaryYear(metadata.Year));
           if (trailerFromMeta) item.trailerUrl = trailerFromMeta;
@@ -429,6 +446,19 @@ function extractPrimaryYear(value) {
   if (!value) return '';
   const match = String(value).match(/\d{4}/);
   return match ? match[0] : '';
+}
+
+function parseActorsList(raw) {
+  if (!raw || raw === 'N/A') return [];
+  const unique = new Set();
+  String(raw)
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .forEach(name => {
+      if (!unique.has(name)) unique.add(name);
+    });
+  return Array.from(unique).slice(0, 12);
 }
 
 function buildTrailerUrl(title, year) {
@@ -497,6 +527,16 @@ function hideTitleSuggestions(form) {
   const el = form.__suggestionsEl;
   el.classList.remove('visible');
   el.innerHTML = '';
+}
+
+function resetFilterState() {
+  Object.keys(actorFilters).forEach(key => {
+    actorFilters[key] = '';
+  });
+  Object.keys(listCaches).forEach(key => delete listCaches[key]);
+  document.querySelectorAll('[data-role="actor-filter"]').forEach(input => {
+    input.value = '';
+  });
 }
 
 function renderTitleSuggestions(container, suggestions, onSelect) {
