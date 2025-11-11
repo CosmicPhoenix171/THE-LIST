@@ -52,7 +52,14 @@ import {
 //   appId: "..."
 // };
 const firebaseConfig = {
-  // TODO: paste your config here
+  apiKey: 'AIzaSyCWJpMYjSdV9awGRwJ3zyZ_9sDjUrnTu2I',
+  authDomain: 'the-list-a700d.firebaseapp.com',
+  databaseURL: 'https://the-list-a700d-default-rtdb.firebaseio.com',
+  projectId: 'the-list-a700d',
+  storageBucket: 'the-list-a700d.firebasestorage.app',
+  messagingSenderId: '24313817411',
+  appId: '1:24313817411:web:0aba69eaadade9843a27f6',
+  measurementId: 'G-YXJ2E2XG42',
 };
 
 // -----------------------
