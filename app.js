@@ -1088,6 +1088,21 @@ function openEditModal(listType, itemId, item) {
   };
   creatorInput.placeholder = creatorPlaceholderMap[listType] || 'Creator';
   creatorInput.value = listType === 'books' ? (item.author || '') : (item.director || '');
+  let seriesNameInput = null;
+  let seriesOrderInput = null;
+  if (listType !== 'books') {
+    seriesNameInput = document.createElement('input');
+    seriesNameInput.name = 'seriesName';
+    seriesNameInput.placeholder = 'Series name (optional)';
+    seriesNameInput.value = item.seriesName || '';
+
+    seriesOrderInput = document.createElement('input');
+    seriesOrderInput.name = 'seriesOrder';
+    seriesOrderInput.placeholder = 'Series order';
+    seriesOrderInput.inputMode = 'numeric';
+    seriesOrderInput.pattern = '[0-9]{1,3}';
+    seriesOrderInput.value = item.seriesOrder !== undefined && item.seriesOrder !== null ? item.seriesOrder : '';
+  }
   const statusSelect = document.createElement('select');
   ['Planned','Watching/Reading','Completed','Dropped'].forEach(s => {
     const o = document.createElement('option'); o.value = s; o.text = s; if (s === item.status) o.selected = true; statusSelect.appendChild(o);
@@ -1106,6 +1121,8 @@ function openEditModal(listType, itemId, item) {
   form.appendChild(yearInput);
   form.appendChild(creatorInput);
   form.appendChild(statusSelect);
+  if (seriesNameInput) form.appendChild(seriesNameInput);
+  if (seriesOrderInput) form.appendChild(seriesOrderInput);
   form.appendChild(notesInput);
   const controls = document.createElement('div');
   controls.style.display = 'flex'; controls.style.gap = '.5rem'; controls.style.justifyContent = 'flex-end';
@@ -1128,6 +1145,11 @@ function openEditModal(listType, itemId, item) {
       payload.author = creatorVal || null;
     } else {
       payload.director = creatorVal || null;
+      const seriesNameVal = (seriesNameInput && seriesNameInput.value ? seriesNameInput.value.trim() : '') || '';
+      const seriesOrderValRaw = seriesOrderInput && seriesOrderInput.value ? seriesOrderInput.value.trim() : '';
+      const normalizedSeriesOrder = seriesOrderInput ? sanitizeSeriesOrder(seriesOrderValRaw) : null;
+      payload.seriesName = seriesNameVal || null;
+      payload.seriesOrder = normalizedSeriesOrder !== null ? normalizedSeriesOrder : null;
     }
     updateItem(listType, itemId, payload);
     closeModal();
