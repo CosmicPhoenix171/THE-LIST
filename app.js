@@ -1377,8 +1377,13 @@ function resolveSeriesRedirect(listType, item, rawData) {
     if (titleA > titleB) return 1;
     return 0;
   });
-  const firstUnwatched = siblings.find(entry => entry && isSpinnerStatusEligible(entry.status) && !isItemWatched(entry));
-  return firstUnwatched || item;
+  const earliestUnwatched = siblings.find(entry => entry && isSpinnerStatusEligible(entry.status) && !isItemWatched(entry));
+  if (!earliestUnwatched) return item;
+  // If the chosen item is further in the series than the earliest unwatched, redirect.
+  const chosenOrder = parseSeriesOrder(item.seriesOrder);
+  const earliestOrder = parseSeriesOrder(earliestUnwatched.seriesOrder);
+  const needsRedirect = chosenOrder > earliestOrder || isItemWatched(item);
+  return needsRedirect ? earliestUnwatched : item;
 }
 
 function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverride) {
@@ -1459,6 +1464,8 @@ function spinWheel(listType) {
     const chosenIndex = Math.floor(Math.random() * candidates.length);
     const chosenCandidate = candidates[chosenIndex];
     const resolvedCandidate = resolveSeriesRedirect(listType, chosenCandidate, data) || chosenCandidate;
+    // Debug: log redirection decisions
+    try { console.debug('[Wheel] chosen=', chosenCandidate?.title, 'resolved=', resolvedCandidate?.title); } catch (_) {}
     animateWheelSequence(candidates, chosenIndex, listType, resolvedCandidate);
   }).catch(err => {
     console.error('Wheel load failed', err);
