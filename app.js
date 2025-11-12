@@ -1377,7 +1377,7 @@ function resolveSeriesRedirect(listType, item, rawData) {
     if (titleA > titleB) return 1;
     return 0;
   });
-  const firstUnwatched = siblings.find(entry => entry && !isItemWatched(entry));
+  const firstUnwatched = siblings.find(entry => entry && isSpinnerStatusEligible(entry.status) && !isItemWatched(entry));
   return firstUnwatched || item;
 }
 
@@ -1458,13 +1458,8 @@ function spinWheel(listType) {
     }
     const chosenIndex = Math.floor(Math.random() * candidates.length);
     const chosenCandidate = candidates[chosenIndex];
-    const resolvedCandidate = resolveSeriesRedirect(listType, chosenCandidate, data);
-    const resolvedIndex = resolvedCandidate ? candidates.indexOf(resolvedCandidate) : -1;
-    if (resolvedIndex >= 0) {
-      animateWheelSequence(candidates, resolvedIndex, listType);
-    } else {
-      animateWheelSequence(candidates, chosenIndex, listType, resolvedCandidate || chosenCandidate);
-    }
+    const resolvedCandidate = resolveSeriesRedirect(listType, chosenCandidate, data) || chosenCandidate;
+    animateWheelSequence(candidates, chosenIndex, listType, resolvedCandidate);
   }).catch(err => {
     console.error('Wheel load failed', err);
     clearWheelAnimation();
