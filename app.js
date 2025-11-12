@@ -738,18 +738,27 @@ function buildSpinnerCandidates(listType, rawData) {
   });
 }
 
+function getMissingMetadataFields(item) {
+  if (!item) return [];
+  const criticalFields = ['imdbId', 'imdbUrl', 'poster', 'plot', 'actors'];
+  return criticalFields.filter(field => !hasMeaningfulValue(item[field]));
+}
+
 function needsMetadataRefresh(listType, item) {
   if (!item || !item.title) return false;
   if (!['movies', 'tvShows', 'anime'].includes(listType)) return false;
-  const criticalFields = ['imdbId', 'imdbUrl', 'poster', 'plot', 'actors'];
-  return criticalFields.some(field => !hasMeaningfulValue(item[field]));
+  return getMissingMetadataFields(item).length > 0;
 }
 
-function refreshMetadataForItem(listType, itemId, item) {
+function refreshMetadataForItem(listType, itemId, item, missingFields = []) {
   if (!OMDB_API_KEY) return;
   const key = `${listType}:${itemId}`;
   if (metadataRefreshInflight.has(key)) return;
   metadataRefreshInflight.add(key);
+
+  const title = item.title || '[untitled]';
+  const yearInfo = item.year ? ` (${item.year})` : '';
+  console.debug('[Metadata] Refreshing', `${listType}:${itemId}`, `${title}${yearInfo}`, 'missing fields:', missingFields.join(', ') || 'unknown');
 
   const lookup = {
     title: item.title || '',
@@ -765,6 +774,7 @@ function refreshMetadataForItem(listType, itemId, item) {
       fallbackYear: item.year || '',
     });
     if (Object.keys(updates).length === 0) return;
+    console.debug('[Metadata] Applying updates for', `${listType}:${itemId}`, updates);
     return updateItem(listType, itemId, updates);
   }).catch(err => {
     console.warn('Metadata refresh failed', err);
@@ -780,7 +790,8 @@ function maybeRefreshMetadata(listType, data) {
 
   Object.entries(data || {}).forEach(([id, item]) => {
     if (!needsMetadataRefresh(listType, item)) return;
-    refreshMetadataForItem(listType, id, item);
+    const missingFields = getMissingMetadataFields(item);
+    refreshMetadataForItem(listType, id, item, missingFields);
   });
 }
 
