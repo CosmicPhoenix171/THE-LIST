@@ -66,6 +66,11 @@ const firebaseConfig = {
 const OMDB_API_KEY = '37fad759';
 const OMDB_API_URL = 'https://www.omdbapi.com/';
 
+// Optional: TMDb API for franchise/collection info (recommended for sequels/prequels)
+// Create a key at https://www.themoviedb.org/settings/api
+// Leave blank to disable TMDb features.
+const TMDB_API_KEY = '46dcf1eaa2ce4284037a00fdefca9bb8';
+
 // -----------------------
 // App state
 let appInitialized = false;
@@ -1351,8 +1356,251 @@ function renderWheelResult(item, listType) {
     details.appendChild(links);
   }
 
+  // Sequel / Prequel lookup button
+  if (listType === 'movies') {
+    const relatedBtn = document.createElement('button');
+    relatedBtn.type = 'button';
+    relatedBtn.className = 'btn secondary';
+    relatedBtn.textContent = 'Lookup Sequels/Prequels';
+    relatedBtn.addEventListener('click', () => {
+      lookupRelatedTitles(item);
+    });
+    details.appendChild(relatedBtn);
+  }
+
   card.appendChild(details);
   wheelResultEl.appendChild(card);
+}
+
+// --- Sequel / Prequel Lookup Logic ---
+function deriveFranchiseBase(title) {
+  if (!title) return '';
+  let base = String(title).trim();
+  // Remove common sequel indicators at end
+  base = base.replace(/\b(part\s+[ivx0-9]+)$/i, '').trim();
+  base = base.replace(/\bchapter\s+[0-9]+$/i, '').trim();
+  base = base.replace(/\bvolume\s+[0-9]+$/i, '').trim();
+  // Remove trailing Roman numerals or digits standing alone
+  base = base.replace(/\b([ivx]+|\d+)$/i, '').trim();
+  // Remove trailing colon subtitle for initial broad search attempt
+  base = base.replace(/:\s*[^:]+$/,'').trim();
+  return base;
+}
+
+function extractOrderToken(title) {
+  if (!title) return null;
+  const partMatch = title.match(/part\s+([ivx0-9]+)/i);
+  if (partMatch) return partMatch[1];
+  const romanMatch = title.match(/\b(ii|iii|iv|vi|vii|viii|ix|x)\b/i);
+  if (romanMatch) return romanMatch[1];
+  const digitMatch = title.match(/\b(\d{1,2})\b/);
+  if (digitMatch) return digitMatch[1];
+  return null;
+}
+
+async function omdbSearchFranchise(base) {
+  if (!OMDB_API_KEY) {
+    alert('OMDb API key missing; cannot lookup related titles.');
+    return [];
+  }
+  const results = [];
+  const encoded = encodeURIComponent(base);
+  for (let page = 1; page <= 3; page++) {
+    const url = `https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&type=movie&s=${encoded}&page=${page}`;
+    try {
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if (data && Array.isArray(data.Search)) {
+        results.push(...data.Search);
+        if (data.Search.length < 10) break; // last page
+      } else {
+        break;
+      }
+    } catch (e) {
+      console.warn('OMDb search failed', e);
+      break;
+    }
+  }
+  return results;
+}
+
+function scoreFranchiseMatch(base, candidateTitle) {
+  const ct = candidateTitle.toLowerCase();
+  const b = base.toLowerCase();
+  if (ct === b) return 100;
+  if (ct.startsWith(b)) return 90;
+  if (ct.includes(b)) return 70;
+  return 0;
+}
+
+function buildRelatedModal(currentItem, related) {
+  const modalRoot = document.getElementById('modal-root');
+  modalRoot.innerHTML = '';
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  const h = document.createElement('h3');
+  h.textContent = `Related titles for: ${currentItem.title}`;
+  modal.appendChild(h);
+  const list = document.createElement('div');
+  list.style.display = 'flex';
+  list.style.flexDirection = 'column';
+  list.style.gap = '.5rem';
+  if (!related.length) {
+    const empty = document.createElement('div');
+    empty.textContent = 'No potential sequels/prequels found.';
+    list.appendChild(empty);
+  } else {
+    related.forEach(r => {
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '.5rem';
+      row.style.background = 'var(--card-bg)';
+      row.style.padding = '.5rem .75rem';
+      row.style.borderRadius = '6px';
+        const title = document.createElement('div');
+        const displayTitle = r.Title || r.title || '(untitled)';
+        const displayYear = r.Year || r.year || '';
+        title.textContent = displayTitle + (displayYear ? ` (${displayYear})` : '');
+      row.appendChild(title);
+        if (r.imdbID || r.imdbId) {
+          const imdbLink = document.createElement('a');
+          imdbLink.href = `https://www.imdb.com/title/${(r.imdbID || r.imdbId)}/`;
+          imdbLink.target = '_blank';
+          imdbLink.rel = 'noopener noreferrer';
+          imdbLink.textContent = 'IMDb';
+          imdbLink.className = 'meta-link';
+          row.appendChild(imdbLink);
+        }
+        if (r.id && r.tmdb) {
+          const tmdbLink = document.createElement('a');
+          tmdbLink.href = `https://www.themoviedb.org/movie/${r.id}`;
+          tmdbLink.target = '_blank';
+          tmdbLink.rel = 'noopener noreferrer';
+          tmdbLink.textContent = 'TMDb';
+          tmdbLink.className = 'meta-link';
+          row.appendChild(tmdbLink);
+        }
+      list.appendChild(row);
+    });
+  }
+  modal.appendChild(list);
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn secondary';
+  closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', () => { modalRoot.innerHTML = ''; });
+  modal.appendChild(closeBtn);
+  backdrop.appendChild(modal);
+  modalRoot.appendChild(backdrop);
+}
+
+// TMDb based related lookup
+async function lookupRelatedViaTMDb(item) {
+  if (!TMDB_API_KEY) return null;
+  if (!item || !item.title) return null;
+  const query = encodeURIComponent(item.title.trim());
+  try {
+    const searchResp = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${query}`);
+    const searchData = await searchResp.json();
+    if (!searchData || !Array.isArray(searchData.results) || !searchData.results.length) return null;
+    // Find best match by comparing release year and title similarity
+    const normalizedTitle = item.title.trim().toLowerCase();
+    const candidate = searchData.results.reduce((best, cur) => {
+      const curTitle = (cur.title || cur.original_title || '').toLowerCase();
+      const titleScore = curTitle === normalizedTitle ? 3 : curTitle.includes(normalizedTitle) ? 2 : 1;
+      const yearScore = item.year && cur.release_date && cur.release_date.startsWith(item.year) ? 2 : 0;
+      const total = titleScore + yearScore;
+      return total > (best._score || 0) ? Object.assign(cur, {_score: total}) : best;
+    }, {});
+    if (!candidate || !candidate.id) return null;
+    if (!candidate.belongs_to_collection || !candidate.belongs_to_collection.id) {
+      // Fetch movie details to see if collection info exists
+      const detailResp = await fetch(`https://api.themoviedb.org/3/movie/${candidate.id}?api_key=${TMDB_API_KEY}`);
+      const detailData = await detailResp.json();
+      if (!detailData || !detailData.belongs_to_collection) return null;
+      candidate.belongs_to_collection = detailData.belongs_to_collection;
+    }
+    const collectionId = candidate.belongs_to_collection.id;
+    const collResp = await fetch(`https://api.themoviedb.org/3/collection/${collectionId}?api_key=${TMDB_API_KEY}`);
+    const collData = await collResp.json();
+    if (!collData || !Array.isArray(collData.parts) || !collData.parts.length) return null;
+    const mapped = collData.parts.map(p => ({
+      tmdb: true,
+      id: p.id,
+      Title: p.title || p.original_title,
+      Year: p.release_date ? p.release_date.slice(0,4) : '',
+      imdbID: p.imdb_id || null
+    })).filter(p => p.Title);
+    // Sort by release date
+    mapped.sort((a,b) => {
+      const yA = parseInt(a.Year,10) || 9999;
+      const yB = parseInt(b.Year,10) || 9999;
+      if (yA !== yB) return yA - yB;
+      const tA = a.Title.toLowerCase();
+      const tB = b.Title.toLowerCase();
+      if (tA < tB) return -1;
+      if (tA > tB) return 1;
+      return 0;
+    });
+    // Filter out current item if IMDB ID matches
+    const currentImdb = item.imdbId || item.imdbID || '';
+    return mapped.filter(m => !currentImdb || m.imdbID !== currentImdb);
+  } catch (err) {
+    console.warn('TMDb lookup failed', err);
+    return null;
+  }
+}
+
+async function lookupRelatedTitles(item) {
+  if (!item || !item.title) return;
+  // 1) Prefer TMDb collections when possible
+  const tmdbList = await lookupRelatedViaTMDb(item);
+  if (tmdbList && tmdbList.length) {
+    buildRelatedModal(item, tmdbList);
+    return;
+  }
+  // 2) Fallback: OMDb heuristic search
+  const base = deriveFranchiseBase(item.title);
+  try { console.log('[Franchise] base derived', { original: item.title, base }); } catch(_) {}
+  if (!base || base.length < 3) {
+    alert('Not enough info to search for related titles.');
+    return;
+  }
+  const raw = await omdbSearchFranchise(base);
+  const filtered = raw.filter(r => scoreFranchiseMatch(base, r.Title) >= 70);
+  // Remove exact duplicate of current item (match by imdbID or sanitized title+year)
+  const currentKey = (item.imdbId || item.imdbID || '') + '|' + (item.year || '') + '|' + (item.title || '').toLowerCase();
+  const unique = [];
+  const seen = new Set();
+  filtered.forEach(r => {
+    const key = (r.imdbID || '') + '|' + (r.Year || '') + '|' + (r.Title || '').toLowerCase();
+    if (key === currentKey) return;
+    if (seen.has(key)) return;
+    seen.add(key);
+    unique.push(r);
+  });
+  // Basic ordering: detect order tokens, then by year
+  unique.sort((a, b) => {
+    const tokA = extractOrderToken(a.Title);
+    const tokB = extractOrderToken(b.Title);
+    if (tokA && tokB && tokA !== tokB) {
+      // attempt numeric comparison if possible
+      const numA = parseInt(tokA, 10);
+      const numB = parseInt(tokB, 10);
+      if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+    }
+    const yearA = parseInt(a.Year, 10) || 9999;
+    const yearB = parseInt(b.Year, 10) || 9999;
+    if (yearA !== yearB) return yearA - yearB;
+    const tA = a.Title.toLowerCase();
+    const tB = b.Title.toLowerCase();
+    if (tA < tB) return -1;
+    if (tA > tB) return 1;
+    return 0;
+  });
+  buildRelatedModal(item, unique);
 }
 
 function resolveSeriesRedirect(listType, item, rawData) {
