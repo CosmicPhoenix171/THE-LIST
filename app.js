@@ -154,6 +154,91 @@ function initFirebase() {
   });
 }
 
+// Prompt user to add missing collection parts
+function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
+  if (!collInfo || !Array.isArray(collInfo.parts)) return;
+  const existing = listCaches[listType] ? Object.values(listCaches[listType]) : [];
+  const existingKeys = new Set(existing.map(e => normalizeTitleKey(e.title)));
+  // Include the just-added item
+  existingKeys.add(normalizeTitleKey(currentItem.title));
+  const missing = collInfo.parts.filter(p => !existingKeys.has(normalizeTitleKey(p.title)));
+  if (!missing.length) return; // nothing to add
+
+  const modalRoot = document.getElementById('modal-root');
+  modalRoot.innerHTML = '';
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  const h = document.createElement('h3');
+  h.textContent = `Add missing entries for "${collInfo.collectionName}"?`;
+  modal.appendChild(h);
+  const sub = document.createElement('p');
+  sub.textContent = `Detected ${missing.length} not yet in your list.`;
+  modal.appendChild(sub);
+  const list = document.createElement('div');
+  list.style.display = 'flex';
+  list.style.flexDirection = 'column';
+  list.style.gap = '.5rem';
+  const checkboxes = [];
+  missing.forEach(m => {
+    const row = document.createElement('label');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.gap = '.5rem';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.dataset.title = m.title;
+    cb.dataset.year = m.year || '';
+    cb.dataset.order = m.order || '';
+    row.appendChild(cb);
+    const text = document.createElement('span');
+    text.textContent = `${m.order}. ${m.title}${m.year ? ' ('+m.year+')' : ''}`;
+    row.appendChild(text);
+    list.appendChild(row);
+    checkboxes.push(cb);
+  });
+  modal.appendChild(list);
+  const actions = document.createElement('div');
+  actions.style.display = 'flex';
+  actions.style.gap = '.5rem';
+  actions.style.marginTop = '1rem';
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn primary';
+  addBtn.textContent = 'Add Selected';
+  addBtn.addEventListener('click', async () => {
+    const toAdd = checkboxes.filter(cb => cb.checked).map(cb => ({
+      title: cb.dataset.title,
+      year: sanitizeYear(cb.dataset.year),
+      seriesName: collInfo.collectionName,
+      seriesOrder: cb.dataset.order ? Number(cb.dataset.order) : null,
+      status: 'Planned'
+    }));
+    for (const part of toAdd) {
+      try {
+        // Skip if now present (user may have added manually meanwhile)
+        if (isDuplicateCandidate(listType, part)) continue;
+        const baseTrailerUrl = buildTrailerUrl(part.title, part.year);
+        if (baseTrailerUrl) part.trailerUrl = baseTrailerUrl;
+        await addItem(listType, part);
+      } catch (e) {
+        console.warn('Failed to auto-add part', part.title, e);
+      }
+    }
+    modalRoot.innerHTML = '';
+  });
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn secondary';
+  cancelBtn.textContent = 'Skip';
+  cancelBtn.addEventListener('click', () => { modalRoot.innerHTML = ''; });
+  actions.appendChild(addBtn);
+  actions.appendChild(cancelBtn);
+  modal.appendChild(actions);
+  backdrop.appendChild(modal);
+  modalRoot.appendChild(backdrop);
+}
+
 // Authentication
 function signInWithGoogle() {
   const provider = new GoogleAuthProvider();
@@ -335,6 +420,15 @@ function renderList(listType, data) {
       if (item.seriesOrder !== undefined && item.seriesOrder !== null && item.seriesOrder !== '') {
         parts.push(`Entry ${item.seriesOrder}`);
       }
+      if (item.seriesSize) {
+        parts.push(`of ${item.seriesSize}`);
+      }
+      if (item.nextSequel) {
+        parts.push(`Next: ${item.nextSequel}`);
+      }
+      if (item.previousPrequel) {
+        parts.push(`Prev: ${item.previousPrequel}`);
+      }
       seriesLine.textContent = parts.join(' • ');
       left.appendChild(seriesLine);
     }
@@ -473,7 +567,37 @@ async function addItemFromForm(listType, form) {
       return;
     }
 
+    // Auto franchise enrichment (TMDb) for movies if user didn't supply seriesName
+    if (listType === 'movies' && TMDB_API_KEY && !item.seriesName && item.title) {
+      try {
+        const collInfo = await getTmdbCollectionInfo(item.title, item.year, item.imdbId);
+        if (collInfo && collInfo.collectionName && Array.isArray(collInfo.parts) && collInfo.parts.length > 1) {
+          const idx = collInfo.parts.findIndex(p => p.matchesCurrent);
+          if (idx >= 0) {
+            item.seriesName = collInfo.collectionName;
+            item.seriesOrder = idx + 1; // 1-based order
+            // Optionally store total size
+            item.seriesSize = collInfo.parts.length;
+            if (idx + 1 < collInfo.parts.length) {
+              item.nextSequel = collInfo.parts[idx + 1].title;
+            }
+            if (idx > 0) {
+              item.previousPrequel = collInfo.parts[idx - 1].title;
+            }
+            item._tmdbCollectionInfo = collInfo; // stash for post-add prompt
+          }
+        }
+      } catch (e) {
+        console.warn('TMDb enrichment failed', e);
+      }
+    }
+
     await addItem(listType, item);
+
+    // After adding, if we have collection info, offer to auto-add missing parts
+    if (listType === 'movies' && item._tmdbCollectionInfo) {
+      promptAddMissingCollectionParts(listType, item._tmdbCollectionInfo, item);
+    }
     form.reset();
     form.__selectedMetadata = null;
     delete form.dataset.selectedImdbId;
@@ -487,6 +611,74 @@ async function addItemFromForm(listType, form) {
   } finally {
     setButtonBusy(submitBtn, false);
   }
+}
+
+// Fetch TMDb collection info for a title/year/imdbId
+async function getTmdbCollectionInfo(title, year, imdbId) {
+  if (!TMDB_API_KEY) return null;
+  const q = encodeURIComponent(title);
+  let searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${q}`;
+  const yearParam = year && year.length === 4 ? `&year=${year}` : '';
+  searchUrl += yearParam;
+  let searchData;
+  try {
+    const resp = await fetch(searchUrl);
+    searchData = await resp.json();
+  } catch (e) {
+    return null;
+  }
+  if (!searchData || !Array.isArray(searchData.results) || !searchData.results.length) return null;
+  const normTitle = title.trim().toLowerCase();
+  const pick = searchData.results.reduce((best, cur) => {
+    const curTitle = (cur.title || cur.original_title || '').toLowerCase();
+    const titleScore = curTitle === normTitle ? 3 : curTitle.includes(normTitle) ? 2 : 1;
+    const yearScore = year && cur.release_date && cur.release_date.startsWith(year) ? 2 : 0;
+    const total = titleScore + yearScore;
+    return total > (best._score || 0) ? Object.assign(cur, {_score: total}) : best;
+  }, {});
+  if (!pick || !pick.id) return null;
+  let detail;
+  try {
+    const detailResp = await fetch(`https://api.themoviedb.org/3/movie/${pick.id}?api_key=${TMDB_API_KEY}`);
+    detail = await detailResp.json();
+  } catch (e) {
+    return null;
+  }
+  if (!detail || !detail.belongs_to_collection || !detail.belongs_to_collection.id) return null;
+  const collId = detail.belongs_to_collection.id;
+  let collData;
+  try {
+    const collResp = await fetch(`https://api.themoviedb.org/3/collection/${collId}?api_key=${TMDB_API_KEY}`);
+    collData = await collResp.json();
+  } catch (e) {
+    return null;
+  }
+  if (!collData || !Array.isArray(collData.parts) || collData.parts.length < 2) return null;
+  const parts = collData.parts.slice().map(p => ({
+    id: p.id,
+    title: p.title || p.original_title || '',
+    year: p.release_date ? p.release_date.slice(0,4) : '',
+    imdbId: p.imdb_id || '',
+  })).filter(p => p.title);
+  parts.sort((a,b) => {
+    const yA = parseInt(a.year,10) || 9999;
+    const yB = parseInt(b.year,10) || 9999;
+    if (yA !== yB) return yA - yB;
+    const tA = a.title.toLowerCase();
+    const tB = b.title.toLowerCase();
+    if (tA < tB) return -1;
+    if (tA > tB) return 1;
+    return 0;
+  });
+  const matchIdx = parts.findIndex(p => {
+    if (imdbId && p.imdbId && imdbId === p.imdbId) return true;
+    const pNorm = p.title.toLowerCase();
+    return pNorm === normTitle || pNorm.includes(normTitle);
+  });
+  return {
+    collectionName: detail.belongs_to_collection.name,
+    parts: parts.map((p,i) => ({...p, order: i+1, matchesCurrent: i === matchIdx}))
+  };
 }
 
 function sanitizeYear(input) {
