@@ -1358,6 +1358,7 @@ function renderWheelResult(item, listType) {
 function animateWheelSequence(candidates, chosenIndex, listType) {
   const len = candidates.length;
   if (len === 0) return;
+
   const chosenItem = candidates[chosenIndex];
   const iterations = Math.max(28, len * 5);
   let pointer = Math.floor(Math.random() * len);
@@ -1368,8 +1369,19 @@ function animateWheelSequence(candidates, chosenIndex, listType) {
   }
   sequence.push(chosenItem);
 
-  let delay = 90;
-  let totalDelay = 0;
+  const totalDuration = 7000; // keep spin length consistent regardless of candidate count
+  const stepCount = sequence.length;
+  const lastIndex = stepCount - 1;
+  const schedule = [];
+  for (let i = 0; i < stepCount; i++) {
+    if (lastIndex === 0) {
+      schedule.push(0);
+    } else {
+      const progress = i / lastIndex;
+      const eased = 1 - Math.pow(1 - progress, 3); // ease-out curve keeps early steps snappy
+      schedule.push(Math.round(eased * totalDuration));
+    }
+  }
 
   sequence.forEach((item, idx) => {
     const timeout = setTimeout(() => {
@@ -1384,10 +1396,8 @@ function animateWheelSequence(candidates, chosenIndex, listType) {
         renderWheelResult(item, listType);
         spinTimeouts = [];
       }
-    }, totalDelay);
+    }, schedule[idx]);
     spinTimeouts.push(timeout);
-    totalDelay += delay;
-    delay = Math.min(delay + 25, 280);
   });
 }
 
