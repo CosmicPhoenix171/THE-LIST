@@ -369,8 +369,8 @@ function renderList(listType, data) {
 
   const mode = sortModes[listType] || 'title';
   filtered.sort(([, a], [, b]) => {
-    const ta = (a && a.title ? a.title : '').toLowerCase();
-    const tb = (b && b.title ? b.title : '').toLowerCase();
+    const ta = titleSortKey(a && a.title ? a.title : '');
+    const tb = titleSortKey(b && b.title ? b.title : '');
     if (mode === 'title') {
       if (ta < tb) return -1; if (ta > tb) return 1; return 0;
     }
@@ -738,6 +738,14 @@ function sanitizeSeriesOrder(input) {
 function normalizeTitleKey(title) {
   if (!title) return '';
   return String(title).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// Build a sorting key for titles that ignores a leading article like "The", "A", or "An".
+function titleSortKey(title) {
+  if (!title) return '';
+  const t = String(title).trim().toLowerCase();
+  // remove a single leading article followed by space: the|a|an (word boundary ensures not matching "there")
+  return t.replace(/^(?:the|a|an)\b\s+/, '');
 }
 
 function buildComparisonSignature(item) {
