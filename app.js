@@ -23,6 +23,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut as fbSignOut,
   onAuthStateChanged,
 } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
@@ -269,6 +271,13 @@ function signOut() {
   fbSignOut(auth).catch(err => console.error('Sign-out error', err));
 }
 
+function shouldUseRedirectSignIn() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  if (window.innerWidth && window.innerWidth <= 768) return true;
+  const ua = navigator.userAgent || '';
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+}
+
 async function signInWithGoogle() {
   if (!auth) {
     console.warn('Tried to sign in before Firebase was initialized.');
@@ -276,6 +285,10 @@ async function signInWithGoogle() {
     return;
   }
   try {
+    if (shouldUseRedirectSignIn()) {
+      await signInWithRedirect(auth, googleProvider);
+      return;
+    }
     await signInWithPopup(auth, googleProvider);
   } catch (err) {
     if (err && err.code === 'auth/popup-closed-by-user') return;
@@ -296,6 +309,16 @@ function handleAuthState() {
       detachAllListeners();
     }
   });
+}
+
+async function handleSignInRedirectResult() {
+  if (!auth) return;
+  try {
+    await getRedirectResult(auth);
+  } catch (err) {
+    console.error('Google redirect sign-in failed', err);
+    alert('Google sign-in failed after redirect. Please try again.');
+  }
 }
 
 // UI helpers
@@ -2242,7 +2265,11 @@ function spinWheel(listType) {
 initFirebase();
 if (auth) {
   handleAuthState();
+  handleSignInRedirectResult();
 } else {
   // If config was not added, attempt to still listen after a small delay
-  try { handleAuthState(); } catch(e) { /* silent */ }
+  try {
+    handleAuthState();
+    handleSignInRedirectResult();
+  } catch(e) { /* silent */ }
 }
