@@ -97,6 +97,7 @@ const googleSigninBtn = document.getElementById('google-signin');
 const appRoot = document.getElementById('app');
 const userNameEl = document.getElementById('user-name');
 const signOutBtn = document.getElementById('sign-out');
+const backToTopBtn = document.getElementById('back-to-top');
 const tabs = document.querySelectorAll('.tab');
 const sections = document.querySelectorAll('.section');
 const modalRoot = document.getElementById('modal-root');
@@ -164,6 +165,12 @@ function initFirebase() {
     const src = document.getElementById('wheel-source').value;
     spinWheel(src);
   });
+
+  if (backToTopBtn) {
+    backToTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    window.addEventListener('scroll', updateBackToTopVisibility, { passive: true });
+    updateBackToTopVisibility();
+  }
 }
 
 // Prompt user to add missing collection parts
@@ -280,12 +287,14 @@ function showLogin() {
   loginScreen.classList.remove('hidden');
   appRoot.classList.add('hidden');
   resetFilterState();
+  updateBackToTopVisibility();
 }
 
 function showAppForUser(user) {
   loginScreen.classList.add('hidden');
   appRoot.classList.remove('hidden');
   userNameEl.textContent = user.displayName || user.email || 'You';
+  updateBackToTopVisibility();
 
   // load default section
   switchSection('movies');
@@ -299,6 +308,12 @@ function switchSection(sectionId) {
   if (['movies','tvShows','anime','books'].includes(sectionId)) {
     loadList(sectionId);
   }
+}
+
+function updateBackToTopVisibility() {
+  if (!backToTopBtn) return;
+  const shouldShow = window.scrollY > 320 && appRoot && !appRoot.classList.contains('hidden');
+  backToTopBtn.classList.toggle('hidden', !shouldShow);
 }
 
 // Detach all DB listeners
