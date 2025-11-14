@@ -108,6 +108,8 @@ const wheelResultEl = document.getElementById('wheel-result');
 // firebase instances
 let db = null;
 let auth = null;
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // Initialize Firebase and services
 function initFirebase() {
@@ -265,6 +267,21 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
 
 function signOut() {
   fbSignOut(auth).catch(err => console.error('Sign-out error', err));
+}
+
+async function signInWithGoogle() {
+  if (!auth) {
+    console.warn('Tried to sign in before Firebase was initialized.');
+    alert('App is still loading. Please try again.');
+    return;
+  }
+  try {
+    await signInWithPopup(auth, googleProvider);
+  } catch (err) {
+    if (err && err.code === 'auth/popup-closed-by-user') return;
+    console.error('Google sign-in failed', err);
+    alert('Google sign-in failed. Please try again.');
+  }
 }
 
 // Listen to auth state changes
