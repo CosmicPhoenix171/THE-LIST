@@ -79,6 +79,7 @@ const listeners = {};
 let omdbWarningShown = false;
 let spinTimeouts = [];
 const actorFilters = { movies: '', tvShows: '', anime: '' };
+const expandedCards = { movies: null };
 const sortModes = { movies: 'title', tvShows: 'title', anime: 'title', books: 'title' };
 const listCaches = {};
 const metadataRefreshInflight = new Set();
@@ -417,6 +418,11 @@ function renderList(listType, data) {
   filtered.forEach(([id, item]) => {
     if (!item) return;
 
+    if (listType === 'movies') {
+      container.appendChild(buildCollapsibleMovieCard(id, item));
+      return;
+    }
+
     const card = document.createElement('div');
     card.className = 'card';
 
@@ -554,6 +560,140 @@ function renderList(listType, data) {
     card.appendChild(actions);
     container.appendChild(card);
   });
+}
+
+function buildCollapsibleMovieCard(id, item) {
+  const isExpanded = expandedCards.movies === id;
+  const card = document.createElement('div');
+  card.className = `card collapsible${isExpanded ? ' expanded' : ''}`;
+  card.dataset.id = id;
+  card.addEventListener('click', () => toggleCardExpansion('movies', id));
+
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.textContent = item.title || '(no title)';
+  card.appendChild(title);
+
+  if (item.poster) {
+    const poster = document.createElement('div');
+    poster.className = 'artwork';
+    const img = document.createElement('img');
+    img.src = item.poster;
+    img.alt = `${item.title || 'Poster'} artwork`;
+    img.loading = 'lazy';
+    poster.appendChild(img);
+    card.appendChild(poster);
+  }
+
+  if (item.status) {
+    const statusChip = buildStatusChip(item.status);
+    statusChip.classList.add('centered-chip');
+    card.appendChild(statusChip);
+  }
+
+  const details = document.createElement('div');
+  details.className = 'collapsible-details';
+
+  const metaParts = [];
+  if (item.year) metaParts.push(item.year);
+  if (item.director) metaParts.push(item.director);
+  if (item.runtime) metaParts.push(item.runtime);
+  if (item.imdbRating) metaParts.push(`IMDb ${item.imdbRating}`);
+  if (metaParts.length) {
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = metaParts.join(' • ');
+    details.appendChild(meta);
+  }
+
+  if (item.seriesName) {
+    const seriesLine = document.createElement('div');
+    seriesLine.className = 'series-line';
+    const parts = [`Series: ${item.seriesName}`];
+    if (item.seriesOrder !== undefined && item.seriesOrder !== null && item.seriesOrder !== '') {
+      parts.push(`Entry ${item.seriesOrder}`);
+    }
+    seriesLine.textContent = parts.join(' • ');
+    details.appendChild(seriesLine);
+  }
+
+  const actorPreview = buildActorPreview(item.actors, 10);
+  if (actorPreview) {
+    const actorLine = document.createElement('div');
+    actorLine.className = 'actor-line';
+    actorLine.textContent = `Cast: ${actorPreview}`;
+    details.appendChild(actorLine);
+  }
+
+  const links = document.createElement('div');
+  links.className = 'collapsible-links';
+  if (item.imdbUrl) {
+    const imdb = document.createElement('a');
+    imdb.className = 'meta-link';
+    imdb.href = item.imdbUrl;
+    imdb.target = '_blank';
+    imdb.rel = 'noopener noreferrer';
+    imdb.textContent = 'View on IMDb';
+    links.appendChild(imdb);
+  }
+  if (item.trailerUrl) {
+    const trailer = document.createElement('a');
+    trailer.className = 'meta-link';
+    trailer.href = item.trailerUrl;
+    trailer.target = '_blank';
+    trailer.rel = 'noopener noreferrer';
+    trailer.textContent = 'Watch Trailer';
+    links.appendChild(trailer);
+  }
+  if (links.children.length) {
+    details.appendChild(links);
+  }
+
+  if (item.plot) {
+    const plot = document.createElement('div');
+    plot.className = 'plot-summary';
+    plot.textContent = item.plot.trim();
+    details.appendChild(plot);
+  }
+
+  if (item.notes) {
+    const notes = document.createElement('div');
+    notes.className = 'notes';
+    notes.textContent = item.notes;
+    details.appendChild(notes);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'actions collapsible-actions';
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn secondary';
+  editBtn.textContent = 'Edit';
+  editBtn.addEventListener('click', (ev) => { ev.stopPropagation(); openEditModal('movies', id, item); });
+  const delBtn = document.createElement('button');
+  delBtn.className = 'btn ghost';
+  delBtn.textContent = 'Delete';
+  delBtn.addEventListener('click', (ev) => { ev.stopPropagation(); deleteItem('movies', id); });
+  const markBtn = document.createElement('button');
+  markBtn.className = 'btn primary';
+  markBtn.textContent = 'Mark Completed';
+  markBtn.addEventListener('click', (ev) => { ev.stopPropagation(); updateItem('movies', id, { status: 'Completed' }); });
+  actions.appendChild(editBtn);
+  actions.appendChild(delBtn);
+  actions.appendChild(markBtn);
+  details.appendChild(actions);
+
+  card.appendChild(details);
+  return card;
+}
+
+function toggleCardExpansion(listType, cardId) {
+  if (!(listType in expandedCards)) return;
+  const current = expandedCards[listType];
+  expandedCards[listType] = current === cardId ? null : cardId;
+  const cache = listCaches[listType];
+  if (cache) {
+    renderList(listType, cache);
+  }
 }
 
 // Add item from form
@@ -1122,9 +1262,17 @@ function resetFilterState() {
   Object.keys(actorFilters).forEach(key => {
     actorFilters[key] = '';
   });
+  Object.keys(expandedCards).forEach(key => {
+    expandedCards[key] = null;
+  });
   Object.keys(listCaches).forEach(key => delete listCaches[key]);
   document.querySelectorAll('[data-role="actor-filter"]').forEach(input => {
     input.value = '';
+  });
+  document.querySelectorAll('[data-role="sort"]').forEach(sel => {
+    const listType = sel.dataset.list;
+    const mode = sortModes[listType] || 'title';
+    sel.value = mode;
   });
 }
 
