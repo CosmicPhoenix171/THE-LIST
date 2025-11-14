@@ -141,9 +141,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .card.collapsible.movie-card .title{font-size:1rem}
 .card.collapsible.movie-card .meta{font-size:.82rem}
 .card.collapsible.movie-card .actor-line{font-size:.8rem}
-.movie-card-details{flex:1;display:flex;flex-direction:column;gap:.55rem;overflow:hidden;max-width:0;opacity:0;pointer-events:none;border-left:1px solid transparent;padding-left:0}
+.movie-card-details{display:none;flex-direction:column;gap:.55rem;border-left:1px solid transparent;padding-left:0}
 .card.collapsible.movie-card.expanded{border-color:#2a4055;box-shadow:0 16px 34px rgba(0,0,0,0.32)}
-.card.collapsible.movie-card.expanded .movie-card-details{max-width:100%;opacity:1;pointer-events:auto;border-left:1px solid var(--border);padding-left:1rem}
+.card.collapsible.movie-card.expanded .movie-card-details{display:flex;flex:1;border-left:1px solid var(--border);padding-left:1rem}
 .collapsible-links{display:flex;flex-wrap:wrap;gap:.6rem}
 .collapsible-actions{display:flex;gap:.6rem;flex-wrap:wrap;justify-content:flex-end}
 .movie-card-details .notes{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);padding:.6rem .7rem;border-radius:10px}
@@ -180,8 +180,8 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   .add-form{grid-template-columns:minmax(220px,1fr) 1fr;}
   .add-form select{grid-column:1 / -1}
   .card.collapsible.movie-card{flex-direction:column}
-  .movie-card-details{border-left:0;padding-left:0}
-  .card.collapsible.movie-card.expanded .movie-card-details{border-top:1px solid var(--border);padding-top:.85rem}
+  .movie-card-details{border-left:0;padding-left:0;width:100%}
+  .card.collapsible.movie-card.expanded .movie-card-details{border-left:0;border-top:1px solid var(--border);padding-top:.85rem;padding-left:0}
 }
 @media (max-width:720px){
   .topbar{flex-direction:column;align-items:flex-start;gap:.6rem;padding:1rem}
