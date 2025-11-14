@@ -25,6 +25,8 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  setPersistence,
+  browserLocalPersistence,
   signOut as fbSignOut,
   onAuthStateChanged,
 } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
@@ -122,6 +124,9 @@ function initFirebase() {
   }
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
+  setPersistence(auth, browserLocalPersistence).catch(err => {
+    console.warn('Unable to set auth persistence', err);
+  });
   db = getDatabase(app);
   appInitialized = true;
 
@@ -314,8 +319,14 @@ function handleAuthState() {
 async function handleSignInRedirectResult() {
   if (!auth) return;
   try {
-    await getRedirectResult(auth);
+    const result = await getRedirectResult(auth);
+    if (result && result.user) {
+      currentUser = result.user;
+      showAppForUser(result.user);
+    }
   } catch (err) {
+    if (err && err.code === 'auth/no-auth-event') return;
+    if (err && err.code === 'auth/redirect-cancelled-by-user') return;
     console.error('Google redirect sign-in failed', err);
     alert('Google sign-in failed after redirect. Please try again.');
   }
