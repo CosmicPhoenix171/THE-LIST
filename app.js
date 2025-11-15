@@ -1450,14 +1450,31 @@ async function fetchTmdbSuggestions(listType, query) {
     api_key: TMDB_API_KEY,
     query,
     include_adult: 'false',
+    language: 'en-US'
   });
-  params.set('language', 'en-US');
+  const merged = [];
+  const seenIds = new Set();
   try {
-    const resp = await fetch(`https://api.themoviedb.org/3/search/${mediaType}?${params.toString()}`);
-    if (!resp.ok) return [];
-    const json = await resp.json();
-    if (!json || !Array.isArray(json.results) || !json.results.length) return [];
-    return json.results.slice(0, 8).map(entry => ({
+    for (let page = 1; page <= 3; page++) {
+      params.set('page', String(page));
+      const resp = await fetch(`https://api.themoviedb.org/3/search/${mediaType}?${params.toString()}`);
+      if (!resp.ok) {
+        if (page === 1) return [];
+        break;
+      }
+      const json = await resp.json();
+      if (!json || !Array.isArray(json.results) || !json.results.length) {
+        if (page === 1) return [];
+        break;
+      }
+      json.results.forEach(entry => {
+        if (!entry || !entry.id || seenIds.has(entry.id)) return;
+        seenIds.add(entry.id);
+        merged.push(entry);
+      });
+      if (json.total_pages && page >= json.total_pages) break;
+    }
+    return merged.map(entry => ({
       title: entry.title || entry.name || '',
       year: extractPrimaryYear(entry.release_date || entry.first_air_date || ''),
       imdbID: '',
