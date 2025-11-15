@@ -38,6 +38,7 @@ const firebaseConfig = {
 // Create a key at https://www.themoviedb.org/settings/api and paste it here.
 const TMDB_API_KEY = '46dcf1eaa2ce4284037a00fdefca9bb8';
 const METADATA_SCHEMA_VERSION = 2;
+const APP_VERSION = 'test-pages-2025.11.15';
 
 // -----------------------
 // App state
@@ -67,6 +68,17 @@ const sections = document.querySelectorAll('.section');
 const modalRoot = document.getElementById('modal-root');
 const wheelSpinnerEl = document.getElementById('wheel-spinner');
 const wheelResultEl = document.getElementById('wheel-result');
+
+function logAppVersionOnce() {
+  const flagKey = '__THE_LIST_VERSION_LOGGED__';
+  if (globalThis[flagKey]) return;
+  globalThis[flagKey] = true;
+  const brandStyle = 'color:#7df2c9;font-weight:700;font-size:1rem';
+  const infoStyle = 'color:#e7eef6;font-weight:400;font-size:1rem';
+  console.info(`%cTHE LIST™%c version ${APP_VERSION}`, brandStyle, infoStyle);
+}
+
+logAppVersionOnce();
 
 // firebase instances
 let db = null;
