@@ -1892,19 +1892,7 @@ function buildWatchNowSection(listType, item, inline = false) {
       }
     });
 
-    if (payload.link) {
-      const footer = createEl('div', 'watch-footer');
-      footer.style.display = 'flex';
-      footer.style.justifyContent = 'flex-end';
-      footer.style.alignItems = 'center';
-      footer.style.marginTop = any ? '.5rem' : '0';
-      const allLink = createEl('a', 'meta-link', { text: 'All options' });
-      allLink.href = payload.link;
-      allLink.target = '_blank';
-      allLink.rel = 'noopener noreferrer';
-      footer.appendChild(allLink);
-      dropdown.appendChild(footer);
-    }
+    // Footer removed per request (no "All options" button)
 
     if (!any) {
       const empty = createEl('div', 'small', { text: 'No providers found for this region.' });
