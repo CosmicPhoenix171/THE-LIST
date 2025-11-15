@@ -673,10 +673,12 @@ function buildSeriesCarouselBlock(listType, cardId) {
   const prevBtn = createEl('button', 'series-carousel-btn', { text: '‹ Prev' });
   prevBtn.type = 'button';
   prevBtn.setAttribute('aria-label', 'Previous series entry');
+  const counterEl = createEl('div', 'series-carousel-counter', { text: `${state.index + 1} / ${entries.length}` });
   const nextBtn = createEl('button', 'series-carousel-btn', { text: 'Next ›' });
   nextBtn.type = 'button';
   nextBtn.setAttribute('aria-label', 'Next series entry');
   nav.appendChild(prevBtn);
+  nav.appendChild(counterEl);
   nav.appendChild(nextBtn);
   block.appendChild(nav);
 

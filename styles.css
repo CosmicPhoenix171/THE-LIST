@@ -197,7 +197,8 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .collapsible-actions{display:flex;gap:.6rem;flex-wrap:wrap;justify-content:flex-end}
 .movie-card-details .notes{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);padding:.6rem .7rem;border-radius:10px}
 .series-carousel{display:flex;flex-direction:column;gap:.4rem}
-.series-carousel-nav{display:flex;gap:.6rem}
+.series-carousel-nav{display:flex;gap:.6rem;align-items:center;justify-content:center}
+.series-carousel-counter{color:var(--text-500);font-size:.85rem;font-weight:600}
 .series-carousel-btn{border:1px solid var(--border);background:rgba(255,255,255,0.03);color:var(--text-100);border-radius:8px;padding:.35rem .85rem;font-weight:600;cursor:pointer;font-size:.85rem}
 .series-carousel-btn:hover{background:rgba(255,255,255,0.08)}
 
