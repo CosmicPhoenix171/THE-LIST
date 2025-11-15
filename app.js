@@ -667,39 +667,7 @@ function buildSeriesCarouselBlock(listType, cardId) {
   const entries = getSeriesGroupEntries(listType, cardId);
   if (!entries || entries.length <= 1) return null;
   const state = getSeriesCarouselState(listType, cardId, entries.length);
-  if (state.index >= entries.length) state.index = 0;
-  const entry = entries[state.index] || entries[0];
   const block = createEl('div', 'series-carousel detail-block');
-  block.appendChild(createEl('div', 'series-carousel-heading', { text: 'Series entries' }));
-
-  const infoRow = createEl('div', 'series-carousel-info');
-  const labelEl = createEl('div', 'series-carousel-label', { text: formatSeriesEntryLabel(entry) });
-  const counterEl = createEl('div', 'series-carousel-counter', { text: `${state.index + 1} / ${entries.length}` });
-  infoRow.appendChild(labelEl);
-  infoRow.appendChild(counterEl);
-  block.appendChild(infoRow);
-
-  const metaText = buildMovieMetaText(entry.item);
-  const metaEl = createEl('div', 'series-carousel-meta', { text: metaText || '' });
-  metaEl.classList.toggle('hidden', !metaText);
-  block.appendChild(metaEl);
-
-  const actions = createEl('div', 'series-carousel-actions');
-  const editBtn = createEl('button', 'meta-link', { text: 'Edit entry' });
-  editBtn.type = 'button';
-  editBtn.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    openEditModal(listType, entry.id, entry.item);
-  });
-  const deleteBtn = createEl('button', 'meta-link', { text: 'Delete entry' });
-  deleteBtn.type = 'button';
-  deleteBtn.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    deleteItem(listType, entry.id);
-  });
-  actions.appendChild(editBtn);
-  actions.appendChild(deleteBtn);
-  block.appendChild(actions);
 
   const nav = createEl('div', 'series-carousel-nav');
   const prevBtn = createEl('button', 'series-carousel-btn', { text: '‹ Prev' });
