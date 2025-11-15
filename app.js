@@ -789,21 +789,12 @@ function toggleCardExpansion(listType, cardId) {
 function collapseMovieCardsBehind(frontCardId) {
   const listEl = document.getElementById('movies-list');
   if (!listEl) return;
-  const cards = Array.from(listEl.querySelectorAll('.card.collapsible.movie-card'));
-  if (!cards.length) return;
-  const frontCard = cards.find(card => card.dataset.id === frontCardId);
-  if (!frontCard) return;
-  const frontIndex = Number(frontCard.dataset.index);
-  if (!Number.isFinite(frontIndex)) return;
   const expandedSet = ensureExpandedSet('movies');
+  const cards = listEl.querySelectorAll('.card.collapsible.movie-card.expanded');
   cards.forEach(card => {
-    if (!expandedSet.has(card.dataset.id)) return;
-    const cardIndex = Number(card.dataset.index);
-    if (!Number.isFinite(cardIndex)) return;
-    if (cardIndex > frontIndex) {
-      expandedSet.delete(card.dataset.id);
-      card.classList.remove('expanded');
-    }
+    if (card.dataset.id === frontCardId) return;
+    expandedSet.delete(card.dataset.id);
+    card.classList.remove('expanded');
   });
 }
 
