@@ -462,10 +462,10 @@ function renderMoviesGrid(container, entries) {
   const grid = createEl('div', 'movies-grid');
   const visibleIds = new Set();
 
-  entries.forEach(([id, item]) => {
+  entries.forEach(([id, item], index) => {
     if (!item) return;
     visibleIds.add(id);
-    grid.appendChild(buildCollapsibleMovieCard(id, item));
+    grid.appendChild(buildCollapsibleMovieCard(id, item, index));
   });
 
   container.appendChild(grid);
@@ -487,9 +487,10 @@ function renderStandardList(container, listType, entries) {
   });
 }
 
-function buildCollapsibleMovieCard(id, item) {
+function buildCollapsibleMovieCard(id, item, positionIndex = 0) {
   const card = createEl('div', 'card collapsible movie-card');
   card.dataset.id = id;
+  card.dataset.index = String(positionIndex);
   if (ensureExpandedSet('movies').has(id)) {
     card.classList.add('expanded');
   }
@@ -778,8 +779,32 @@ function toggleCardExpansion(listType, cardId) {
     expandedSet.delete(cardId);
   } else {
     expandedSet.add(cardId);
+    if (listType === 'movies') {
+      collapseMovieCardsBehind(cardId);
+    }
   }
   updateCollapsibleCardStates(listType);
+}
+
+function collapseMovieCardsBehind(frontCardId) {
+  const listEl = document.getElementById('movies-list');
+  if (!listEl) return;
+  const cards = Array.from(listEl.querySelectorAll('.card.collapsible.movie-card'));
+  if (!cards.length) return;
+  const frontCard = cards.find(card => card.dataset.id === frontCardId);
+  if (!frontCard) return;
+  const frontIndex = Number(frontCard.dataset.index);
+  if (!Number.isFinite(frontIndex)) return;
+  const expandedSet = ensureExpandedSet('movies');
+  cards.forEach(card => {
+    if (!expandedSet.has(card.dataset.id)) return;
+    const cardIndex = Number(card.dataset.index);
+    if (!Number.isFinite(cardIndex)) return;
+    if (cardIndex > frontIndex) {
+      expandedSet.delete(card.dataset.id);
+      card.classList.remove('expanded');
+    }
+  });
 }
 
 function updateCollapsibleCardStates(listType) {
