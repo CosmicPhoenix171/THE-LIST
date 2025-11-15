@@ -496,10 +496,11 @@ function renderMoviesGrid(container, entries) {
 
   const leaderMembersByCardId = new Map();
   seriesBuckets.forEach(bucket => {
-    const leader = pickSeriesLeader(bucket.entries);
+    const sortedRecords = sortSeriesRecords(bucket.entries);
+    const leader = pickSeriesLeader(sortedRecords);
     if (leader) {
       bucket.leaderId = leader.id;
-      const compactEntries = bucket.entries.map(entry => ({
+      const compactEntries = sortedRecords.map(entry => ({
         id: entry.id,
         item: entry.item,
         order: entry.order,
@@ -513,8 +514,16 @@ function renderMoviesGrid(container, entries) {
     const { id, item, index, seriesKey } = record;
     const bucket = seriesKey ? seriesBuckets.get(seriesKey) : null;
     const hideCard = Boolean(bucket && bucket.leaderId && bucket.leaderId !== id);
+    let displayItem = item;
+    if (!hideCard && bucket && bucket.leaderId === id) {
+      const entries = leaderMembersByCardId.get(id) || [];
+      const active = resolveSeriesDisplayEntry('movies', id, entries);
+      if (active && active.item) {
+        displayItem = active.item;
+      }
+    }
     visibleIds.add(id);
-    grid.appendChild(buildCollapsibleMovieCard(id, item, index, { hideCard }));
+    grid.appendChild(buildCollapsibleMovieCard(id, displayItem, index, { hideCard }));
   });
 
   container.appendChild(grid);
@@ -556,10 +565,17 @@ function buildCollapsibleMovieCard(id, item, positionIndex = 0, options = {}) {
     card.classList.add('expanded');
   }
   card.addEventListener('click', () => toggleCardExpansion('movies', id));
-
-  card.appendChild(buildMovieCardSummary(item));
-  card.appendChild(buildMovieCardDetails('movies', id, item));
+  renderMovieCardContent(card, 'movies', id, item);
   return card;
+}
+
+function renderMovieCardContent(card, listType, id, item) {
+  if (!card) return;
+  card.querySelectorAll('.movie-card-summary, .movie-card-details').forEach(el => el.remove());
+  const summary = buildMovieCardSummary(item);
+  const details = buildMovieCardDetails(listType, id, item);
+  card.insertBefore(summary, card.firstChild || null);
+  card.appendChild(details);
 }
 
 function buildMovieCardSummary(item) {
@@ -651,24 +667,36 @@ function buildSeriesCarouselBlock(listType, cardId) {
   const entries = getSeriesGroupEntries(listType, cardId);
   if (!entries || entries.length <= 1) return null;
   const state = getSeriesCarouselState(listType, cardId, entries.length);
+  if (state.index >= entries.length) state.index = 0;
+  const entry = entries[state.index] || entries[0];
   const block = createEl('div', 'series-carousel detail-block');
   block.appendChild(createEl('div', 'series-carousel-heading', { text: 'Series entries' }));
 
   const infoRow = createEl('div', 'series-carousel-info');
-  const labelEl = createEl('div', 'series-carousel-label');
-  const counterEl = createEl('div', 'series-carousel-counter');
+  const labelEl = createEl('div', 'series-carousel-label', { text: formatSeriesEntryLabel(entry) });
+  const counterEl = createEl('div', 'series-carousel-counter', { text: `${state.index + 1} / ${entries.length}` });
   infoRow.appendChild(labelEl);
   infoRow.appendChild(counterEl);
   block.appendChild(infoRow);
 
-  const metaEl = createEl('div', 'series-carousel-meta');
+  const metaText = buildMovieMetaText(entry.item);
+  const metaEl = createEl('div', 'series-carousel-meta', { text: metaText || '' });
+  metaEl.classList.toggle('hidden', !metaText);
   block.appendChild(metaEl);
 
   const actions = createEl('div', 'series-carousel-actions');
   const editBtn = createEl('button', 'meta-link', { text: 'Edit entry' });
   editBtn.type = 'button';
+  editBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    openEditModal(listType, entry.id, entry.item);
+  });
   const deleteBtn = createEl('button', 'meta-link', { text: 'Delete entry' });
   deleteBtn.type = 'button';
+  deleteBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    deleteItem(listType, entry.id);
+  });
   actions.appendChild(editBtn);
   actions.appendChild(deleteBtn);
   block.appendChild(actions);
@@ -684,41 +712,14 @@ function buildSeriesCarouselBlock(listType, cardId) {
   nav.appendChild(nextBtn);
   block.appendChild(nav);
 
-  const updateView = () => {
-    if (!entries.length) return;
-    const entry = entries[state.index];
-    labelEl.textContent = formatSeriesEntryLabel(entry);
-    counterEl.textContent = `${state.index + 1} / ${entries.length}`;
-    const meta = buildMovieMetaText(entry.item);
-    metaEl.textContent = meta || '';
-    metaEl.classList.toggle('hidden', !meta);
-
-    editBtn.onclick = (ev) => {
-      ev.stopPropagation();
-      openEditModal(listType, entry.id, entry.item);
-    };
-    deleteBtn.onclick = (ev) => {
-      ev.stopPropagation();
-      deleteItem(listType, entry.id);
-    };
-  };
-
-  const shiftEntry = (delta) => {
-    const total = entries.length;
-    state.index = (state.index + delta + total) % total;
-    updateView();
-  };
-
   prevBtn.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    shiftEntry(-1);
+    cycleSeriesCard(listType, cardId, -1);
   });
   nextBtn.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    shiftEntry(1);
+    cycleSeriesCard(listType, cardId, 1);
   });
-
-  updateView();
   return block;
 }
 
@@ -727,20 +728,7 @@ function getSeriesGroupEntries(listType, cardId) {
   if (!store) return null;
   const entries = store.get(cardId);
   if (!entries || !entries.length) return null;
-  const copy = entries.slice();
-  copy.sort((a, b) => {
-    const orderA = numericSeriesOrder(a.order ?? a.item?.seriesOrder);
-    const orderB = numericSeriesOrder(b.order ?? b.item?.seriesOrder);
-    const safeA = orderA === null || orderA === undefined ? Number.POSITIVE_INFINITY : orderA;
-    const safeB = orderB === null || orderB === undefined ? Number.POSITIVE_INFINITY : orderB;
-    if (safeA !== safeB) return safeA - safeB;
-    const titleA = titleSortKey(a.item?.title || '');
-    const titleB = titleSortKey(b.item?.title || '');
-    if (titleA < titleB) return -1;
-    if (titleA > titleB) return 1;
-    return 0;
-  });
-  return copy;
+  return entries.slice();
 }
 
 function formatSeriesEntryLabel(entry) {
@@ -756,6 +744,26 @@ function formatSeriesEntryLabel(entry) {
     parts.push(`(${item.year})`);
   }
   return parts.join(' ');
+}
+
+function cycleSeriesCard(listType, cardId, delta) {
+  const entries = getSeriesGroupEntries(listType, cardId);
+  if (!entries || entries.length <= 1) return;
+  const state = getSeriesCarouselState(listType, cardId, entries.length);
+  const total = entries.length;
+  state.index = (state.index + delta + total) % total;
+  const entry = entries[state.index];
+  if (!entry) return;
+  state.entryId = entry.id;
+  const listEl = document.getElementById(`${listType}-list`);
+  if (!listEl) return;
+  const card = listEl.querySelector(`.card.collapsible.movie-card[data-id="${cardId}"]`);
+  if (!card) return;
+  renderMovieCardContent(card, listType, cardId, entry.item);
+  card.classList.add('expanded');
+  const expandedSet = ensureExpandedSet(listType);
+  expandedSet.add(cardId);
+  updateCollapsibleCardStates(listType);
 }
 
 function buildMovieMetaText(item) {
@@ -1016,6 +1024,41 @@ function getSeriesCarouselState(listType, cardId, entryCount = 0) {
     state.index = 0;
   }
   return state;
+}
+
+function sortSeriesRecords(records) {
+  return records.slice().sort((a, b) => {
+    const orderA = numericSeriesOrder(a.order);
+    const orderB = numericSeriesOrder(b.order);
+    const safeA = orderA === null || orderA === undefined ? Number.POSITIVE_INFINITY : orderA;
+    const safeB = orderB === null || orderB === undefined ? Number.POSITIVE_INFINITY : orderB;
+    if (safeA !== safeB) return safeA - safeB;
+    const titleA = titleSortKey(a.item?.title || '');
+    const titleB = titleSortKey(b.item?.title || '');
+    if (titleA < titleB) return -1;
+    if (titleA > titleB) return 1;
+    return 0;
+  });
+}
+
+function resolveSeriesDisplayEntry(listType, leaderId, entries) {
+  if (!entries || !entries.length) return null;
+  const state = getSeriesCarouselState(listType, leaderId, entries.length);
+  let idx = typeof state.index === 'number' ? state.index : 0;
+  if (idx >= entries.length || idx < 0) idx = 0;
+  if (state.entryId) {
+    const matchIdx = entries.findIndex(entry => entry.id === state.entryId);
+    if (matchIdx >= 0) idx = matchIdx;
+  }
+  const entry = entries[idx] || entries[0];
+  if (entry) {
+    state.index = entries.indexOf(entry);
+    state.entryId = entry.id;
+    return entry;
+  }
+  state.index = 0;
+  state.entryId = entries[0].id;
+  return entries[0];
 }
 
 function pickSeriesLeader(entries) {
