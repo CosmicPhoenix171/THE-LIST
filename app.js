@@ -789,6 +789,9 @@ function toggleCardExpansion(listType, cardId) {
   const expandedSet = ensureExpandedSet(listType);
   if (expandedSet.has(cardId)) {
     expandedSet.delete(cardId);
+    if (listType === 'movies' && expandedSet.size === 0) {
+      resetMovieCardStacking();
+    }
   } else {
     expandedSet.add(cardId);
     if (listType === 'movies') {
@@ -799,14 +802,49 @@ function toggleCardExpansion(listType, cardId) {
 }
 
 function collapseMovieCardsBehind(frontCardId) {
+  const expandedSet = ensureExpandedSet('movies');
+  expandedSet.forEach(id => {
+    if (id !== frontCardId) {
+      expandedSet.delete(id);
+    }
+  });
+}
+
+function resetMovieCardStacking() {
   const listEl = document.getElementById('movies-list');
   if (!listEl) return;
+  listEl.querySelectorAll('.card.collapsible.movie-card').forEach(card => {
+    card.classList.remove('stack-hidden');
+  });
+}
+
+function applyMovieCardStacking() {
+  const listEl = document.getElementById('movies-list');
+  if (!listEl) return;
+  const cards = Array.from(listEl.querySelectorAll('.card.collapsible.movie-card'));
+  if (!cards.length) return;
   const expandedSet = ensureExpandedSet('movies');
-  const cards = listEl.querySelectorAll('.card.collapsible.movie-card.expanded');
+  if (!expandedSet.size) {
+    resetMovieCardStacking();
+    return;
+  }
+  let frontIndex = null;
   cards.forEach(card => {
-    if (card.dataset.id === frontCardId) return;
-    expandedSet.delete(card.dataset.id);
-    card.classList.remove('expanded');
+    if (!expandedSet.has(card.dataset.id)) return;
+    const idx = Number(card.dataset.index);
+    if (!Number.isFinite(idx)) return;
+    if (frontIndex === null || idx < frontIndex) {
+      frontIndex = idx;
+    }
+  });
+  if (!Number.isFinite(frontIndex)) {
+    resetMovieCardStacking();
+    return;
+  }
+  cards.forEach(card => {
+    const idx = Number(card.dataset.index);
+    const shouldHide = Number.isFinite(idx) && idx > frontIndex;
+    card.classList.toggle('stack-hidden', shouldHide);
   });
 }
 
@@ -820,6 +858,10 @@ function updateCollapsibleCardStates(listType) {
       : expandedSet === card.dataset.id;
     card.classList.toggle('expanded', isMatch);
   });
+
+  if (listType === 'movies') {
+    applyMovieCardStacking();
+  }
 }
 
 function ensureExpandedSet(listType) {

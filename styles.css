@@ -148,6 +148,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   max-width:320px;
   margin:0 auto;
 }
+.card.collapsible.movie-card.stack-hidden{display:none}
 .card.collapsible.movie-card:not(.expanded){padding:.85rem .95rem}
 .card.collapsible.movie-card:hover{border-color:#2a4055}
 .movie-card-summary{display:flex;flex-direction:column;align-items:center;gap:.45rem;text-align:center;width:100%}
