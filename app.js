@@ -410,6 +410,21 @@ function loadList(listType) {
   listeners[listType] = off;
 }
 
+function createEl(tag, classNames = '', options = {}) {
+  const node = document.createElement(tag);
+  if (classNames) node.className = classNames;
+  if (options.text !== undefined) node.textContent = options.text;
+  if (options.html !== undefined) node.innerHTML = options.html;
+  if (options.attrs) {
+    Object.entries(options.attrs).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        node.setAttribute(key, value);
+      }
+    });
+  }
+  return node;
+}
+
 // Render list items
 function renderList(listType, data) {
   listCaches[listType] = data;
@@ -474,24 +489,7 @@ function renderList(listType, data) {
   });
 
   if (listType === 'movies') {
-    const grid = document.createElement('div');
-    grid.className = 'movies-grid';
-    const visibleIds = new Set();
-    filtered.forEach(([id, item]) => {
-      if (!item) return;
-      visibleIds.add(id);
-      grid.appendChild(buildCollapsibleMovieCard(id, item));
-    });
-    container.appendChild(grid);
-
-    const expandedSet = ensureExpandedSet('movies');
-    expandedSet.forEach(cardId => {
-      if (!visibleIds.has(cardId)) {
-        expandedSet.delete(cardId);
-      }
-    });
-
-    updateCollapsibleCardStates('movies');
+    renderMoviesGrid(container, filtered);
     return;
   }
 
@@ -641,154 +639,193 @@ function renderList(listType, data) {
   }
 }
 
+function renderMoviesGrid(container, entries) {
+  const grid = createEl('div', 'movies-grid');
+  const visibleIds = new Set();
+
+  entries.forEach(([id, item]) => {
+    if (!item) return;
+    visibleIds.add(id);
+    grid.appendChild(buildCollapsibleMovieCard(id, item));
+  });
+
+  container.appendChild(grid);
+
+  const expandedSet = ensureExpandedSet('movies');
+  expandedSet.forEach(cardId => {
+    if (!visibleIds.has(cardId)) {
+      expandedSet.delete(cardId);
+    }
+  });
+
+  updateCollapsibleCardStates('movies');
+}
+
 function buildCollapsibleMovieCard(id, item) {
-  const isExpanded = ensureExpandedSet('movies').has(id);
-  const card = document.createElement('div');
-  card.className = `card collapsible movie-card${isExpanded ? ' expanded' : ''}`;
+  const card = createEl('div', 'card collapsible movie-card');
   card.dataset.id = id;
+  if (ensureExpandedSet('movies').has(id)) {
+    card.classList.add('expanded');
+  }
   card.addEventListener('click', () => toggleCardExpansion('movies', id));
 
-  const summary = document.createElement('div');
-  summary.className = 'movie-card-summary';
+  card.appendChild(buildMovieCardSummary(item));
+  card.appendChild(buildMovieCardDetails('movies', id, item));
+  return card;
+}
 
-  const artwork = document.createElement('div');
-  artwork.className = 'artwork-wrapper';
+function buildMovieCardSummary(item) {
+  const summary = createEl('div', 'movie-card-summary');
+  summary.appendChild(buildMovieArtwork(item));
+  summary.appendChild(buildMovieCardInfo(item));
+  return summary;
+}
+
+function buildMovieArtwork(item) {
+  const wrapper = createEl('div', 'artwork-wrapper');
   if (item.poster) {
-    const poster = document.createElement('div');
-    poster.className = 'artwork';
-    const img = document.createElement('img');
+    const poster = createEl('div', 'artwork');
+    const img = createEl('img');
     img.src = item.poster;
     img.alt = `${item.title || 'Poster'} artwork`;
     img.loading = 'lazy';
     poster.appendChild(img);
-    artwork.appendChild(poster);
+    wrapper.appendChild(poster);
   } else {
-    const placeholder = document.createElement('div');
-    placeholder.className = 'artwork placeholder';
-    placeholder.textContent = 'No Poster';
-    artwork.appendChild(placeholder);
+    const placeholder = createEl('div', 'artwork placeholder', { text: 'No Poster' });
+    wrapper.appendChild(placeholder);
   }
-  summary.appendChild(artwork);
+  return wrapper;
+}
 
-  const info = document.createElement('div');
-  info.className = 'movie-card-info';
-
-  const header = document.createElement('div');
-  header.className = 'movie-card-header';
-  const title = document.createElement('div');
-  title.className = 'title';
-  title.textContent = item.title || '(no title)';
+function buildMovieCardInfo(item) {
+  const info = createEl('div', 'movie-card-info');
+  const header = createEl('div', 'movie-card-header');
+  const title = createEl('div', 'title', { text: item.title || '(no title)' });
   header.appendChild(title);
   if (item.status) {
     header.appendChild(buildStatusChip(item.status));
   }
   info.appendChild(header);
+  return info;
+}
 
-  summary.appendChild(info);
-  card.appendChild(summary);
+function buildMovieCardDetails(listType, id, item) {
+  const details = createEl('div', 'collapsible-details movie-card-details');
+  const metaText = buildMovieMetaText(item);
+  if (metaText) {
+    details.appendChild(createEl('div', 'meta', { text: metaText }));
+  }
 
-  const details = document.createElement('div');
-  details.className = 'collapsible-details movie-card-details';
+  const seriesLine = buildSeriesLine(item);
+  if (seriesLine) {
+    details.appendChild(seriesLine);
+  }
 
+  const actorLine = buildMovieCastLine(item);
+  if (actorLine) {
+    details.appendChild(actorLine);
+  }
+
+  const links = buildMovieLinks(item);
+  if (links) {
+    details.appendChild(links);
+  }
+
+  if (item.plot) {
+    details.appendChild(createEl('div', 'plot-summary', { text: item.plot.trim() }));
+  }
+
+  if (item.notes) {
+    details.appendChild(createEl('div', 'notes', { text: item.notes }));
+  }
+
+  details.appendChild(buildMovieCardActions(listType, id, item));
+  return details;
+}
+
+function buildMovieMetaText(item) {
   const metaParts = [];
   if (item.year) metaParts.push(item.year);
   if (item.director) metaParts.push(item.director);
   if (item.runtime) metaParts.push(item.runtime);
   if (item.imdbRating) metaParts.push(`IMDb ${item.imdbRating}`);
-  if (metaParts.length) {
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.textContent = metaParts.join(' • ');
-    details.appendChild(meta);
-  }
+  return metaParts.join(' • ');
+}
 
-  if (item.seriesName) {
-    const seriesLine = document.createElement('div');
-    seriesLine.className = 'series-line';
-    const parts = [`Series: ${item.seriesName}`];
-    if (item.seriesOrder !== undefined && item.seriesOrder !== null && item.seriesOrder !== '') {
-      parts.push(`Entry ${item.seriesOrder}`);
-    }
-    if (item.seriesSize) {
-      parts.push(`of ${item.seriesSize}`);
-    }
-    if (item.nextSequel) {
-      parts.push(`Next: ${item.nextSequel}`);
-    }
-    if (item.previousPrequel) {
-      parts.push(`Prev: ${item.previousPrequel}`);
-    }
-    seriesLine.textContent = parts.join(' • ');
-    details.appendChild(seriesLine);
+function buildSeriesLine(item, className = 'series-line') {
+  if (!item.seriesName) return null;
+  const parts = [`Series: ${item.seriesName}`];
+  if (item.seriesOrder !== undefined && item.seriesOrder !== null && item.seriesOrder !== '') {
+    parts.push(`Entry ${item.seriesOrder}`);
   }
+  if (item.seriesSize) {
+    parts.push(`of ${item.seriesSize}`);
+  }
+  if (item.nextSequel) {
+    parts.push(`Next: ${item.nextSequel}`);
+  }
+  if (item.previousPrequel) {
+    parts.push(`Prev: ${item.previousPrequel}`);
+  }
+  return createEl('div', className, { text: parts.join(' • ') });
+}
 
+function buildMovieCastLine(item) {
   const actorPreview = buildActorPreview(item.actors, 12);
-  if (actorPreview) {
-    const actorLine = document.createElement('div');
-    actorLine.className = 'actor-line';
-    actorLine.textContent = `Cast: ${actorPreview}`;
-    details.appendChild(actorLine);
-  }
+  if (!actorPreview) return null;
+  return createEl('div', 'actor-line', { text: `Cast: ${actorPreview}` });
+}
 
-  const links = document.createElement('div');
-  links.className = 'collapsible-links';
+function buildMovieLinks(item) {
+  const links = createEl('div', 'collapsible-links');
   if (item.imdbUrl) {
-    const imdb = document.createElement('a');
-    imdb.className = 'meta-link';
+    const imdb = createEl('a', 'meta-link', { text: 'View on IMDb' });
     imdb.href = item.imdbUrl;
     imdb.target = '_blank';
     imdb.rel = 'noopener noreferrer';
-    imdb.textContent = 'View on IMDb';
     links.appendChild(imdb);
   }
   if (item.trailerUrl) {
-    const trailer = document.createElement('a');
-    trailer.className = 'meta-link';
+    const trailer = createEl('a', 'meta-link', { text: 'Watch Trailer' });
     trailer.href = item.trailerUrl;
     trailer.target = '_blank';
     trailer.rel = 'noopener noreferrer';
-    trailer.textContent = 'Watch Trailer';
     links.appendChild(trailer);
   }
-  if (links.children.length) {
-    details.appendChild(links);
-  }
+  return links.children.length ? links : null;
+}
 
-  if (item.plot) {
-    const plot = document.createElement('div');
-    plot.className = 'plot-summary';
-    plot.textContent = item.plot.trim();
-    details.appendChild(plot);
-  }
+function buildMovieCardActions(listType, id, item) {
+  const actions = createEl('div', 'actions collapsible-actions');
+  const configs = [
+    {
+      className: 'btn secondary',
+      label: 'Edit',
+      handler: () => openEditModal(listType, id, item)
+    },
+    {
+      className: 'btn ghost',
+      label: 'Delete',
+      handler: () => deleteItem(listType, id)
+    },
+    {
+      className: 'btn primary',
+      label: 'Mark Completed',
+      handler: () => updateItem(listType, id, { status: 'Completed' })
+    }
+  ];
 
-  if (item.notes) {
-    const notes = document.createElement('div');
-    notes.className = 'notes';
-    notes.textContent = item.notes;
-    details.appendChild(notes);
-  }
+  configs.forEach(cfg => {
+    const btn = createEl('button', cfg.className, { text: cfg.label });
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      cfg.handler();
+    });
+    actions.appendChild(btn);
+  });
 
-  const actions = document.createElement('div');
-  actions.className = 'actions collapsible-actions';
-  const editBtn = document.createElement('button');
-  editBtn.className = 'btn secondary';
-  editBtn.textContent = 'Edit';
-  editBtn.addEventListener('click', (ev) => { ev.stopPropagation(); openEditModal('movies', id, item); });
-  const delBtn = document.createElement('button');
-  delBtn.className = 'btn ghost';
-  delBtn.textContent = 'Delete';
-  delBtn.addEventListener('click', (ev) => { ev.stopPropagation(); deleteItem('movies', id); });
-  const markBtn = document.createElement('button');
-  markBtn.className = 'btn primary';
-  markBtn.textContent = 'Mark Completed';
-  markBtn.addEventListener('click', (ev) => { ev.stopPropagation(); updateItem('movies', id, { status: 'Completed' }); });
-  actions.appendChild(editBtn);
-  actions.appendChild(delBtn);
-  actions.appendChild(markBtn);
-  details.appendChild(actions);
-
-  card.appendChild(details);
-  return card;
+  return actions;
 }
 
 function toggleCardExpansion(listType, cardId) {
