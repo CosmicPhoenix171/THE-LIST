@@ -56,6 +56,7 @@ const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
 const seriesGroups = { movies: new Map() };
+const seriesCarouselState = { movies: new Map() };
 
 // DOM references
 const loginScreen = document.getElementById('login-screen');
@@ -525,6 +526,14 @@ function renderMoviesGrid(container, entries) {
     }
   });
 
+  const carouselStore = ensureSeriesCarouselStore('movies');
+  const leaderIds = new Set(leaderMembersByCardId.keys());
+  carouselStore.forEach((_, key) => {
+    if (!leaderIds.has(key)) {
+      carouselStore.delete(key);
+    }
+  });
+
   updateCollapsibleCardStates('movies');
 }
 
@@ -628,7 +637,7 @@ function buildMovieCardDetails(listType, id, item) {
   }
 
   if (listType === 'movies') {
-    const seriesBlock = buildSeriesStackBlock(listType, id);
+    const seriesBlock = buildSeriesCarouselBlock(listType, id);
     if (seriesBlock) {
       details.appendChild(seriesBlock);
     }
@@ -638,36 +647,78 @@ function buildMovieCardDetails(listType, id, item) {
   return details;
 }
 
-function buildSeriesStackBlock(listType, cardId) {
+function buildSeriesCarouselBlock(listType, cardId) {
   const entries = getSeriesGroupEntries(listType, cardId);
   if (!entries || entries.length <= 1) return null;
-  const block = createEl('div', 'series-stack detail-block');
-  block.appendChild(createEl('div', 'series-stack-heading', { text: 'Series entries' }));
-  const list = createEl('div', 'series-stack-list');
-  entries.forEach((entry) => {
-    const row = createEl('div', 'series-stack-row');
-    const label = createEl('div', 'series-stack-label', { text: formatSeriesEntryLabel(entry) });
-    row.appendChild(label);
-    const actions = createEl('div', 'series-stack-actions');
+  const state = getSeriesCarouselState(listType, cardId, entries.length);
+  const block = createEl('div', 'series-carousel detail-block');
+  block.appendChild(createEl('div', 'series-carousel-heading', { text: 'Series entries' }));
 
-    const editBtn = createEl('button', 'meta-link', { text: 'Edit' });
-    editBtn.addEventListener('click', (ev) => {
+  const infoRow = createEl('div', 'series-carousel-info');
+  const labelEl = createEl('div', 'series-carousel-label');
+  const counterEl = createEl('div', 'series-carousel-counter');
+  infoRow.appendChild(labelEl);
+  infoRow.appendChild(counterEl);
+  block.appendChild(infoRow);
+
+  const metaEl = createEl('div', 'series-carousel-meta');
+  block.appendChild(metaEl);
+
+  const actions = createEl('div', 'series-carousel-actions');
+  const editBtn = createEl('button', 'meta-link', { text: 'Edit entry' });
+  editBtn.type = 'button';
+  const deleteBtn = createEl('button', 'meta-link', { text: 'Delete entry' });
+  deleteBtn.type = 'button';
+  actions.appendChild(editBtn);
+  actions.appendChild(deleteBtn);
+  block.appendChild(actions);
+
+  const nav = createEl('div', 'series-carousel-nav');
+  const prevBtn = createEl('button', 'series-carousel-btn', { text: '‹ Prev' });
+  prevBtn.type = 'button';
+  prevBtn.setAttribute('aria-label', 'Previous series entry');
+  const nextBtn = createEl('button', 'series-carousel-btn', { text: 'Next ›' });
+  nextBtn.type = 'button';
+  nextBtn.setAttribute('aria-label', 'Next series entry');
+  nav.appendChild(prevBtn);
+  nav.appendChild(nextBtn);
+  block.appendChild(nav);
+
+  const updateView = () => {
+    if (!entries.length) return;
+    const entry = entries[state.index];
+    labelEl.textContent = formatSeriesEntryLabel(entry);
+    counterEl.textContent = `${state.index + 1} / ${entries.length}`;
+    const meta = buildMovieMetaText(entry.item);
+    metaEl.textContent = meta || '';
+    metaEl.classList.toggle('hidden', !meta);
+
+    editBtn.onclick = (ev) => {
       ev.stopPropagation();
       openEditModal(listType, entry.id, entry.item);
-    });
-    actions.appendChild(editBtn);
-
-    const deleteBtn = createEl('button', 'meta-link', { text: 'Delete' });
-    deleteBtn.addEventListener('click', (ev) => {
+    };
+    deleteBtn.onclick = (ev) => {
       ev.stopPropagation();
       deleteItem(listType, entry.id);
-    });
-    actions.appendChild(deleteBtn);
+    };
+  };
 
-    row.appendChild(actions);
-    list.appendChild(row);
+  const shiftEntry = (delta) => {
+    const total = entries.length;
+    state.index = (state.index + delta + total) % total;
+    updateView();
+  };
+
+  prevBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    shiftEntry(-1);
   });
-  block.appendChild(list);
+  nextBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    shiftEntry(1);
+  });
+
+  updateView();
   return block;
 }
 
@@ -943,6 +994,28 @@ function ensureExpandedSet(listType) {
     expandedCards[listType] = store;
   }
   return store;
+}
+
+function ensureSeriesCarouselStore(listType) {
+  let store = seriesCarouselState[listType];
+  if (!(store instanceof Map)) {
+    store = new Map();
+    seriesCarouselState[listType] = store;
+  }
+  return store;
+}
+
+function getSeriesCarouselState(listType, cardId, entryCount = 0) {
+  const store = ensureSeriesCarouselStore(listType);
+  let state = store.get(cardId);
+  if (!state) {
+    state = { index: 0 };
+    store.set(cardId, state);
+  }
+  if (entryCount && state.index >= entryCount) {
+    state.index = 0;
+  }
+  return state;
 }
 
 function pickSeriesLeader(entries) {
