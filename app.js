@@ -1363,11 +1363,29 @@ function parseRuntimeMinutes(value) {
 
 function formatRuntimeDuration(totalMinutes) {
   if (!totalMinutes || totalMinutes <= 0) return '';
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours && minutes) return `${hours}h ${minutes}m`;
-  if (hours) return `${hours}h`;
-  return `${minutes}m`;
+  const minutesPerHour = 60;
+  const minutesPerDay = minutesPerHour * 24;
+  const minutesPerMonth = minutesPerDay * 30;
+  const minutesPerYear = minutesPerDay * 365;
+
+  let remaining = totalMinutes;
+  const years = Math.floor(remaining / minutesPerYear);
+  remaining -= years * minutesPerYear;
+  const months = Math.floor(remaining / minutesPerMonth);
+  remaining -= months * minutesPerMonth;
+  const days = Math.floor(remaining / minutesPerDay);
+  remaining -= days * minutesPerDay;
+  const hours = Math.floor(remaining / minutesPerHour);
+  remaining -= hours * minutesPerHour;
+  const minutes = remaining;
+
+  const parts = [];
+  if (years) parts.push(`${years}y`);
+  if (months) parts.push(`${months}mth`);
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (minutes) parts.push(`${minutes}m`);
+  return parts.join(' ');
 }
 
 function formatCurrencyShort(value) {
