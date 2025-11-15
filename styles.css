@@ -79,6 +79,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .filter-bar input{flex:1;background:var(--surface-600);border:1px solid var(--border);padding:.6rem .75rem;border-radius:10px;color:var(--text-100);transition:border-color .2s ease,box-shadow .2s ease}
 .filter-bar select{background:var(--surface-600);border:1px solid var(--border);padding:.6rem .75rem;border-radius:10px;color:var(--text-100);min-width:160px;transition:border-color .2s ease,box-shadow .2s ease}
 .filter-bar input:focus,.filter-bar select:focus{outline:none;border-color:var(--primary-300);box-shadow:0 0 0 3px rgba(61,169,245,0.16)}
+.list-stats{margin:.1rem 0 0;font-size:.9rem;color:var(--text-300);font-weight:500}
 .add-form input,.add-form select,.add-form textarea{
   background:var(--surface-600);
   border:1px solid var(--border);

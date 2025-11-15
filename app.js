@@ -425,8 +425,11 @@ function renderList(listType, data) {
       ? 'No items match this actor filter yet.'
       : 'No items yet. Add something!';
     container.innerHTML = '<div class="small">' + message + '</div>';
+    updateListStats(listType, filtered);
     return;
   }
+
+  updateListStats(listType, filtered);
 
   const mode = sortModes[listType] || 'title';
   filtered.sort(([, a], [, b]) => {
@@ -1334,6 +1337,37 @@ function buildActorPreview(value, limit = 5) {
   const preview = list.slice(0, limit);
   const truncated = list.length > limit;
   return `${preview.join(', ')}${truncated ? '…' : ''}`;
+}
+
+function parseRuntimeMinutes(value) {
+  if (!value) return 0;
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, value);
+  const text = String(value).toLowerCase();
+  let minutes = 0;
+  const hourMatch = text.match(/(\d+(?:\.\d+)?)\s*h/);
+  if (hourMatch) {
+    minutes += Math.round(parseFloat(hourMatch[1]) * 60);
+  }
+  const minuteMatch = text.match(/(\d+)\s*m/);
+  if (minuteMatch) {
+    minutes += parseInt(minuteMatch[1], 10);
+  }
+  if (!hourMatch && !minuteMatch) {
+    const fallbackMatch = text.match(/(\d{2,3})/);
+    if (fallbackMatch) {
+      minutes += parseInt(fallbackMatch[1], 10);
+    }
+  }
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
+}
+
+function formatRuntimeDuration(totalMinutes) {
+  if (!totalMinutes || totalMinutes <= 0) return '';
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours && minutes) return `${hours}h ${minutes}m`;
+  if (hours) return `${hours}h`;
+  return `${minutes}m`;
 }
 
 function formatCurrencyShort(value) {
@@ -2709,4 +2743,22 @@ if (auth) {
     handleAuthState();
     handleSignInRedirectResult();
   } catch(e) { /* silent */ }
+}
+
+function updateListStats(listType, entries) {
+  const statsEl = document.getElementById(`${listType}-stats`);
+  if (!statsEl) return;
+  const count = Array.isArray(entries) ? entries.length : 0;
+  if (listType === 'movies') {
+    const totalMinutes = (Array.isArray(entries) ? entries : []).reduce((sum, [, item]) => {
+      return sum + parseRuntimeMinutes(item && item.runtime);
+    }, 0);
+    const label = `${count} movie${count === 1 ? '' : 's'}`;
+    const runtimeLabel = totalMinutes > 0
+      ? `${formatRuntimeDuration(totalMinutes)} total runtime`
+      : 'Runtime unavailable';
+    statsEl.textContent = `${label} • ${runtimeLabel}`;
+    return;
+  }
+  statsEl.textContent = `${count} item${count === 1 ? '' : 's'}`;
 }
