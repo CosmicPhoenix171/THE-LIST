@@ -551,6 +551,12 @@ function buildMovieCardDetails(listType, id, item) {
     infoStack.appendChild(extendedMeta);
   }
 
+  // Watch Now dropdown (TMDb providers)
+  if (listType === 'movies') {
+    const watchNow = buildWatchNowSection(listType, item);
+    if (watchNow) infoStack.appendChild(watchNow);
+  }
+
   const seriesLine = buildSeriesLine(item);
   if (seriesLine) {
     infoStack.appendChild(seriesLine);
@@ -1719,6 +1725,199 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
     OriginalLanguage: originalLanguage,
     TmdbID: tmdbId,
   };
+}
+
+// --- Watch Providers (TMDb) ---
+function getUserRegion() {
+  try {
+    const lang = navigator.language || navigator.userLanguage || 'en-US';
+    const parts = String(lang).split('-');
+    return parts[1] ? parts[1].toUpperCase() : 'US';
+  } catch (_) {
+    return 'US';
+  }
+}
+
+async function ensureTmdbIdentity(listType, item) {
+  if (!item) return null;
+  const mediaType = listType === 'movies' ? 'movie' : 'tv';
+  let tmdbId = item.tmdbId || item.tmdbID || '';
+  if (!tmdbId) {
+    const pick = await findTmdbCandidate({
+      mediaType,
+      title: item.title || '',
+      year: item.year || '',
+      imdbId: item.imdbId || item.imdbID || ''
+    });
+    if (pick && pick.id) tmdbId = pick.id;
+  }
+  if (!tmdbId) return null;
+  return { mediaType, tmdbId };
+}
+
+async function fetchWatchProviders(mediaType, tmdbId) {
+  const url = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}/watch/providers?api_key=${TMDB_API_KEY}`;
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  return await resp.json();
+}
+
+function buildWatchNowSection(listType, item) {
+  if (!TMDB_API_KEY) return null;
+  // Only applicable for screen media (movies/tv). We add it on movie cards.
+  const region = getUserRegion();
+  const block = createEl('div', 'watch-now-block');
+
+  // Layout container
+  const controlRow = createEl('div', 'watch-now-controls');
+  const btn = createEl('button', 'btn secondary', { text: 'Watch Now' });
+  const regionTag = createEl('span', 'watch-region small', { text: `Region: ${region}` });
+  controlRow.style.display = 'flex';
+  controlRow.style.gap = '.5rem';
+  controlRow.style.alignItems = 'center';
+  controlRow.appendChild(btn);
+  controlRow.appendChild(regionTag);
+  block.appendChild(controlRow);
+
+  const dropdown = createEl('div', 'watch-dropdown');
+  dropdown.style.display = 'none';
+  dropdown.style.marginTop = '.5rem';
+  dropdown.style.background = 'var(--card-bg, #1f1f1f)';
+  dropdown.style.border = '1px solid var(--border, #333)';
+  dropdown.style.borderRadius = '8px';
+  dropdown.style.padding = '.5rem';
+  dropdown.style.boxShadow = '0 4px 14px rgba(0,0,0,0.3)';
+  dropdown.textContent = 'Loading…';
+  block.appendChild(dropdown);
+
+  let opened = false;
+  let loaded = false;
+  let cache = item.__watchProvidersCache || null;
+
+  function toggle() {
+    opened = !opened;
+    dropdown.style.display = opened ? 'block' : 'none';
+    if (opened && !loaded) {
+      loadProviders();
+    }
+  }
+
+  async function loadProviders() {
+    loaded = true;
+    try {
+      if (cache && cache.expiresAt && Date.now() < cache.expiresAt) {
+        renderProviders(cache.payload, cache.region);
+        return;
+      }
+      const ident = await ensureTmdbIdentity(listType, item);
+      if (!ident) {
+        dropdown.textContent = 'Watch options not found.';
+        return;
+      }
+      const data = await fetchWatchProviders(ident.mediaType, ident.tmdbId);
+      if (!data || !data.results) {
+        dropdown.textContent = 'Watch options not available.';
+        return;
+      }
+      // Choose region preference
+      const preferred = data.results[region] || data.results.US || data.results.GB || null;
+      const effectiveRegion = preferred ? (preferred.iso_3166_1 || region) : region;
+      const payload = { link: preferred?.link || '',
+        flatrate: preferred?.flatrate || [],
+        free: preferred?.free || [],
+        ads: preferred?.ads || [],
+        rent: preferred?.rent || [],
+        buy: preferred?.buy || [] };
+      // Cache for 6 hours
+      item.__watchProvidersCache = cache = { region: effectiveRegion, payload, expiresAt: Date.now() + 6 * 60 * 60 * 1000 };
+      renderProviders(payload, effectiveRegion);
+    } catch (err) {
+      console.warn('Watch providers load failed', err);
+      dropdown.textContent = 'Unable to load watch options.';
+    }
+  }
+
+  function renderProviders(payload, effRegion) {
+    dropdown.innerHTML = '';
+    const groups = [
+      { key: 'flatrate', label: 'Streaming' },
+      { key: 'free', label: 'Free' },
+      { key: 'ads', label: 'With Ads' },
+      { key: 'rent', label: 'Rent' },
+      { key: 'buy', label: 'Buy' },
+    ];
+    let any = false;
+    groups.forEach(g => {
+      const list = payload[g.key];
+      if (Array.isArray(list) && list.length) {
+        any = true;
+        const header = createEl('div', 'watch-group-header small', { text: g.label });
+        header.style.opacity = '0.8';
+        header.style.margin = '.25rem 0 .25rem 0';
+        dropdown.appendChild(header);
+        const row = createEl('div', 'watch-chip-row');
+        row.style.display = 'flex';
+        row.style.flexWrap = 'wrap';
+        row.style.gap = '.375rem';
+        list.forEach(p => {
+          if (!p || !p.provider_name) return;
+          const chip = createEl('a', 'watch-chip');
+          chip.href = payload.link || '#';
+          chip.target = '_blank';
+          chip.rel = 'noopener noreferrer';
+          chip.style.display = 'inline-flex';
+          chip.style.alignItems = 'center';
+          chip.style.gap = '.375rem';
+          chip.style.padding = '.25rem .5rem';
+          chip.style.borderRadius = '999px';
+          chip.style.background = 'var(--chip-bg, #2a2a2a)';
+          chip.style.border = '1px solid var(--border, #333)';
+          chip.style.textDecoration = 'none';
+          chip.style.color = 'inherit';
+          if (p.logo_path) {
+            const img = createEl('img');
+            img.src = `https://image.tmdb.org/t/p/w45${p.logo_path}`;
+            img.alt = p.provider_name;
+            img.width = 18; img.height = 18;
+            img.style.borderRadius = '3px';
+            chip.appendChild(img);
+          }
+          const name = createEl('span', 'watch-chip-label small', { text: p.provider_name });
+          chip.appendChild(name);
+          row.appendChild(chip);
+        });
+        dropdown.appendChild(row);
+      }
+    });
+
+    const footer = createEl('div', 'watch-footer');
+    footer.style.display = 'flex';
+    footer.style.justifyContent = 'space-between';
+    footer.style.alignItems = 'center';
+    footer.style.marginTop = any ? '.5rem' : '0';
+    const note = createEl('span', 'small', { text: `Region: ${effRegion}` });
+    footer.appendChild(note);
+    if (payload.link) {
+      const allLink = createEl('a', 'meta-link', { text: 'All options' });
+      allLink.href = payload.link;
+      allLink.target = '_blank';
+      allLink.rel = 'noopener noreferrer';
+      footer.appendChild(allLink);
+    }
+    dropdown.appendChild(footer);
+
+    if (!any) {
+      const empty = createEl('div', 'small', { text: 'No providers found for this region.' });
+      empty.style.marginTop = '.25rem';
+      dropdown.appendChild(empty);
+    }
+  }
+
+  btn.addEventListener('click', (ev) => { ev.stopPropagation(); toggle(); });
+  // Prevent clicks inside dropdown from toggling the parent card
+  dropdown.addEventListener('click', (ev) => ev.stopPropagation());
+
+  return block;
 }
 
 // Create a new item
