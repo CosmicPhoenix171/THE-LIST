@@ -202,7 +202,6 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
       year: sanitizeYear(cb.dataset.year),
       seriesName: collInfo.collectionName,
       seriesOrder: cb.dataset.order ? Number(cb.dataset.order) : null,
-      status: 'Planned'
     }));
     for (const part of toAdd) {
       try {
@@ -530,9 +529,6 @@ function buildMovieCardInfo(item) {
   const header = createEl('div', 'movie-card-header');
   const title = createEl('div', 'title', { text: item.title || '(no title)' });
   header.appendChild(title);
-  if (item.status) {
-    header.appendChild(buildStatusChip(item.status));
-  }
   info.appendChild(header);
 
   return info;
@@ -660,11 +656,6 @@ function buildMovieCardActions(listType, id, item) {
       className: 'btn ghost',
       label: 'Delete',
       handler: () => deleteItem(listType, id)
-    },
-    {
-      className: 'btn primary',
-      label: 'Mark Completed',
-      handler: () => updateItem(listType, id, { status: 'Completed' })
     }
   ];
 
@@ -727,7 +718,6 @@ function buildStandardCard(listType, id, item) {
 function buildStandardCardHeader(item) {
   const header = createEl('div', 'card-header');
   header.appendChild(createEl('div', 'title', { text: item.title || '(no title)' }));
-  if (item.status) header.appendChild(buildStatusChip(item.status));
   return header;
 }
 
@@ -778,12 +768,6 @@ function buildStandardCardActions(listType, id, item) {
   deleteBtn.addEventListener('click', () => deleteItem(listType, id));
   actions.appendChild(deleteBtn);
 
-  if (['movies', 'tvShows', 'anime'].includes(listType)) {
-    const markBtn = createEl('button', 'btn primary', { text: 'Mark Completed' });
-    markBtn.addEventListener('click', () => updateItem(listType, id, { status: 'Completed' }));
-    actions.appendChild(markBtn);
-  }
-
   return actions;
 }
 
@@ -823,7 +807,6 @@ function ensureExpandedSet(listType) {
 // Add item from form
 async function addItemFromForm(listType, form) {
   const title = (form.title.value || '').trim();
-  const status = form.status.value;
   const notes = (form.notes.value || '').trim();
   const yearRaw = (form.year && form.year.value ? form.year.value.trim() : '');
   const year = sanitizeYear(yearRaw);
@@ -857,7 +840,6 @@ async function addItemFromForm(listType, form) {
 
     const item = {
       title,
-      status,
       createdAt: Date.now(),
     };
     if (notes) item.notes = notes;
@@ -1207,13 +1189,15 @@ function normalizeStatusValue(status) {
   return String(status || '').trim().toLowerCase();
 }
 
-function isSpinnerStatusEligible(status) {
-  const normalized = normalizeStatusValue(status);
+function isSpinnerStatusEligible(item) {
+  if (!item) return false;
+  if (item.watched === true) return false;
+  const normalized = normalizeStatusValue(item.status);
   if (!normalized) return true;
-  if (normalized.startsWith('plan')) return true;
-  if (normalized.startsWith('watch') && !normalized.startsWith('watched')) return true;
-  if (normalized.startsWith('read')) return true;
-  return false;
+  if (normalized.startsWith('drop')) return false;
+  if (normalized.startsWith('complete')) return false;
+  if (normalized.startsWith('watched')) return false;
+  return true;
 }
 
 function isItemWatched(item) {
@@ -1244,7 +1228,7 @@ function buildSpinnerCandidates(listType, rawData) {
   const items = Object.values(rawData || {});
   if (!items.length) return [];
 
-  const eligibleItems = items.filter((item) => item && isSpinnerStatusEligible(item.status));
+  const eligibleItems = items.filter((item) => isSpinnerStatusEligible(item));
   if (!eligibleItems.length) return [];
 
   const shouldApplySeriesLogic = ['movies', 'tvShows', 'anime'].includes(listType);
@@ -1363,27 +1347,6 @@ function buildTrailerUrl(title, year) {
   if (!title) return '';
   const query = `${title} ${year ? year + ' ' : ''}trailer`.trim();
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-}
-
-function buildStatusChip(status) {
-  const chip = document.createElement('span');
-  chip.className = 'status-chip';
-  const trimmed = String(status || '').trim();
-  const normalized = trimmed.toLowerCase();
-  let label = trimmed || 'Planned';
-  let modifier = 'status-planned';
-  if (normalized.startsWith('watch') || normalized.startsWith('read')) {
-    label = 'Watching/Reading';
-    modifier = 'status-watching';
-  } else if (normalized.startsWith('complete')) {
-    modifier = 'status-completed';
-  } else if (normalized.startsWith('drop')) {
-    label = 'Dropped';
-    modifier = 'status-dropped';
-  }
-  chip.classList.add(modifier);
-  chip.textContent = label;
-  return chip;
 }
 
 function debounce(fn, wait = 250) {
@@ -1985,10 +1948,6 @@ function openEditModal(listType, itemId, item) {
     seriesOrderInput.pattern = '[0-9]{1,3}';
     seriesOrderInput.value = item.seriesOrder !== undefined && item.seriesOrder !== null ? item.seriesOrder : '';
   }
-  const statusSelect = document.createElement('select');
-  ['Planned','Watching/Reading','Completed','Dropped'].forEach(s => {
-    const o = document.createElement('option'); o.value = s; o.text = s; if (s === item.status) o.selected = true; statusSelect.appendChild(o);
-  });
   const notesInput = document.createElement('textarea');
   notesInput.name = 'notes';
   notesInput.value = item.notes || '';
@@ -2002,7 +1961,6 @@ function openEditModal(listType, itemId, item) {
   form.appendChild(titleInput);
   form.appendChild(yearInput);
   form.appendChild(creatorInput);
-  form.appendChild(statusSelect);
   if (seriesNameInput) form.appendChild(seriesNameInput);
   if (seriesOrderInput) form.appendChild(seriesOrderInput);
   form.appendChild(notesInput);
@@ -2019,7 +1977,6 @@ function openEditModal(listType, itemId, item) {
     const creatorVal = (creatorInput.value || '').trim();
     const payload = {
       title: newTitle,
-      status: statusSelect.value,
       notes: (notesInput.value || '').trim() || null,
       year: updatedYear || null,
     };
@@ -2093,9 +2050,6 @@ function renderWheelResult(item, listType) {
   title.className = 'wheel-result-title';
   title.textContent = item.title || '(no title)';
   header.appendChild(title);
-  if (item.status) {
-    header.appendChild(buildStatusChip(item.status));
-  }
   details.appendChild(header);
 
   const metaParts = [];
@@ -2346,7 +2300,7 @@ function resolveSeriesRedirect(listType, item, rawData) {
     if (titleA > titleB) return 1;
     return 0;
   });
-  const earliestUnwatched = siblings.find(entry => entry && isSpinnerStatusEligible(entry.status) && !isItemWatched(entry));
+  const earliestUnwatched = siblings.find(entry => entry && isSpinnerStatusEligible(entry) && !isItemWatched(entry));
   if (!earliestUnwatched) return item;
   // If the chosen item is further in the series than the earliest unwatched, redirect.
   const chosenOrder = parseSeriesOrder(item.seriesOrder);
