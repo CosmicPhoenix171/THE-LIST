@@ -474,29 +474,45 @@ function renderList(listType, data) {
 function renderMoviesGrid(container, entries) {
   const grid = createEl('div', 'movies-grid');
   const visibleIds = new Set();
-  const seriesBuckets = new Map(); // seriesKey -> { leaderId, members: [] }
-  const leaderMembersByCardId = new Map();
-  seriesGroups.movies = leaderMembersByCardId;
+  const seriesBuckets = new Map(); // seriesKey -> { entries: [] }
+  const records = [];
 
   entries.forEach(([id, item], index) => {
     if (!item) return;
-    visibleIds.add(id);
-
     const seriesKey = item.seriesName ? normalizeTitleKey(item.seriesName) : '';
-    let hideCard = false;
+    const order = numericSeriesOrder(item.seriesOrder);
+    const record = { id, item, index, seriesKey, order };
+    records.push(record);
     if (seriesKey) {
       let bucket = seriesBuckets.get(seriesKey);
       if (!bucket) {
-        bucket = { leaderId: id, members: [] };
+        bucket = { entries: [] };
         seriesBuckets.set(seriesKey, bucket);
-      } else {
-        hideCard = true;
       }
-      const entryRecord = { id, item, order: parseSeriesOrder(item.seriesOrder) }; // order helps later display
-      bucket.members.push(entryRecord);
-      leaderMembersByCardId.set(bucket.leaderId, bucket.members);
+      bucket.entries.push(record);
     }
+  });
 
+  const leaderMembersByCardId = new Map();
+  seriesBuckets.forEach(bucket => {
+    const leader = pickSeriesLeader(bucket.entries);
+    if (leader) {
+      bucket.leaderId = leader.id;
+      const compactEntries = bucket.entries.map(entry => ({
+        id: entry.id,
+        item: entry.item,
+        order: entry.order,
+      }));
+      leaderMembersByCardId.set(leader.id, compactEntries);
+    }
+  });
+  seriesGroups.movies = leaderMembersByCardId;
+
+  records.forEach(record => {
+    const { id, item, index, seriesKey } = record;
+    const bucket = seriesKey ? seriesBuckets.get(seriesKey) : null;
+    const hideCard = Boolean(bucket && bucket.leaderId && bucket.leaderId !== id);
+    visibleIds.add(id);
     grid.appendChild(buildCollapsibleMovieCard(id, item, index, { hideCard }));
   });
 
@@ -662,9 +678,11 @@ function getSeriesGroupEntries(listType, cardId) {
   if (!entries || !entries.length) return null;
   const copy = entries.slice();
   copy.sort((a, b) => {
-    const orderA = parseSeriesOrder(a.order ?? a.item?.seriesOrder) ?? Number.POSITIVE_INFINITY;
-    const orderB = parseSeriesOrder(b.order ?? b.item?.seriesOrder) ?? Number.POSITIVE_INFINITY;
-    if (orderA !== orderB) return orderA - orderB;
+    const orderA = numericSeriesOrder(a.order ?? a.item?.seriesOrder);
+    const orderB = numericSeriesOrder(b.order ?? b.item?.seriesOrder);
+    const safeA = orderA === null || orderA === undefined ? Number.POSITIVE_INFINITY : orderA;
+    const safeB = orderB === null || orderB === undefined ? Number.POSITIVE_INFINITY : orderB;
+    if (safeA !== safeB) return safeA - safeB;
     const titleA = titleSortKey(a.item?.title || '');
     const titleB = titleSortKey(b.item?.title || '');
     if (titleA < titleB) return -1;
@@ -678,8 +696,8 @@ function formatSeriesEntryLabel(entry) {
   const { item } = entry;
   if (!item) return '(unknown entry)';
   const parts = [];
-  const order = parseSeriesOrder(entry.order ?? item.seriesOrder);
-  if (Number.isFinite(order)) {
+  const order = numericSeriesOrder(entry.order ?? item.seriesOrder);
+  if (order !== null) {
     parts.push(`Entry ${order}`);
   }
   parts.push(item.title || '(no title)');
@@ -927,6 +945,26 @@ function ensureExpandedSet(listType) {
   return store;
 }
 
+function pickSeriesLeader(entries) {
+  if (!entries || !entries.length) return null;
+  return entries.reduce((best, candidate) => {
+    if (!best) return candidate;
+    const candidateOrder = candidate.order;
+    const bestOrder = best.order;
+    const candidateHasOrder = candidateOrder !== null && candidateOrder !== undefined;
+    const bestHasOrder = bestOrder !== null && bestOrder !== undefined;
+    if (candidateHasOrder && bestHasOrder) {
+      if (candidateOrder === bestOrder) {
+        return candidate.index < best.index ? candidate : best;
+      }
+      return candidateOrder < bestOrder ? candidate : best;
+    }
+    if (candidateHasOrder) return candidate;
+    if (bestHasOrder) return best;
+    return candidate.index < best.index ? candidate : best;
+  }, null);
+}
+
 
 // Add item from form
 async function addItemFromForm(listType, form) {
@@ -1124,6 +1162,11 @@ function sanitizeSeriesOrder(input) {
   const fallback = parseFloat(trimmed.replace(/[^0-9.\-]/g, ''));
   if (Number.isFinite(fallback)) return fallback;
   return trimmed;
+}
+
+function numericSeriesOrder(value) {
+  const parsed = parseSeriesOrder(value);
+  return (typeof parsed === 'number' && Number.isFinite(parsed)) ? parsed : null;
 }
 
 function normalizeTitleKey(title) {
