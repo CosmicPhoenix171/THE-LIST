@@ -566,10 +566,6 @@ function buildMovieCardInfo(item) {
   }
   info.appendChild(header);
 
-  const quickMeta = buildMovieQuickMeta(item);
-  if (quickMeta) {
-    info.appendChild(quickMeta);
-  }
   return info;
 }
 
@@ -610,21 +606,6 @@ function buildMovieCardDetails(listType, id, item) {
 
   details.appendChild(buildMovieCardActions(listType, id, item));
   return details;
-}
-
-function buildMovieQuickMeta(item) {
-  const entries = [];
-  if (item.year) entries.push({ label: 'Year', value: item.year });
-  if (item.runtime) entries.push({ label: 'Runtime', value: item.runtime });
-  if (item.imdbRating) entries.push({ label: 'IMDb', value: item.imdbRating });
-  if (!entries.length) return null;
-  const list = createEl('div', 'movie-card-quick-meta');
-  entries.forEach(entry => {
-    const chip = createEl('div', 'meta-chip');
-    chip.innerHTML = `<span>${entry.label}</span><strong>${entry.value}</strong>`;
-    list.appendChild(chip);
-  });
-  return list;
 }
 
 function buildMovieMetaText(item) {
