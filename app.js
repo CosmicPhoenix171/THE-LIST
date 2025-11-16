@@ -462,6 +462,8 @@ async function handleSignInRedirectResult() {
 function showLogin() {
   loginScreen.classList.remove('hidden');
   appRoot.classList.add('hidden');
+  introPlayed = false;
+  safeStorageRemove(INTRO_SESSION_KEY);
   resetFilterState();
   updateBackToTopVisibility();
 }
