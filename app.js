@@ -404,20 +404,12 @@ function renderList(listType, data) {
   container.innerHTML = '';
 
   const entries = Object.entries(data || {});
-  const supportsActorFilter = Object.prototype.hasOwnProperty.call(actorFilters, listType);
-  const filterValue = supportsActorFilter ? (actorFilters[listType] || '').trim().toLowerCase() : '';
+  const supportsActorFilter = listSupportsActorFilter(listType);
+  const filterValue = supportsActorFilter ? getActorFilterValue(listType) : '';
 
   let filtered = entries;
   if (filterValue && supportsActorFilter) {
-    filtered = entries.filter(([, item]) => {
-      if (!item) return false;
-      const tokens = Array.isArray(item.actors) ? item.actors : parseActorsList(item.actors);
-      if (tokens && tokens.length) {
-        return tokens.some(name => String(name).toLowerCase().includes(filterValue));
-      }
-      const fallback = String(item.actors || '').toLowerCase();
-      return fallback.includes(filterValue);
-    });
+    filtered = entries.filter(([, item]) => matchesActorFilter(listType, item, filterValue));
   }
 
   if (filtered.length === 0) {
@@ -473,6 +465,28 @@ function renderList(listType, data) {
   if (listType in expandedCards) {
     updateCollapsibleCardStates(listType);
   }
+}
+
+function listSupportsActorFilter(listType) {
+  return Object.prototype.hasOwnProperty.call(actorFilters, listType);
+}
+
+function getActorFilterValue(listType) {
+  if (!listSupportsActorFilter(listType)) return '';
+  return (actorFilters[listType] || '').trim().toLowerCase();
+}
+
+function matchesActorFilter(listType, item, filterValue = null) {
+  if (!listSupportsActorFilter(listType)) return true;
+  const activeFilter = typeof filterValue === 'string' ? filterValue : getActorFilterValue(listType);
+  if (!activeFilter) return true;
+  if (!item) return false;
+  const tokens = Array.isArray(item.actors) ? item.actors : parseActorsList(item.actors);
+  if (tokens && tokens.length) {
+    return tokens.some(name => String(name).toLowerCase().includes(activeFilter));
+  }
+  const fallback = String(item.actors || '').toLowerCase();
+  return fallback.includes(activeFilter);
 }
 
 function renderMoviesGrid(container, entries) {
@@ -2332,6 +2346,29 @@ function openEditModal(listType, itemId, item) {
   function closeModal() { modalRoot.innerHTML = ''; }
 }
 
+function buildSpinnerDataScope(listType, rawData) {
+  if (!rawData) return {};
+  if (!listSupportsActorFilter(listType)) return rawData;
+  const filterValue = getActorFilterValue(listType);
+  if (!filterValue) return rawData;
+  const scoped = {};
+  Object.entries(rawData).forEach(([id, entry]) => {
+    if (matchesActorFilter(listType, entry, filterValue)) {
+      scoped[id] = entry;
+    }
+  });
+  return scoped;
+}
+
+function loadSpinnerSourceData(listType) {
+  const cached = listCaches[listType];
+  if (cached) {
+    return Promise.resolve({ data: cached, source: 'cache' });
+  }
+  const listRef = ref(db, `users/${currentUser.uid}/${listType}`);
+  return get(listRef).then(snap => ({ data: snap.val() || {}, source: 'remote' }));
+}
+
 function clearWheelAnimation() {
   spinTimeouts.forEach(id => clearTimeout(id));
   spinTimeouts = [];
@@ -2721,13 +2758,13 @@ function spinWheel(listType) {
   placeholder.textContent = 'Spinning…';
   wheelSpinnerEl.appendChild(placeholder);
 
-  const listRef = ref(db, `users/${currentUser.uid}/${listType}`);
-  get(listRef).then(snap => {
-    const data = snap.val() || {};
-    const candidates = buildSpinnerCandidates(listType, data);
+  loadSpinnerSourceData(listType).then(({ data, source }) => {
+    const scopedData = buildSpinnerDataScope(listType, data);
+    const candidates = buildSpinnerCandidates(listType, scopedData);
     try {
       console.log('[Wheel] spin start', {
         listType,
+        source,
         candidateCount: candidates.length,
         titles: candidates.map(c => c && c.title).filter(Boolean)
       });
