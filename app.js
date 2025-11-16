@@ -576,7 +576,7 @@ function renderStandardList(container, listType, entries) {
 }
 
 function buildCollapsibleMovieCard(id, item, positionIndex = 0, options = {}) {
-  const { hideCard = false, displayEntryId = id } = options;
+  const { hideCard = false, displayEntryId = id, interactive = true } = options;
   const card = createEl('div', 'card collapsible movie-card');
   card.dataset.id = id;
   card.dataset.index = String(positionIndex);
@@ -587,7 +587,9 @@ function buildCollapsibleMovieCard(id, item, positionIndex = 0, options = {}) {
   if (ensureExpandedSet('movies').has(id)) {
     card.classList.add('expanded');
   }
-  card.addEventListener('click', () => toggleCardExpansion('movies', id));
+  if (interactive) {
+    card.addEventListener('click', () => toggleCardExpansion('movies', id));
+  }
   renderMovieCardContent(card, 'movies', id, item, displayEntryId);
   return card;
 }
@@ -1551,10 +1553,17 @@ function parseSeriesOrder(value) {
 }
 
 function buildSpinnerCandidates(listType, rawData) {
-  const items = Object.values(rawData || {});
-  if (!items.length) return [];
+  const entries = Object.entries(rawData || {});
+  if (!entries.length) return [];
 
-  const eligibleItems = items.filter((item) => isSpinnerStatusEligible(item));
+  const mapped = entries
+    .map(([id, item]) => {
+      if (!item) return null;
+      return item.__id ? item : Object.assign({ __id: id }, item);
+    })
+    .filter(Boolean);
+
+  const eligibleItems = mapped.filter((item) => isSpinnerStatusEligible(item));
   if (!eligibleItems.length) return [];
 
   const shouldApplySeriesLogic = ['movies', 'tvShows', 'anime'].includes(listType);
@@ -2390,125 +2399,23 @@ function renderWheelResult(item, listType) {
   heading.textContent = `You should ${actionVerb} next:`;
   wheelResultEl.appendChild(heading);
 
-  const card = document.createElement('div');
-  card.className = 'wheel-result-card';
+  const entryId = item.__id || item.id || '';
+  const cardId = entryId || `wheel-${Date.now()}`;
+  let cardNode = null;
 
-  const posterWrap = document.createElement('div');
-  posterWrap.className = 'poster';
-  if (item.poster) {
-    const img = document.createElement('img');
-    img.src = item.poster;
-    img.alt = `${item.title || 'Item'} artwork`;
-    img.loading = 'lazy';
-    posterWrap.appendChild(img);
-  } else {
-    posterWrap.classList.add('placeholder');
-    posterWrap.textContent = 'No artwork';
-  }
-  card.appendChild(posterWrap);
-
-  const details = document.createElement('div');
-  details.className = 'wheel-result-details';
-
-  const header = document.createElement('div');
-  header.className = 'card-header wheel-result-header';
-  const title = document.createElement('div');
-  title.className = 'wheel-result-title';
-  title.textContent = item.title || '(no title)';
-  header.appendChild(title);
-  details.appendChild(header);
-
-  const metaParts = [];
-  if (item.year) metaParts.push(item.year);
-  if (listType === 'books') {
-    if (item.author) metaParts.push(item.author);
-  } else {
-    if (item.director) metaParts.push(item.director);
-    if (item.imdbRating) metaParts.push(`IMDb ${item.imdbRating}`);
-    if (item.runtime) metaParts.push(item.runtime);
-  }
-  const metaText = metaParts.filter(Boolean).join(' • ');
-  if (metaText) {
-    const meta = document.createElement('div');
-    meta.className = 'wheel-result-meta';
-    meta.textContent = metaText;
-    details.appendChild(meta);
-  }
-
-  if (listType !== 'books' && item.seriesName) {
-    const seriesLine = document.createElement('div');
-    seriesLine.className = 'wheel-result-series';
-    const parts = [`Series: ${item.seriesName}`];
-    if (item.seriesOrder !== undefined && item.seriesOrder !== null && item.seriesOrder !== '') {
-      parts.push(`Entry ${item.seriesOrder}`);
-    }
-    seriesLine.textContent = parts.join(' • ');
-    details.appendChild(seriesLine);
-  }
-
-  if (listType !== 'books') {
-    const castText = buildActorPreview(item.actors, 6);
-    if (castText) {
-      const cast = document.createElement('div');
-      cast.className = 'wheel-result-cast';
-      cast.textContent = `Cast: ${castText}`;
-      details.appendChild(cast);
-    }
-  }
-
-  if (item.plot) {
-    const summary = document.createElement('div');
-    summary.className = 'wheel-result-summary';
-    const plot = item.plot.trim();
-    summary.textContent = plot.length > 260 ? `${plot.slice(0, 257)}…` : plot;
-    details.appendChild(summary);
-  }
-
-  if (item.notes) {
-    const notes = document.createElement('div');
-    notes.className = 'wheel-result-notes';
-    notes.textContent = item.notes;
-    details.appendChild(notes);
-  }
-
-  const links = document.createElement('div');
-  links.className = 'wheel-result-links';
-  if (item.imdbUrl) {
-    const imdbLink = document.createElement('a');
-    imdbLink.href = item.imdbUrl;
-    imdbLink.target = '_blank';
-    imdbLink.rel = 'noopener noreferrer';
-    imdbLink.className = 'meta-link';
-    imdbLink.textContent = 'View on IMDb';
-    links.appendChild(imdbLink);
-  }
-  if (item.trailerUrl) {
-    const trailerLink = document.createElement('a');
-    trailerLink.href = item.trailerUrl;
-    trailerLink.target = '_blank';
-    trailerLink.rel = 'noopener noreferrer';
-    trailerLink.className = 'meta-link';
-    trailerLink.textContent = 'Watch Trailer';
-    links.appendChild(trailerLink);
-  }
-  if (links.children.length) {
-    details.appendChild(links);
-  }
-
-  // Sequel / Prequel lookup button
   if (listType === 'movies') {
-    const relatedBtn = document.createElement('button');
-    relatedBtn.type = 'button';
-    relatedBtn.className = 'btn secondary';
-    relatedBtn.textContent = 'Lookup Sequels/Prequels';
-    relatedBtn.addEventListener('click', () => {
-      lookupRelatedTitles(item);
+    cardNode = buildCollapsibleMovieCard(cardId, item, 0, {
+      hideCard: false,
+      displayEntryId: entryId || cardId,
+      interactive: false,
     });
-    details.appendChild(relatedBtn);
+    cardNode.classList.add('expanded');
+  } else {
+    cardNode = buildStandardCard(listType, cardId, item);
   }
 
-  card.appendChild(details);
-  wheelResultEl.appendChild(card);
+  cardNode.classList.add('wheel-result-card');
+  wheelResultEl.appendChild(cardNode);
 }
 
 // --- Sequel / Prequel Lookup Logic (TMDb only) ---
@@ -2650,11 +2557,12 @@ function resolveSeriesRedirect(listType, item, rawData) {
   const rawSeries = typeof item.seriesName === 'string' ? item.seriesName.trim() : '';
   if (!rawSeries) return item;
   const targetKey = rawSeries.toLowerCase();
-  const siblings = Object.values(rawData || {}).filter(entry => {
-    if (!entry) return false;
+  const siblings = Object.entries(rawData || {}).map(([id, entry]) => {
+    if (!entry) return null;
     const entrySeries = typeof entry.seriesName === 'string' ? entry.seriesName.trim() : '';
-    return entrySeries && entrySeries.toLowerCase() === targetKey;
-  });
+    if (!entrySeries || entrySeries.toLowerCase() !== targetKey) return null;
+    return entry.__id ? entry : Object.assign({ __id: id }, entry);
+  }).filter(Boolean);
   if (!siblings.length) return item;
   siblings.sort((a, b) => {
     const orderA = parseSeriesOrder(a.seriesOrder);
