@@ -71,6 +71,148 @@ const modalRoot = document.getElementById('modal-root');
 const wheelSpinnerEl = document.getElementById('wheel-spinner');
 const wheelResultEl = document.getElementById('wheel-result');
 
+const tmEasterEgg = (() => {
+  const sprites = [];
+  let running = false;
+  let spawnTimer = null;
+  let rafId = null;
+  let layer = null;
+  const gravity = 0.32;
+  const bounce = 0.68;
+  const friction = 0.995;
+  const spawnMinDelay = 320;
+  const spawnMaxDelay = 900;
+
+  function ensureLayer() {
+    if (layer) return layer;
+    layer = document.createElement('div');
+    layer.id = 'tm-rain-layer';
+    document.body.appendChild(layer);
+    return layer;
+  }
+
+  function bindTriggers() {
+    document.querySelectorAll('.tm').forEach(node => {
+      if (node.dataset.tmEggBound === 'true') return;
+      node.dataset.tmEggBound = 'true';
+      node.classList.add('tm-clickable');
+      node.addEventListener('click', start, { once: true });
+    });
+  }
+
+  function start() {
+    if (running) return;
+    running = true;
+    ensureLayer();
+    for (let i = 0; i < 4; i++) spawnSprite();
+    scheduleNextSpawn();
+    tick();
+  }
+
+  function scheduleNextSpawn() {
+    spawnTimer = setTimeout(() => {
+      spawnSprite();
+      scheduleNextSpawn();
+    }, spawnMinDelay + Math.random() * (spawnMaxDelay - spawnMinDelay));
+  }
+
+  function spawnSprite() {
+    if (!layer) ensureLayer();
+    const size = 20 + Math.random() * 26;
+    const sprite = {
+      size,
+      radius: size / 2,
+      x: Math.random() * (window.innerWidth - size) + size / 2,
+      y: -size - Math.random() * 40,
+      vx: (Math.random() - 0.5) * 1.4,
+      vy: Math.random() * -1.5,
+      rotation: Math.random() * 360,
+      spin: (Math.random() - 0.5) * 120,
+    };
+    const el = document.createElement('div');
+    el.className = 'tm-sprite';
+    el.textContent = '™';
+    el.style.fontSize = `${size}px`;
+    el.style.setProperty('--tm-spin', `${sprite.spin}deg`);
+    layer.appendChild(el);
+    sprite.el = el;
+    sprites.push(sprite);
+    syncSprite(sprite);
+  }
+
+  function syncSprite(sprite) {
+    if (!sprite.el) return;
+    sprite.el.style.left = `${sprite.x}px`;
+    sprite.el.style.top = `${sprite.y}px`;
+    sprite.el.style.transform = `translate(-50%, -50%) rotate(${sprite.rotation}deg)`;
+  }
+
+  function resolveCollisions() {
+    for (let i = 0; i < sprites.length; i++) {
+      for (let j = i + 1; j < sprites.length; j++) {
+        const a = sprites[i];
+        const b = sprites[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy) || 0.0001;
+        const minDist = a.radius + b.radius;
+        if (dist >= minDist) continue;
+        const overlap = (minDist - dist) / 2;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        a.x -= nx * overlap;
+        a.y -= ny * overlap;
+        b.x += nx * overlap;
+        b.y += ny * overlap;
+        const relVelX = b.vx - a.vx;
+        const relVelY = b.vy - a.vy;
+        const velAlongNormal = relVelX * nx + relVelY * ny;
+        if (velAlongNormal > 0) continue;
+        const restitution = 0.65;
+        const impulse = -(1 + restitution) * velAlongNormal / 2;
+        const impulseX = impulse * nx;
+        const impulseY = impulse * ny;
+        a.vx -= impulseX;
+        a.vy -= impulseY;
+        b.vx += impulseX;
+        b.vy += impulseY;
+      }
+    }
+  }
+
+  function tick() {
+    rafId = requestAnimationFrame(tick);
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    sprites.forEach(sprite => {
+      sprite.vy += gravity;
+      sprite.vx *= friction;
+      sprite.x += sprite.vx;
+      sprite.y += sprite.vy;
+      sprite.rotation = (sprite.rotation + sprite.spin * 0.016) % 360;
+      const radius = sprite.radius;
+      if (sprite.x - radius < 0) {
+        sprite.x = radius;
+        sprite.vx *= -bounce;
+      } else if (sprite.x + radius > width) {
+        sprite.x = width - radius;
+        sprite.vx *= -bounce;
+      }
+      if (sprite.y + radius > height) {
+        sprite.y = height - radius;
+        sprite.vy *= -bounce;
+        if (Math.abs(sprite.vy) < 0.05) sprite.vy = 0;
+      }
+    });
+    resolveCollisions();
+    sprites.forEach(syncSprite);
+  }
+
+  return {
+    bindTriggers,
+  };
+})();
+
 function logAppVersionOnce() {
   const flagKey = '__THE_LIST_VERSION_LOGGED__';
   if (globalThis[flagKey]) return;
@@ -2702,6 +2844,8 @@ if (auth) {
     handleSignInRedirectResult();
   } catch(e) { /* silent */ }
 }
+
+tmEasterEgg.bindTriggers();
 
 function updateListStats(listType, entries) {
   const statsEl = document.getElementById(`${listType}-stats`);
