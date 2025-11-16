@@ -961,21 +961,9 @@ function toggleCardExpansion(listType, cardId) {
   if (expandedSet.has(cardId)) {
     expandedSet.delete(cardId);
   } else {
-    if (listType === 'movies') {
-      collapseMovieCardsBehind(cardId);
-    }
     expandedSet.add(cardId);
   }
   updateCollapsibleCardStates(listType);
-}
-
-function collapseMovieCardsBehind(frontCardId) {
-  const expandedSet = ensureExpandedSet('movies');
-  expandedSet.forEach(id => {
-    if (id !== frontCardId) {
-      expandedSet.delete(id);
-    }
-  });
 }
 
 
