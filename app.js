@@ -57,7 +57,8 @@ const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
 const seriesGroups = { movies: new Map() };
 const seriesCarouselState = { movies: new Map() };
-let introPlayed = false;
+const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
+let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
 
 // DOM references
 const loginScreen = document.getElementById('login-screen');
@@ -388,6 +389,7 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
 }
 
 function signOut() {
+  safeStorageRemove(INTRO_SESSION_KEY);
   fbSignOut(auth).catch(err => console.error('Sign-out error', err));
 }
 
@@ -480,12 +482,35 @@ function playTheListIntro() {
   const intro = document.getElementById('the-list-intro');
   if (!intro) return;
   introPlayed = true;
+  safeStorageSet(INTRO_SESSION_KEY, '1');
   intro.classList.remove('hidden');
   intro.classList.add('active');
   setTimeout(() => {
     intro.classList.add('hidden');
     intro.classList.remove('active');
   }, 3600);
+}
+
+function safeStorageGet(key) {
+  try {
+    return window.sessionStorage ? window.sessionStorage.getItem(key) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function safeStorageSet(key, value) {
+  try {
+    if (!window.sessionStorage) return;
+    window.sessionStorage.setItem(key, value);
+  } catch (_) {}
+}
+
+function safeStorageRemove(key) {
+  try {
+    if (!window.sessionStorage) return;
+    window.sessionStorage.removeItem(key);
+  } catch (_) {}
 }
 
 function switchSection(sectionId) {
