@@ -41,6 +41,10 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .tm-clickable{cursor:pointer;position:relative}
 .tm-clickable::after{content:'';position:absolute;inset:0;border-radius:4px;opacity:0;transition:opacity .2s ease}
 .tm-clickable:hover::after{opacity:.35;background:rgba(125,242,201,0.25)}
+.intro-logo{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.35rem;background:#02060c;z-index:2000;letter-spacing:.25rem;font-weight:900;font-size:clamp(2rem,6vw,5.5rem);text-transform:uppercase;opacity:0;pointer-events:none}
+.intro-logo.active{animation:introFade 3.4s ease forwards;pointer-events:auto}
+.intro-text{background:linear-gradient(135deg,#7df2c9,#50c9ff);background-clip:text;-webkit-background-clip:text;color:transparent;text-shadow:0 20px 45px rgba(80,201,255,0.4)}
+.intro-tm{font-size:clamp(.7rem,1.4vw,1.1rem);letter-spacing:.4rem;color:#7df2c9;opacity:0;animation:introTmReveal 1.8s ease 1.2s forwards}
 .subtitle{color:var(--text-500);margin:0 0 1.1rem}
 .small{color:var(--text-500);font-size:.85rem}
 .btn{cursor:pointer;border:0;padding:.6rem .95rem;border-radius:10px;font-weight:600;transition:transform .12s ease,box-shadow .25s ease,filter .25s ease}
@@ -229,6 +233,8 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .wheel-result-links{display:flex;flex-wrap:wrap;gap:.6rem}
 .wheel-result-links .meta-link{margin:0}
 @keyframes spinPulse{0%{transform:scale(.96);opacity:.75}50%{transform:scale(1.05);opacity:1}100%{transform:scale(.96);opacity:.75}}
+@keyframes introFade{0%{opacity:0}10%{opacity:1}75%{opacity:1}100%{opacity:0;visibility:hidden}}
+@keyframes introTmReveal{0%{opacity:0;transform:translateY(-16px)}100%{opacity:1;transform:translateY(0)}}
 
 #tm-rain-layer{position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden}
 .tm-sprite{position:absolute;left:0;top:0;transform:translate(-50%,-50%);font-weight:900;color:var(--accent-300);text-shadow:0 4px 14px rgba(125,242,201,0.4);will-change:transform;user-select:none}

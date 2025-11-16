@@ -57,6 +57,7 @@ const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
 const seriesGroups = { movies: new Map() };
 const seriesCarouselState = { movies: new Map() };
+let introPlayed = false;
 
 // DOM references
 const loginScreen = document.getElementById('login-screen');
@@ -468,9 +469,23 @@ function showAppForUser(user) {
   appRoot.classList.remove('hidden');
   userNameEl.textContent = user.displayName || user.email || 'You';
   updateBackToTopVisibility();
+  playTheListIntro();
 
   // load default section
   switchSection('movies');
+}
+
+function playTheListIntro() {
+  if (introPlayed) return;
+  const intro = document.getElementById('the-list-intro');
+  if (!intro) return;
+  introPlayed = true;
+  intro.classList.remove('hidden');
+  intro.classList.add('active');
+  setTimeout(() => {
+    intro.classList.add('hidden');
+    intro.classList.remove('active');
+  }, 3600);
 }
 
 function switchSection(sectionId) {
