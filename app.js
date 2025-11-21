@@ -37,7 +37,7 @@ const firebaseConfig = {
 // TMDb API powers metadata, autocomplete, and franchise info (recommended)
 // Create a key at https://www.themoviedb.org/settings/api and paste it here.
 const TMDB_API_KEY = '46dcf1eaa2ce4284037a00fdefca9bb8';
-const METADATA_SCHEMA_VERSION = 2;
+const METADATA_SCHEMA_VERSION = 3;
 const APP_VERSION = 'test-pages-2025.11.15';
 
 // -----------------------
@@ -962,7 +962,13 @@ function buildMovieMetaText(item) {
 
 function buildMovieExtendedMeta(item) {
   const parts = [];
-  if (item.originalLanguage) parts.push(`Original Language: ${item.originalLanguage}`);
+  if (item.originalLanguage) {
+    let label = `Original Language: ${item.originalLanguage}`;
+    if (!itemIsOriginallyEnglish(item)) {
+      label += ` (Dub: ${hasEnglishDubFlag(item) ? 'Yes' : 'No'})`;
+    }
+    parts.push(label);
+  }
   if (item.budget) parts.push(`Budget: ${item.budget}`);
   if (item.revenue) parts.push(`Revenue: ${item.revenue}`);
   if (!parts.length) return null;
@@ -1605,6 +1611,39 @@ function resolveLanguageName(isoCode, spokenLanguages) {
   return name || isoCode.toUpperCase();
 }
 
+function hasEnglishSpokenLanguage(spokenLanguages) {
+  return (Array.isArray(spokenLanguages) ? spokenLanguages : []).some(lang => {
+    const iso = (lang?.iso_639_1 || '').toLowerCase();
+    if (iso === 'en') return true;
+    const name = (lang?.english_name || lang?.name || '').toLowerCase();
+    return name.includes('english');
+  });
+}
+
+function isEnglishLanguageValue(labelOrIso) {
+  if (!labelOrIso) return false;
+  const value = String(labelOrIso).trim().toLowerCase();
+  return value === 'en' || value.startsWith('english');
+}
+
+function itemIsOriginallyEnglish(item) {
+  if (!item) return false;
+  if (item.originalLanguageIso && isEnglishLanguageValue(item.originalLanguageIso)) return true;
+  if (item.originalLanguage && isEnglishLanguageValue(item.originalLanguage)) return true;
+  return false;
+}
+
+function hasEnglishDubFlag(item) {
+  if (!item) return false;
+  const value = item.englishDubAvailable;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'yes' || normalized === 'true';
+  }
+  return false;
+}
+
 function hasMeaningfulValue(value) {
   if (value === null || value === undefined) return false;
   if (typeof value === 'string') return value.trim().length > 0;
@@ -1668,6 +1707,20 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
 
   const originalLanguage = metadata.OriginalLanguage && metadata.OriginalLanguage !== 'N/A' ? metadata.OriginalLanguage : '';
   setField('originalLanguage', originalLanguage);
+
+  const originalLanguageIso = metadata.OriginalLanguageIso && metadata.OriginalLanguageIso !== 'N/A'
+    ? metadata.OriginalLanguageIso
+    : '';
+  setField('originalLanguageIso', originalLanguageIso);
+
+  if (metadata.EnglishDubAvailable !== undefined && metadata.EnglishDubAvailable !== null) {
+    if (typeof metadata.EnglishDubAvailable === 'boolean') {
+      setField('englishDubAvailable', metadata.EnglishDubAvailable);
+    } else {
+      const normalized = String(metadata.EnglishDubAvailable).trim().toLowerCase();
+      setField('englishDubAvailable', normalized === 'yes' || normalized === 'true');
+    }
+  }
 
   const budgetValue = metadata.Budget && metadata.Budget !== 'N/A' ? metadata.Budget : '';
   setField('budget', budgetValue);
@@ -2199,6 +2252,7 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
   const revenue = formatCurrencyShort(detail.revenue);
   const originalLanguage = resolveLanguageName(detail.original_language, detail.spoken_languages);
   const tmdbId = detail.id || '';
+  const englishDubAvailable = hasEnglishSpokenLanguage(detail.spoken_languages);
 
   return {
     Title: detail.title || detail.name || '',
@@ -2214,6 +2268,8 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
     Budget: budget,
     Revenue: revenue,
     OriginalLanguage: originalLanguage,
+    OriginalLanguageIso: detail.original_language || '',
+    EnglishDubAvailable: englishDubAvailable,
     TmdbID: tmdbId,
   };
 }
