@@ -126,6 +126,7 @@ const tmEasterEgg = (() => {
   let spawnTimer = null;
   let rafId = null;
   let layer = null;
+  let intensityMultiplier = 1;
   const gravity = 0.32;
   const bounce = 0.68;
   const friction = 0.995;
@@ -173,24 +174,52 @@ const tmEasterEgg = (() => {
       if (node.dataset.tmEggBound === 'true') return;
       node.dataset.tmEggBound = 'true';
       node.classList.add('tm-clickable');
-      node.addEventListener('click', start, { once: true });
+      node.addEventListener('click', handleTmClick);
     });
+  }
+
+  function handleTmClick() {
+    if (!running) {
+      start();
+    } else {
+      boostIntensity();
+    }
   }
 
   function start() {
     if (running) return;
     running = true;
+    intensityMultiplier = 1;
     ensureLayer();
-    for (let i = 0; i < 4; i++) spawnSprite();
+    spawnBurst(4 * intensityMultiplier);
     scheduleNextSpawn();
     tick();
   }
 
-  function scheduleNextSpawn() {
-    spawnTimer = setTimeout(() => {
-      spawnSprite();
+  function boostIntensity() {
+    intensityMultiplier *= 2;
+    spawnBurst(Math.max(4, Math.round(intensityMultiplier * 2)));
+    if (spawnTimer) {
+      clearTimeout(spawnTimer);
       scheduleNextSpawn();
-    }, spawnMinDelay + Math.random() * (spawnMaxDelay - spawnMinDelay));
+    }
+  }
+
+  function scheduleNextSpawn() {
+    const delayScale = Math.max(1, intensityMultiplier);
+    const minDelay = Math.max(50, spawnMinDelay / delayScale);
+    const maxDelay = Math.max(minDelay + 10, spawnMaxDelay / delayScale);
+    spawnTimer = setTimeout(() => {
+      const batch = Math.max(1, Math.round(intensityMultiplier));
+      spawnBurst(batch);
+      scheduleNextSpawn();
+    }, minDelay + Math.random() * (maxDelay - minDelay));
+  }
+
+  function spawnBurst(count) {
+    for (let i = 0; i < count; i++) {
+      spawnSprite();
+    }
   }
 
   function spawnSprite() {
