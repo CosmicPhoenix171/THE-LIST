@@ -131,6 +131,8 @@ const tmEasterEgg = (() => {
   const friction = 0.995;
   const settleThreshold = 0.12;
   const wakeSpeed = 0.35;
+  const supportAngleThreshold = 0.5;
+  const supportDistanceEpsilon = 0.75;
   const spawnMinDelay = 320;
   const spawnMaxDelay = 900;
 
@@ -147,14 +149,6 @@ const tmEasterEgg = (() => {
     },
   };
 
-  const sectionThemes = {
-    movies: { color: '#7df2c9' },
-    tvShows: { color: '#65b7f7' },
-    anime: { color: '#f5c568' },
-    books: { color: '#ff9ae5' },
-    wheel: { color: '#c4ff7d' }
-  };
-
   function getSeasonalTheme(now = new Date()) {
     const month = now.getMonth(); // 0-indexed
     if (month === 11) return seasonThemes.winter; // December
@@ -162,18 +156,8 @@ const tmEasterEgg = (() => {
     return null;
   }
 
-  function getActiveSectionTheme() {
-    const activeTab = document.querySelector('.tab.active');
-    const sectionId = activeTab ? activeTab.dataset.section : null;
-    return (sectionId && sectionThemes[sectionId]) ? sectionThemes[sectionId] : null;
-  }
-
   function getCurrentTmTheme() {
-    const seasonal = getSeasonalTheme();
-    if (seasonal) return seasonal;
-    const section = getActiveSectionTheme();
-    if (section) return section;
-    return { color: '#ffffff' };
+    return getSeasonalTheme();
   }
 
   function ensureLayer() {
@@ -223,6 +207,7 @@ const tmEasterEgg = (() => {
       rotation: Math.random() * 360,
       spin: (Math.random() - 0.5) * 120,
       resting: false,
+      supported: false,
     };
     const el = document.createElement('div');
     el.className = 'tm-sprite';
@@ -257,10 +242,14 @@ const tmEasterEgg = (() => {
         const dy = b.y - a.y;
         const dist = Math.hypot(dx, dy) || 0.0001;
         const minDist = a.radius + b.radius;
-        if (dist >= minDist) continue;
-        const overlap = (minDist - dist) / 2;
         const nx = dx / dist;
         const ny = dy / dist;
+        if (Math.abs(ny) > supportAngleThreshold && dist - minDist <= supportDistanceEpsilon) {
+          if (ny > 0) a.supported = true;
+          if (ny < 0) b.supported = true;
+        }
+        if (dist >= minDist) continue;
+        const overlap = (minDist - dist) / 2;
         a.x -= nx * overlap;
         a.y -= ny * overlap;
         b.x += nx * overlap;
@@ -279,6 +268,8 @@ const tmEasterEgg = (() => {
         b.vy += impulseY;
         if (Math.abs(a.vx) > wakeSpeed || Math.abs(a.vy) > wakeSpeed) a.resting = false;
         if (Math.abs(b.vx) > wakeSpeed || Math.abs(b.vy) > wakeSpeed) b.resting = false;
+        if (ny > supportAngleThreshold) a.supported = true;
+        if (ny < -supportAngleThreshold) b.supported = true;
       }
     }
   }
@@ -288,6 +279,7 @@ const tmEasterEgg = (() => {
     const width = window.innerWidth;
     const height = window.innerHeight;
     sprites.forEach(sprite => {
+      sprite.supported = false;
       if (!sprite.resting) {
         sprite.vy += gravity;
         sprite.vx *= friction;
@@ -308,27 +300,27 @@ const tmEasterEgg = (() => {
         if (!sprite.resting) {
           sprite.vy *= -bounce;
         }
-        const settledVertically = Math.abs(sprite.vy) < settleThreshold;
-        const settledHorizontally = Math.abs(sprite.vx) < settleThreshold;
-        if (settledVertically && settledHorizontally) {
-          sprite.vx = 0;
-          sprite.vy = 0;
-          sprite.resting = true;
-        } else {
-          sprite.resting = false;
-        }
-      } else if (sprite.resting) {
-        sprite.resting = false;
+        sprite.supported = true;
       }
     });
     resolveCollisions();
+    sprites.forEach(sprite => {
+      const settledVertically = Math.abs(sprite.vy) < settleThreshold;
+      const settledHorizontally = Math.abs(sprite.vx) < settleThreshold;
+      if (sprite.supported && settledVertically && settledHorizontally) {
+        sprite.vx = 0;
+        sprite.vy = 0;
+        sprite.resting = true;
+      } else if (!sprite.supported && sprite.resting) {
+        sprite.resting = false;
+      }
+    });
     sprites.forEach(syncSprite);
   }
 
   return {
     bindTriggers,
     getSeasonalTheme,
-    getActiveSectionTheme,
     getCurrentTmTheme,
   };
 })();
