@@ -129,6 +129,8 @@ const tmEasterEgg = (() => {
   const gravity = 0.32;
   const bounce = 0.68;
   const friction = 0.995;
+  const settleThreshold = 0.12;
+  const wakeSpeed = 0.35;
   const spawnMinDelay = 320;
   const spawnMaxDelay = 900;
 
@@ -220,6 +222,7 @@ const tmEasterEgg = (() => {
       vy: Math.random() * -1.5,
       rotation: Math.random() * 360,
       spin: (Math.random() - 0.5) * 120,
+      resting: false,
     };
     const el = document.createElement('div');
     el.className = 'tm-sprite';
@@ -274,6 +277,8 @@ const tmEasterEgg = (() => {
         a.vy -= impulseY;
         b.vx += impulseX;
         b.vy += impulseY;
+        if (Math.abs(a.vx) > wakeSpeed || Math.abs(a.vy) > wakeSpeed) a.resting = false;
+        if (Math.abs(b.vx) > wakeSpeed || Math.abs(b.vy) > wakeSpeed) b.resting = false;
       }
     }
   }
@@ -283,10 +288,12 @@ const tmEasterEgg = (() => {
     const width = window.innerWidth;
     const height = window.innerHeight;
     sprites.forEach(sprite => {
-      sprite.vy += gravity;
-      sprite.vx *= friction;
-      sprite.x += sprite.vx;
-      sprite.y += sprite.vy;
+      if (!sprite.resting) {
+        sprite.vy += gravity;
+        sprite.vx *= friction;
+        sprite.x += sprite.vx;
+        sprite.y += sprite.vy;
+      }
       sprite.rotation = (sprite.rotation + sprite.spin * 0.016) % 360;
       const radius = sprite.radius;
       if (sprite.x - radius < 0) {
@@ -298,8 +305,20 @@ const tmEasterEgg = (() => {
       }
       if (sprite.y + radius > height) {
         sprite.y = height - radius;
-        sprite.vy *= -bounce;
-        if (Math.abs(sprite.vy) < 0.05) sprite.vy = 0;
+        if (!sprite.resting) {
+          sprite.vy *= -bounce;
+        }
+        const settledVertically = Math.abs(sprite.vy) < settleThreshold;
+        const settledHorizontally = Math.abs(sprite.vx) < settleThreshold;
+        if (settledVertically && settledHorizontally) {
+          sprite.vx = 0;
+          sprite.vy = 0;
+          sprite.resting = true;
+        } else {
+          sprite.resting = false;
+        }
+      } else if (sprite.resting) {
+        sprite.resting = false;
       }
     });
     resolveCollisions();
