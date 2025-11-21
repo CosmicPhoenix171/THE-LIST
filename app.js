@@ -65,6 +65,7 @@ const ANIME_FRANCHISE_MAX_DEPTH = 4;
 const ANIME_FRANCHISE_MAX_ENTRIES = 25;
 const ANIME_FRANCHISE_SCAN_SERIES_LIMIT = 4;
 const ANIME_FRANCHISE_RESCAN_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const ANIME_FRANCHISE_IGNORE_KEY = '__THE_LIST_ANIME_IGNORE__';
 
 // -----------------------
 // App state
@@ -107,6 +108,7 @@ let animeFranchiseLastScanSignature = '';
 let animeFranchiseLastScanTime = 0;
 let pendingAnimeScanData = null;
 const animeFranchiseMissingHashes = new Map();
+const animeFranchiseIgnoredIds = loadAnimeFranchiseIgnoredIds();
 
 const tmEasterEgg = (() => {
   const sprites = [];
@@ -605,6 +607,41 @@ function showAnimeFranchiseNotification(seriesName, missingEntries) {
   pushNotification({ title: heading, message: body });
 }
 
+function loadAnimeFranchiseIgnoredIds() {
+  const raw = safeLocalStorageGet(ANIME_FRANCHISE_IGNORE_KEY);
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.map(value => String(value)));
+    }
+  } catch (_) {}
+  return new Set();
+}
+
+function persistAnimeFranchiseIgnoredIds() {
+  try {
+    const payload = JSON.stringify(Array.from(animeFranchiseIgnoredIds));
+    safeLocalStorageSet(ANIME_FRANCHISE_IGNORE_KEY, payload);
+  } catch (_) {}
+}
+
+function rememberIgnoredAniListId(id) {
+  if (!id) return;
+  const normalized = String(id);
+  if (animeFranchiseIgnoredIds.has(normalized)) return;
+  animeFranchiseIgnoredIds.add(normalized);
+  persistAnimeFranchiseIgnoredIds();
+}
+
+function clearIgnoredAniListId(id) {
+  if (!id) return;
+  const normalized = String(id);
+  if (!animeFranchiseIgnoredIds.has(normalized)) return;
+  animeFranchiseIgnoredIds.delete(normalized);
+  persistAnimeFranchiseIgnoredIds();
+}
+
 function signOut() {
   safeStorageRemove(INTRO_SESSION_KEY);
   fbSignOut(auth).catch(err => console.error('Sign-out error', err));
@@ -729,6 +766,28 @@ function safeStorageRemove(key) {
   try {
     if (!window.sessionStorage) return;
     window.sessionStorage.removeItem(key);
+  } catch (_) {}
+}
+
+function safeLocalStorageGet(key) {
+  try {
+    return window.localStorage ? window.localStorage.getItem(key) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function safeLocalStorageSet(key, value) {
+  try {
+    if (!window.localStorage) return;
+    window.localStorage.setItem(key, value);
+  } catch (_) {}
+}
+
+function safeLocalStorageRemove(key) {
+  try {
+    if (!window.localStorage) return;
+    window.localStorage.removeItem(key);
   } catch (_) {}
 }
 
@@ -2935,6 +2994,13 @@ function deleteItem(listType, itemId) {
     return Promise.reject(new Error('Not signed in'));
   }
   if (!confirm('Delete this item?')) return;
+  if (listType === 'anime' && listCaches[listType] && listCaches[listType][itemId]) {
+    const target = listCaches[listType][itemId];
+    const aniListId = getAniListIdFromItem(target);
+    if (aniListId) {
+      rememberIgnoredAniListId(aniListId);
+    }
+  }
   const itemRef = ref(db, `users/${currentUser.uid}/${listType}/${itemId}`);
   remove(itemRef).catch(err => console.error('Delete failed', err));
 }
@@ -3824,6 +3890,9 @@ function buildAnimeFranchiseSeriesMap(data) {
     if (!bucket.representativeId && aniListId) {
       bucket.representativeId = aniListId;
     }
+    if (aniListId) {
+      clearIgnoredAniListId(aniListId);
+    }
   });
   return map;
 }
@@ -3871,7 +3940,13 @@ async function runAnimeFranchiseScan(data) {
       }
       if (!plan || !Array.isArray(plan.entries) || !plan.entries.length) continue;
       const existingIds = new Set(info.items.map(getAniListIdFromItem).filter(Boolean).map(String));
-      const missingEntries = plan.entries.filter(entry => entry && entry.aniListId && !existingIds.has(String(entry.aniListId)));
+      const missingEntries = plan.entries.filter(entry => {
+        if (!entry || !entry.aniListId) return false;
+        const idStr = String(entry.aniListId);
+        if (existingIds.has(idStr)) return false;
+        if (animeFranchiseIgnoredIds.has(idStr)) return false;
+        return true;
+      });
       if (!missingEntries.length) {
         animeFranchiseMissingHashes.delete(seriesKey);
         continue;
