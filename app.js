@@ -1366,6 +1366,21 @@ function cycleSeriesCard(listType, cardId, delta) {
   updateCollapsibleCardStates(listType);
 }
 
+function resetSeriesCardToFirstEntry(listType, cardId) {
+  const entries = getSeriesGroupEntries(listType, cardId);
+  if (!entries || !entries.length) return;
+  const first = entries[0];
+  if (!first || !first.item) return;
+  const state = getSeriesCarouselState(listType, cardId, entries.length);
+  state.index = 0;
+  state.entryId = first.id;
+  const listEl = document.getElementById(`${listType}-list`);
+  if (!listEl) return;
+  const card = listEl.querySelector(`.card.collapsible.movie-card[data-id="${cardId}"]`);
+  if (!card) return;
+  renderMovieCardContent(card, listType, cardId, first.item, first.id);
+}
+
 function buildMovieMetaText(item) {
   const metaParts = [];
   if (item.year) metaParts.push(item.year);
@@ -1578,6 +1593,9 @@ function toggleCardExpansion(listType, cardId) {
   const expandedSet = ensureExpandedSet(listType);
   if (expandedSet.has(cardId)) {
     expandedSet.delete(cardId);
+    if (isCollapsibleList(listType)) {
+      resetSeriesCardToFirstEntry(listType, cardId);
+    }
   } else {
     expandedSet.add(cardId);
   }
