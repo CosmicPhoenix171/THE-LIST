@@ -3241,6 +3241,13 @@ async function fetchAniListMetadata(lookup = {}) {
         genres
         tags { name rank }
         externalLinks { language site }
+        characters(perPage: 25) {
+          edges {
+            voiceActors(language: ENGLISH) {
+              id
+            }
+          }
+        }
       }
     }
   `;
@@ -3265,6 +3272,10 @@ function mapAniListMediaToMetadata(media) {
   const englishLinks = Array.isArray(media.externalLinks)
     ? media.externalLinks.some(link => (link?.language || '').toLowerCase().startsWith('en'))
     : false;
+  const englishVoiceActors = Array.isArray(media.characters?.edges)
+    ? media.characters.edges.some(edge => Array.isArray(edge?.voiceActors) && edge.voiceActors.length > 0)
+    : false;
+  const englishDubAvailable = englishVoiceActors || englishLinks;
 
   return {
     Title: pickAniListTitle(media.title),
@@ -3279,7 +3290,7 @@ function mapAniListMediaToMetadata(media) {
     Type: 'anime',
     OriginalLanguage: 'Japanese',
     OriginalLanguageIso: 'ja',
-    EnglishDubAvailable: englishLinks,
+    EnglishDubAvailable: englishDubAvailable,
     AnimeEpisodes: media.episodes || '',
     AnimeDuration: media.duration || '',
     AnimeFormat: media.format || '',
