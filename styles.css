@@ -286,6 +286,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .tm-sprite:nth-child(4n+1){color:#80ffea;text-shadow:0 4px 12px rgba(128,255,234,0.55)}
 .tm-sprite:nth-child(4n+2){color:#9ab7ff;text-shadow:0 4px 12px rgba(154,183,255,0.5)}
 .tm-sprite:nth-child(4n+3){color:#ffc2ef;text-shadow:0 4px 12px rgba(255,194,239,0.45)}
+.tm-sprite{transition:color .3s ease,text-shadow .3s ease}
 
 /* modal styles */
 .modal-backdrop{position:fixed;inset:0;background:rgba(8,13,20,0.75);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}

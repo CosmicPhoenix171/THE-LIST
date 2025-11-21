@@ -132,6 +132,48 @@ const tmEasterEgg = (() => {
   const spawnMinDelay = 320;
   const spawnMaxDelay = 900;
 
+  const seasonThemes = {
+    winter: {
+      text: '❄',
+      color: '#c3e8ff',
+      glow: '0 0 18px rgba(195,232,255,0.85)',
+    },
+    halloween: {
+      text: '🎃',
+      color: '#ffb347',
+      glow: '0 0 18px rgba(255,138,0,0.85)',
+    },
+  };
+
+  const sectionThemes = {
+    movies: { color: '#7df2c9' },
+    tvShows: { color: '#65b7f7' },
+    anime: { color: '#f5c568' },
+    books: { color: '#ff9ae5' },
+    wheel: { color: '#c4ff7d' }
+  };
+
+  function getSeasonalTheme(now = new Date()) {
+    const month = now.getMonth(); // 0-indexed
+    if (month === 11) return seasonThemes.winter; // December
+    if (month === 9) return seasonThemes.halloween; // October
+    return null;
+  }
+
+  function getActiveSectionTheme() {
+    const activeTab = document.querySelector('.tab.active');
+    const sectionId = activeTab ? activeTab.dataset.section : null;
+    return (sectionId && sectionThemes[sectionId]) ? sectionThemes[sectionId] : null;
+  }
+
+  function getCurrentTmTheme() {
+    const seasonal = getSeasonalTheme();
+    if (seasonal) return seasonal;
+    const section = getActiveSectionTheme();
+    if (section) return section;
+    return { color: '#ffffff' };
+  }
+
   function ensureLayer() {
     if (layer) return layer;
     layer = document.createElement('div');
@@ -168,6 +210,7 @@ const tmEasterEgg = (() => {
   function spawnSprite() {
     if (!layer) ensureLayer();
     const size = 20 + Math.random() * 26;
+    const theme = getCurrentTmTheme();
     const sprite = {
       size,
       radius: size / 2,
@@ -180,8 +223,14 @@ const tmEasterEgg = (() => {
     };
     const el = document.createElement('div');
     el.className = 'tm-sprite';
-    el.textContent = '™';
+    el.textContent = theme && theme.text ? theme.text : '™';
     el.style.fontSize = `${size}px`;
+    if (theme && theme.color) {
+      el.style.color = theme.color;
+    }
+    if (theme && theme.glow) {
+      el.style.textShadow = theme.glow;
+    }
     el.style.setProperty('--tm-spin', `${sprite.spin}deg`);
     layer.appendChild(el);
     sprite.el = el;
@@ -259,6 +308,9 @@ const tmEasterEgg = (() => {
 
   return {
     bindTriggers,
+    getSeasonalTheme,
+    getActiveSectionTheme,
+    getCurrentTmTheme,
   };
 })();
 
