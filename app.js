@@ -413,6 +413,104 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
   modalRoot.appendChild(backdrop);
 }
 
+function formatAnimeFranchiseEntryLabel(entry) {
+  if (!entry) return 'Untitled entry';
+  const labelParts = [];
+  if (entry.seriesOrder !== undefined && entry.seriesOrder !== null) {
+    labelParts.push(`#${entry.seriesOrder}`);
+  }
+  labelParts.push(entry.title || 'Untitled');
+  const meta = [];
+  if (entry.format) meta.push(entry.format);
+  if (entry.year) meta.push(entry.year);
+  if (entry.relationType && entry.relationType !== 'ROOT') {
+    const pretty = entry.relationType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, ch => ch.toUpperCase());
+    meta.push(pretty);
+  }
+  const metaText = meta.length ? ` (${meta.join(' • ')})` : '';
+  return `${labelParts.filter(Boolean).join(' ')}${metaText}`;
+}
+
+function promptAnimeFranchiseSelection(plan, { rootAniListId, title } = {}) {
+  if (!plan || !Array.isArray(plan.entries)) return Promise.resolve([]);
+  const rootIdStr = rootAniListId ? String(rootAniListId) : '';
+  const selectable = plan.entries.filter(entry => {
+    if (!entry || entry.aniListId === undefined || entry.aniListId === null) return false;
+    if (rootIdStr && String(entry.aniListId) === rootIdStr) return false;
+    return true;
+  });
+  if (!selectable.length) return Promise.resolve([]);
+  if (!modalRoot) {
+    return Promise.resolve(selectable.map(entry => entry.aniListId));
+  }
+  return new Promise(resolve => {
+    modalRoot.innerHTML = '';
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    const displayName = plan.seriesName || title || 'this franchise';
+    const heading = document.createElement('h3');
+    heading.textContent = `Add related anime for "${displayName}"?`;
+    modal.appendChild(heading);
+    const sub = document.createElement('p');
+    sub.textContent = 'Choose which sequels, movies, and specials to add alongside this entry.';
+    modal.appendChild(sub);
+    const list = document.createElement('div');
+    list.style.maxHeight = '260px';
+    list.style.overflowY = 'auto';
+    list.style.marginTop = '.5rem';
+    list.style.display = 'flex';
+    list.style.flexDirection = 'column';
+    list.style.gap = '.35rem';
+    const checkboxes = [];
+    selectable.forEach(entry => {
+      const row = document.createElement('label');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '.5rem';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.value = String(entry.aniListId);
+      row.appendChild(cb);
+      const text = document.createElement('span');
+      text.textContent = formatAnimeFranchiseEntryLabel(entry);
+      row.appendChild(text);
+      list.appendChild(row);
+      checkboxes.push(cb);
+    });
+    modal.appendChild(list);
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '.5rem';
+    actions.style.marginTop = '1rem';
+    const close = (result) => {
+      modalRoot.innerHTML = '';
+      resolve(result);
+    };
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn primary';
+    addBtn.textContent = 'Add Selected';
+    addBtn.addEventListener('click', () => {
+      const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+      close(selected);
+    });
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'btn secondary';
+    skipBtn.textContent = 'Skip';
+    skipBtn.addEventListener('click', () => close([]));
+    actions.appendChild(addBtn);
+    actions.appendChild(skipBtn);
+    modal.appendChild(actions);
+    backdrop.appendChild(modal);
+    modalRoot.appendChild(backdrop);
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) close([]);
+    });
+  });
+}
+
 function signOut() {
   safeStorageRemove(INTRO_SESSION_KEY);
   fbSignOut(auth).catch(err => console.error('Sign-out error', err));
@@ -1386,6 +1484,7 @@ async function addItemFromForm(listType, form) {
     const useAniList = listType === 'anime';
     const hasMetadataProvider = useAniList || Boolean(TMDB_API_KEY);
     let animeFranchisePlan = null;
+    let animeFranchiseSelectionIds = null;
     let aniListTargetId = useAniList ? (selectedAniListId || '') : '';
     if (!metadata && supportsMetadata) {
       if (useAniList) {
@@ -1409,6 +1508,17 @@ async function addItemFromForm(listType, form) {
         } catch (err) {
           console.warn('Unable to build AniList franchise plan', err);
         }
+      }
+    }
+    if (useAniList && animeFranchisePlan && Array.isArray(animeFranchisePlan.entries)) {
+      try {
+        animeFranchiseSelectionIds = await promptAnimeFranchiseSelection(animeFranchisePlan, {
+          rootAniListId: aniListTargetId || (metadata && metadata.AniListId) || '',
+          title,
+        });
+      } catch (err) {
+        console.warn('AniList franchise selection prompt failed', err);
+        animeFranchiseSelectionIds = null;
       }
     }
 
@@ -1489,8 +1599,15 @@ async function addItemFromForm(listType, form) {
     await addItem(listType, item);
 
     if (listType === 'anime' && animeFranchisePlan) {
+      const allowAutoAdd = animeFranchiseSelectionIds === null || (Array.isArray(animeFranchiseSelectionIds) && animeFranchiseSelectionIds.length > 0);
       try {
-        await autoAddAnimeFranchiseEntries(animeFranchisePlan, aniListTargetId || (metadata && metadata.AniListId));
+        if (allowAutoAdd) {
+          await autoAddAnimeFranchiseEntries(
+            animeFranchisePlan,
+            aniListTargetId || (metadata && metadata.AniListId),
+            Array.isArray(animeFranchiseSelectionIds) ? animeFranchiseSelectionIds : undefined,
+          );
+        }
       } catch (err) {
         console.warn('Unable to auto-add related anime entries', err);
       }
@@ -3534,13 +3651,17 @@ async function fetchAniListFranchisePlan({ aniListId, preferredSeriesName } = {}
   };
 }
 
-async function autoAddAnimeFranchiseEntries(plan, rootAniListId) {
+async function autoAddAnimeFranchiseEntries(plan, rootAniListId, selectedIds) {
   if (!plan || !Array.isArray(plan.entries) || !plan.entries.length) return;
   const rootId = rootAniListId ? Number(rootAniListId) : null;
+  const selectionSet = Array.isArray(selectedIds) && selectedIds.length
+    ? new Set(selectedIds.map(id => String(id)))
+    : null;
   let addedCount = 0;
   for (const entry of plan.entries) {
     if (!entry || !entry.title) continue;
     if (rootId && Number(entry.aniListId) === rootId) continue;
+    if (selectionSet && !selectionSet.has(String(entry.aniListId))) continue;
     const payload = {
       title: entry.title,
       createdAt: Date.now(),
