@@ -37,6 +37,7 @@ const firebaseConfig = {
 // TMDb API powers metadata, autocomplete, and franchise info (recommended)
 // Create a key at https://www.themoviedb.org/settings/api and paste it here.
 const TMDB_API_KEY = '46dcf1eaa2ce4284037a00fdefca9bb8';
+const ANILIST_API_URL = 'https://graphql.anilist.co';
 const METADATA_SCHEMA_VERSION = 3;
 const APP_VERSION = 'test-pages-2025.11.15';
 
@@ -56,7 +57,7 @@ const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
 const seriesGroups = {};
-const seriesCarouselState = { movies: new Map() };
+const seriesCarouselState = { movies: new Map(), tvShows: new Map(), anime: new Map() };
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
@@ -787,16 +788,16 @@ function renderMovieCardContent(card, listType, cardId, item, entryId = cardId) 
   if (!card) return;
   card.dataset.entryId = entryId;
   card.querySelectorAll('.movie-card-summary, .movie-card-details').forEach(el => el.remove());
-  const summary = buildMovieCardSummary(item);
+  const summary = buildMovieCardSummary(listType, item);
   const details = buildMovieCardDetails(listType, cardId, entryId, item);
   card.insertBefore(summary, card.firstChild || null);
   card.appendChild(details);
 }
 
-function buildMovieCardSummary(item) {
+function buildMovieCardSummary(listType, item) {
   const summary = createEl('div', 'movie-card-summary');
   summary.appendChild(buildMovieArtwork(item));
-  summary.appendChild(buildMovieCardInfo(item));
+  summary.appendChild(buildMovieCardInfo(listType, item));
   return summary;
 }
 
@@ -817,14 +818,36 @@ function buildMovieArtwork(item) {
   return wrapper;
 }
 
-function buildMovieCardInfo(item) {
+function buildMovieCardInfo(listType, item) {
   const info = createEl('div', 'movie-card-info');
   const header = createEl('div', 'movie-card-header');
   const title = createEl('div', 'title', { text: item.title || '(no title)' });
   header.appendChild(title);
   info.appendChild(header);
 
+  if (listType === 'anime') {
+    const badges = buildAnimeSummaryBadges(item);
+    if (badges) info.appendChild(badges);
+  }
+
   return info;
+}
+
+function buildAnimeSummaryBadges(item) {
+  if (!item) return null;
+  const chips = [];
+  if (item.animeFormat) chips.push(formatAnimeFormatLabel(item.animeFormat));
+  if (item.animeEpisodes) chips.push(`${item.animeEpisodes} ep`);
+  if (item.animeStatus) chips.push(formatAnimeStatusLabel(item.animeStatus));
+  if (!chips.length) return null;
+  const row = createEl('div', 'anime-summary-badges');
+  chips.forEach(text => row.appendChild(createEl('span', 'anime-chip', { text })));
+  return row;
+}
+
+function formatAnimeFormatLabel(value) {
+  if (!value) return '';
+  return String(value).replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
 }
 
 function buildMovieCardDetails(listType, cardId, entryId, item) {
@@ -867,6 +890,13 @@ function buildMovieCardDetails(listType, cardId, entryId, item) {
     details.appendChild(createEl('div', 'notes detail-block', { text: item.notes }));
   }
 
+  if (listType === 'anime') {
+    const animeBlock = buildAnimeDetailBlock(item);
+    if (animeBlock) {
+      details.appendChild(animeBlock);
+    }
+  }
+
   if (isCollapsibleList(listType)) {
     const seriesBlock = buildSeriesCarouselBlock(listType, cardId);
     if (seriesBlock) {
@@ -876,6 +906,41 @@ function buildMovieCardDetails(listType, cardId, entryId, item) {
 
   details.appendChild(buildMovieCardActions(listType, entryId, item));
   return details;
+}
+
+function buildAnimeDetailBlock(item) {
+  if (!item) return null;
+  const block = createEl('div', 'detail-block anime-detail-block');
+  const chips = [];
+  if (item.animeEpisodes) chips.push(formatAnimeEpisodesLabel(item.animeEpisodes));
+  if (item.animeDuration) chips.push(`${item.animeDuration} min/ep`);
+  if (item.animeFormat) chips.push(formatAnimeFormatLabel(item.animeFormat));
+  if (item.animeStatus) chips.push(formatAnimeStatusLabel(item.animeStatus));
+  if (chips.length) {
+    const row = createEl('div', 'anime-stats-row');
+    chips.forEach(text => row.appendChild(createEl('span', 'anime-chip', { text })));
+    block.appendChild(row);
+  }
+  if (Array.isArray(item.animeGenres) && item.animeGenres.length) {
+    const genres = createEl('div', 'anime-genres', { text: `Genres: ${item.animeGenres.join(', ')}` });
+    block.appendChild(genres);
+  }
+  if (item.aniListUrl) {
+    const link = createEl('a', 'meta-link', { text: 'View on AniList' });
+    link.href = item.aniListUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    block.appendChild(link);
+  }
+  return block.children.length ? block : null;
+}
+
+function formatAnimeEpisodesLabel(value) {
+  const count = Number(value);
+  if (Number.isFinite(count) && count > 0) {
+    return `${count} episode${count === 1 ? '' : 's'}`;
+  }
+  return `${value} episodes`;
 }
 
 function buildSeriesCarouselBlock(listType, cardId) {
@@ -956,6 +1021,7 @@ function buildMovieMetaText(item) {
   if (item.year) metaParts.push(item.year);
   if (item.director) metaParts.push(item.director);
   if (item.runtime) metaParts.push(item.runtime);
+  else if (item.animeDuration) metaParts.push(`${item.animeDuration} min/ep`);
   if (item.imdbRating) metaParts.push(`IMDb ${item.imdbRating}`);
   return metaParts.join(' • ');
 }
@@ -1014,6 +1080,13 @@ function buildMovieLinks(listType, item) {
     trailer.target = '_blank';
     trailer.rel = 'noopener noreferrer';
     links.appendChild(trailer);
+  }
+  if (listType === 'anime' && item.aniListUrl) {
+    const aniList = createEl('a', 'meta-link', { text: 'View on AniList' });
+    aniList.href = item.aniListUrl;
+    aniList.target = '_blank';
+    aniList.rel = 'noopener noreferrer';
+    links.appendChild(aniList);
   }
   // Inline "Watch Now" next to trailer for movies
   if (listType === 'movies' && TMDB_API_KEY) {
@@ -1285,10 +1358,14 @@ async function addItemFromForm(listType, form) {
     let metadata = form.__selectedMetadata || null;
     const selectedImdbId = form.dataset.selectedImdbId || '';
     const selectedTmdbId = form.dataset.selectedTmdbId || '';
+    const selectedAniListId = form.dataset.selectedAnilistId || '';
     const supportsMetadata = ['movies', 'tvShows', 'anime'].includes(listType);
-    const hasMetadataProvider = Boolean(TMDB_API_KEY);
+    const useAniList = listType === 'anime';
+    const hasMetadataProvider = useAniList || Boolean(TMDB_API_KEY);
     if (!metadata && supportsMetadata) {
-      if (!hasMetadataProvider) {
+      if (useAniList) {
+        metadata = await fetchAniListMetadata({ aniListId: selectedAniListId, title, year });
+      } else if (!hasMetadataProvider) {
         maybeWarnAboutTmdbKey();
       } else {
         metadata = await fetchTmdbMetadata(listType, { title, year, imdbId: selectedImdbId, tmdbId: selectedTmdbId });
@@ -1361,6 +1438,7 @@ async function addItemFromForm(listType, form) {
     form.__selectedMetadata = null;
     delete form.dataset.selectedImdbId;
     delete form.dataset.selectedTmdbId;
+    delete form.dataset.selectedAnilistId;
     hideTitleSuggestions(form);
   } catch (err) {
     console.error('Unable to add item', err);
@@ -1728,6 +1806,28 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
   const revenueValue = metadata.Revenue && metadata.Revenue !== 'N/A' ? metadata.Revenue : '';
   setField('revenue', revenueValue);
 
+  if (metadata.AnimeEpisodes !== undefined && metadata.AnimeEpisodes !== null) {
+    setField('animeEpisodes', metadata.AnimeEpisodes);
+  }
+  if (metadata.AnimeDuration !== undefined && metadata.AnimeDuration !== null) {
+    setField('animeDuration', metadata.AnimeDuration);
+  }
+  if (metadata.AnimeFormat) {
+    setField('animeFormat', metadata.AnimeFormat);
+  }
+  if (metadata.AnimeStatus) {
+    setField('animeStatus', metadata.AnimeStatus);
+  }
+  if (Array.isArray(metadata.AnimeGenres) && metadata.AnimeGenres.length) {
+    setField('animeGenres', metadata.AnimeGenres);
+  }
+  if (metadata.AniListUrl) {
+    setField('aniListUrl', metadata.AniListUrl);
+  }
+  if (metadata.AniListId) {
+    setField('aniListId', metadata.AniListId);
+  }
+
   const tmdbIdValue = metadata.TmdbID && metadata.TmdbID !== 'N/A' ? metadata.TmdbID : (metadata.TmdbId || '');
   setField('tmdbId', tmdbIdValue);
 
@@ -1844,9 +1944,14 @@ function buildSpinnerCandidates(listType, rawData) {
   });
 }
 
-function getMissingMetadataFields(item) {
+function getMissingMetadataFields(item, listType) {
   if (!item) return [];
-  const criticalFields = ['imdbId', 'imdbUrl', 'poster', 'plot', 'actors'];
+  let criticalFields = ['poster', 'plot'];
+  if (listType === 'anime') {
+    criticalFields = ['poster', 'plot', 'animeEpisodes', 'animeFormat'];
+  } else {
+    criticalFields = ['imdbId', 'imdbUrl', 'poster', 'plot', 'actors'];
+  }
   return criticalFields.filter(field => !hasMeaningfulValue(item[field]));
 }
 
@@ -1854,10 +1959,10 @@ function needsMetadataRefresh(listType, item) {
   if (!item || !item.title) return false;
   if (!['movies', 'tvShows', 'anime'].includes(listType)) return false;
   if (item.metadataVersion !== METADATA_SCHEMA_VERSION) return true;
-  return getMissingMetadataFields(item).length > 0;
+  return getMissingMetadataFields(item, listType).length > 0;
 }
 
-function refreshMetadataForItem(listType, itemId, item, missingFields = []) {
+function refreshTmdbMetadataForItem(listType, itemId, item, missingFields = []) {
   if (!TMDB_API_KEY) {
     maybeWarnAboutTmdbKey();
     return;
@@ -1894,17 +1999,52 @@ function refreshMetadataForItem(listType, itemId, item, missingFields = []) {
   });
 }
 
+function refreshAniListMetadataForItem(itemId, item) {
+  const listType = 'anime';
+  const key = `${listType}:${itemId}`;
+  if (metadataRefreshInflight.has(key)) return;
+  metadataRefreshInflight.add(key);
+  const lookup = {
+    aniListId: item.aniListId || item.anilistId || item.AniListId || '',
+    title: item.title || '',
+    year: item.year || '',
+  };
+  fetchAniListMetadata(lookup).then(metadata => {
+    if (!metadata) return;
+    const updates = deriveMetadataAssignments(metadata, item, {
+      overwrite: false,
+      fallbackTitle: item.title || '',
+      fallbackYear: item.year || '',
+    });
+    if (Object.keys(updates).length === 0) return;
+    console.debug('[AniList] Applying updates for', `${listType}:${itemId}`, updates);
+    return updateItem(listType, itemId, updates);
+  }).catch(err => {
+    console.warn('AniList metadata refresh failed', err);
+  }).finally(() => {
+    metadataRefreshInflight.delete(key);
+  });
+}
+
 function maybeRefreshMetadata(listType, data) {
   if (!currentUser) return;
   if (!['movies', 'tvShows', 'anime'].includes(listType)) return;
+  if (listType === 'anime') {
+    Object.entries(data || {}).forEach(([id, item]) => {
+      if (!needsMetadataRefresh(listType, item)) return;
+      refreshAniListMetadataForItem(id, item);
+    });
+    return;
+  }
+
   if (!TMDB_API_KEY) {
     return;
   }
 
   Object.entries(data || {}).forEach(([id, item]) => {
     if (!needsMetadataRefresh(listType, item)) return;
-    const missingFields = getMissingMetadataFields(item);
-    refreshMetadataForItem(listType, id, item, missingFields);
+    const missingFields = getMissingMetadataFields(item, listType);
+    refreshTmdbMetadataForItem(listType, id, item, missingFields);
   });
 }
 
@@ -1989,6 +2129,11 @@ function renderTitleSuggestions(container, suggestions, onSelect) {
     note.className = 'suggestions-note';
     note.textContent = 'Suggestions powered by TMDb.';
     container.appendChild(note);
+  } else if (provider === 'anilist') {
+    const note = document.createElement('div');
+    note.className = 'suggestions-note';
+    note.textContent = 'Suggestions powered by AniList.';
+    container.appendChild(note);
   }
 
   suggestions.forEach(suggestion => {
@@ -2065,7 +2210,8 @@ function setupFormAutocomplete(form, listType) {
     return;
   }
 
-  const hasSuggestionProvider = Boolean(TMDB_API_KEY);
+  const useAniList = listType === 'anime';
+  const hasSuggestionProvider = useAniList || Boolean(TMDB_API_KEY);
   if (!hasSuggestionProvider) {
     maybeWarnAboutTmdbKey();
     return;
@@ -2087,7 +2233,9 @@ function setupFormAutocomplete(form, listType) {
 
   const performSearch = debounce(async (query) => {
     const currentToken = ++lastFetchToken;
-    const results = await fetchTmdbSuggestions(listType, query);
+    const results = useAniList
+      ? await fetchAniListSuggestions(query)
+      : await fetchTmdbSuggestions(listType, query);
     if (currentToken !== lastFetchToken) return;
     renderTitleSuggestions(suggestionsEl, results, async (suggestion) => {
       titleInput.value = suggestion.title || '';
@@ -2096,17 +2244,40 @@ function setupFormAutocomplete(form, listType) {
         yearInput.value = suggestionYear;
       }
       form.__selectedMetadata = null;
-      if (suggestion.imdbID) {
+      if (!useAniList && suggestion.imdbID) {
         form.dataset.selectedImdbId = suggestion.imdbID;
-      } else {
+      } else if (!useAniList) {
         delete form.dataset.selectedImdbId;
       }
-      if (suggestion.tmdbId) {
+      if (!useAniList && suggestion.tmdbId) {
         form.dataset.selectedTmdbId = suggestion.tmdbId;
-      } else {
+      } else if (!useAniList) {
         delete form.dataset.selectedTmdbId;
       }
-      if (TMDB_API_KEY && suggestion.tmdbId) {
+      if (useAniList) {
+        delete form.dataset.selectedImdbId;
+        delete form.dataset.selectedTmdbId;
+        if (suggestion.anilistId) {
+          form.dataset.selectedAnilistId = suggestion.anilistId;
+        } else {
+          delete form.dataset.selectedAnilistId;
+        }
+        try {
+          const detail = await fetchAniListMetadata({ aniListId: suggestion.anilistId, title: suggestion.title, year: suggestionYear });
+          if (detail) {
+            form.__selectedMetadata = detail;
+            if (yearInput && detail.Year) {
+              const detailYear = extractPrimaryYear(detail.Year);
+              if (detailYear) yearInput.value = detailYear;
+            }
+            if (creatorInput && (!creatorInput.value || creatorInput.value === '') && detail.Director) {
+              creatorInput.value = detail.Director;
+            }
+          }
+        } catch (err) {
+          console.warn('Unable to prefill AniList metadata', err);
+        }
+      } else if (TMDB_API_KEY && suggestion.tmdbId) {
         try {
           const detail = await fetchTmdbMetadata(listType, {
             title: suggestion.title,
@@ -2139,6 +2310,7 @@ function setupFormAutocomplete(form, listType) {
     form.__selectedMetadata = null;
     delete form.dataset.selectedImdbId;
     delete form.dataset.selectedTmdbId;
+    delete form.dataset.selectedAnilistId;
     if (query.length < 3) {
       lastFetchToken++;
       hideTitleSuggestions(form);
@@ -2966,4 +3138,154 @@ function updateListStats(listType, entries) {
     return;
   }
   statsEl.textContent = `${count} item${count === 1 ? '' : 's'}`;
+}
+
+function sanitizeAniListDescription(text) {
+  if (!text) return '';
+  const normalized = text.replace(/<br\s*\/?>(\s|$)/gi, '\n');
+  const container = document.createElement('div');
+  container.innerHTML = normalized;
+  const stripped = container.textContent || container.innerText || '';
+  return stripped.replace(/\s+\n/g, '\n').replace(/\n{2,}/g, '\n\n').trim();
+}
+
+function pickAniListTitle(titleObj = {}) {
+  return titleObj.english || titleObj.romaji || titleObj.native || '';
+}
+
+function formatAnimeStatusLabel(value) {
+  if (!value) return '';
+  const normalized = String(value).toUpperCase();
+  const lookup = {
+    FINISHED: 'Finished',
+    RELEASING: 'Releasing',
+    NOT_YET_RELEASED: 'Coming Soon',
+    CANCELLED: 'Cancelled',
+    HIATUS: 'Hiatus'
+  };
+  return lookup[normalized] || value.toString().replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+}
+
+async function fetchAniListGraphQL(query, variables = {}) {
+  try {
+    const resp = await fetch(ANILIST_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(errText || 'AniList request failed');
+    }
+    const json = await resp.json();
+    if (json.errors) {
+      console.warn('AniList errors', json.errors);
+      return null;
+    }
+    return json.data || null;
+  } catch (err) {
+    console.warn('AniList request failed', err);
+    return null;
+  }
+}
+
+async function fetchAniListSuggestions(query) {
+  if (!query || query.length < 2) return [];
+  const gql = `
+    query ($search: String) {
+      Page(perPage: 10) {
+        media(search: $search, type: ANIME) {
+          id
+          title { romaji english native }
+          seasonYear
+          format
+          episodes
+          coverImage { medium }
+        }
+      }
+    }
+  `;
+  const data = await fetchAniListGraphQL(gql, { search: query });
+  if (!data || !data.Page || !Array.isArray(data.Page.media)) return [];
+  return data.Page.media.map(media => ({
+    source: 'anilist',
+    title: pickAniListTitle(media.title),
+    year: media.seasonYear || '',
+    anilistId: media.id,
+    format: media.format || '',
+    episodes: media.episodes || null,
+    poster: media.coverImage?.medium || '',
+  })).filter(entry => entry.title);
+}
+
+async function fetchAniListMetadata(lookup = {}) {
+  if (!lookup) return null;
+  const gql = `
+    query ($id: Int, $search: String) {
+      Media(id: $id, search: $search, type: ANIME) {
+        id
+        siteUrl
+        title { romaji english native }
+        description(asHtml: true)
+        seasonYear
+        episodes
+        duration
+        format
+        status
+        averageScore
+        coverImage { large extraLarge }
+        studios(isMain: true) { nodes { name } }
+        genres
+        tags { name rank }
+        externalLinks { language site }
+      }
+    }
+  `;
+  const variables = lookup.aniListId
+    ? { id: Number(lookup.aniListId) }
+    : { search: lookup.title || '' };
+  if (!variables.id && !variables.search) return null;
+  const data = await fetchAniListGraphQL(gql, variables);
+  if (!data || !data.Media) return null;
+  return mapAniListMediaToMetadata(data.Media);
+}
+
+function mapAniListMediaToMetadata(media) {
+  if (!media) return null;
+  const studioNames = Array.isArray(media.studios?.nodes)
+    ? media.studios.nodes.map(node => node && node.name).filter(Boolean)
+    : [];
+  const description = sanitizeAniListDescription(media.description || '');
+  const cover = media.coverImage?.extraLarge || media.coverImage?.large || '';
+  const duration = media.duration ? `${media.duration} min/ep` : '';
+  const genreList = Array.isArray(media.genres) ? media.genres.filter(Boolean) : [];
+  const englishLinks = Array.isArray(media.externalLinks)
+    ? media.externalLinks.some(link => (link?.language || '').toLowerCase().startsWith('en'))
+    : false;
+
+  return {
+    Title: pickAniListTitle(media.title),
+    Year: media.seasonYear ? String(media.seasonYear) : '',
+    Director: studioNames.join(', '),
+    Runtime: duration,
+    Poster: cover || 'N/A',
+    Plot: description,
+    imdbID: '',
+    imdbRating: media.averageScore ? (media.averageScore / 10).toFixed(1) : '',
+    Actors: '',
+    Type: 'anime',
+    OriginalLanguage: 'Japanese',
+    OriginalLanguageIso: 'ja',
+    EnglishDubAvailable: englishLinks,
+    AnimeEpisodes: media.episodes || '',
+    AnimeDuration: media.duration || '',
+    AnimeFormat: media.format || '',
+    AnimeStatus: media.status || '',
+    AnimeGenres: genreList,
+    AniListUrl: media.siteUrl || (media.id ? `https://anilist.co/anime/${media.id}` : ''),
+    AniListId: media.id || '',
+  };
 }

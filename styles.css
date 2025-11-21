@@ -160,6 +160,8 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .card.collapsible.movie-card:not(.expanded){padding:.85rem .95rem}
 .card.collapsible.movie-card:hover{border-color:#2a4055}
 .movie-card-summary{display:flex;flex-direction:column;align-items:center;gap:.45rem;text-align:center;width:100%}
+.anime-summary-badges{display:flex;flex-wrap:wrap;gap:.35rem;justify-content:center}
+.card.collapsible.movie-card.expanded .anime-summary-badges{justify-content:flex-start}
 .artwork-wrapper{display:flex;flex-direction:column;gap:.4rem;align-items:center}
 .card.collapsible.movie-card .artwork{width:90px;aspect-ratio:2 / 3;height:auto;margin:0}
 .card.collapsible.movie-card .artwork.placeholder{display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--text-500);padding:.4rem;text-align:center}
@@ -203,6 +205,10 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .movie-card-detail-stack{display:flex;flex-direction:column;gap:.5rem}
 .detail-block{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);padding:.7rem .85rem;border-radius:10px}
 .movie-card-details .notes.detail-block{border-color:rgba(255,255,255,0.08)}
+.anime-detail-block{display:flex;flex-direction:column;gap:.45rem}
+.anime-stats-row{display:flex;flex-wrap:wrap;gap:.4rem}
+.anime-chip{background:rgba(125,242,201,0.12);border:1px solid rgba(125,242,201,0.4);border-radius:999px;padding:.22rem .6rem;font-size:.78rem;color:var(--text-100)}
+.anime-genres{color:var(--text-300);font-size:.85rem}
 .collapsible-links{display:flex;flex-wrap:wrap;gap:.6rem}
 .collapsible-actions{display:flex;gap:.6rem;flex-wrap:wrap;justify-content:flex-end}
 .movie-card-details .notes{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);padding:.6rem .7rem;border-radius:10px}
