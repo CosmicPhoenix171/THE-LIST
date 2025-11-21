@@ -63,6 +63,8 @@ const ANIME_FRANCHISE_ALLOWED_FORMATS = new Set([
 ]);
 const ANIME_FRANCHISE_MAX_DEPTH = 4;
 const ANIME_FRANCHISE_MAX_ENTRIES = 25;
+const ANIME_FRANCHISE_SCAN_SERIES_LIMIT = 4;
+const ANIME_FRANCHISE_RESCAN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // -----------------------
 // App state
@@ -97,6 +99,14 @@ const sections = document.querySelectorAll('.section');
 const modalRoot = document.getElementById('modal-root');
 const wheelSpinnerEl = document.getElementById('wheel-spinner');
 const wheelResultEl = document.getElementById('wheel-result');
+const notificationCenter = document.getElementById('notification-center');
+
+let animeFranchiseScanTimer = null;
+let animeFranchiseScanInflight = false;
+let animeFranchiseLastScanSignature = '';
+let animeFranchiseLastScanTime = 0;
+let pendingAnimeScanData = null;
+const animeFranchiseMissingHashes = new Map();
 
 const tmEasterEgg = (() => {
   const sprites = [];
@@ -511,6 +521,90 @@ function promptAnimeFranchiseSelection(plan, { rootAniListId, title } = {}) {
   });
 }
 
+function pushNotification({ title, message, duration = 9000 } = {}) {
+  if (!title && !message) return;
+  if (!notificationCenter) {
+    const fallbackText = [title, message].filter(Boolean).join('\n');
+    if (fallbackText) alert(fallbackText);
+    return;
+  }
+  const card = document.createElement('div');
+  card.className = 'notification-card';
+  if (title) {
+    const titleEl = document.createElement('div');
+    titleEl.className = 'notification-title';
+    titleEl.textContent = title;
+    card.appendChild(titleEl);
+  }
+  if (message) {
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'notification-body';
+    bodyEl.textContent = message;
+    card.appendChild(bodyEl);
+  }
+  const footer = document.createElement('div');
+  footer.className = 'notification-footer';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'notification-close';
+  closeBtn.textContent = 'Dismiss';
+  footer.appendChild(closeBtn);
+  card.appendChild(footer);
+
+  notificationCenter.appendChild(card);
+  requestAnimationFrame(() => card.classList.add('visible'));
+
+  let dismissed = false;
+  let timerId = null;
+
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
+    card.classList.remove('visible');
+    setTimeout(() => {
+      if (card.parentNode) card.parentNode.removeChild(card);
+    }, 240);
+  };
+
+  timerId = setTimeout(dismiss, Math.max(4000, duration));
+
+  card.addEventListener('mouseenter', () => {
+    if (timerId) {
+      clearTimeout(timerId);
+      timerId = null;
+    }
+  });
+  card.addEventListener('mouseleave', () => {
+    if (!dismissed && !timerId) {
+      timerId = setTimeout(dismiss, 2500);
+    }
+  });
+
+  closeBtn.addEventListener('click', dismiss);
+}
+
+function showAnimeFranchiseNotification(seriesName, missingEntries) {
+  if (!Array.isArray(missingEntries) || missingEntries.length === 0) return;
+  const sampleTitles = missingEntries
+    .map(entry => entry && entry.title)
+    .filter(Boolean)
+    .slice(0, 3);
+  const extra = missingEntries.length - sampleTitles.length;
+  const segments = [];
+  if (sampleTitles.length) {
+    segments.push(sampleTitles.join(', '));
+  }
+  if (extra > 0) {
+    segments.push(`+${extra} more`);
+  }
+  const summary = segments.join(' | ');
+  const body = summary
+    ? `${summary} ready to add from AniList. Use the anime Add form to pull them in.`
+    : 'New related entries are available on AniList. Use the anime Add form to pull them in.';
+  const heading = seriesName ? `New entries for ${seriesName}` : 'New anime entries found';
+  pushNotification({ title: heading, message: body });
+}
+
 function signOut() {
   safeStorageRemove(INTRO_SESSION_KEY);
   fbSignOut(auth).catch(err => console.error('Sign-out error', err));
@@ -680,6 +774,9 @@ function loadList(listType) {
     const data = snap.val() || {};
     renderList(listType, data);
     maybeRefreshMetadata(listType, data);
+    if (listType === 'anime') {
+      scheduleAnimeFranchiseScan(data);
+    }
   }, (err) => {
     console.error('DB read error', err);
     listContainer.innerHTML = '<div class="small">Unable to load items.</div>';
@@ -3691,5 +3788,104 @@ async function autoAddAnimeFranchiseEntries(plan, rootAniListId, selectedIds) {
     try {
       console.info(`[AniList] Auto-added ${addedCount} related anime entries for "${plan.seriesName}"`);
     } catch (_) {}
+  }
+}
+
+function getAniListIdFromItem(item) {
+  if (!item) return '';
+  const value = item.aniListId || item.anilistId || item.AniListId || (item.metadata && (item.metadata.AniListId || item.metadata.anilistId));
+  return value ? String(value) : '';
+}
+
+function computeAnimeDatasetSignature(data) {
+  const ids = Object.values(data || {})
+    .map(item => getAniListIdFromItem(item))
+    .filter(Boolean)
+    .sort();
+  return ids.join(',');
+}
+
+function buildAnimeFranchiseSeriesMap(data) {
+  const map = new Map();
+  Object.values(data || {}).forEach(item => {
+    const aniListId = getAniListIdFromItem(item);
+    if (!aniListId) return;
+    const rawSeries = typeof item.seriesName === 'string' ? item.seriesName.trim() : '';
+    const seriesKey = rawSeries ? normalizeTitleKey(rawSeries) : `__solo_${aniListId}`;
+    if (!map.has(seriesKey)) {
+      map.set(seriesKey, {
+        seriesName: rawSeries || item.title || '',
+        representativeId: aniListId,
+        items: [],
+      });
+    }
+    const bucket = map.get(seriesKey);
+    bucket.items.push(item);
+    if (!bucket.representativeId && aniListId) {
+      bucket.representativeId = aniListId;
+    }
+  });
+  return map;
+}
+
+function scheduleAnimeFranchiseScan(data) {
+  pendingAnimeScanData = data;
+  const signature = computeAnimeDatasetSignature(data);
+  const now = Date.now();
+  const shouldRun = signature !== animeFranchiseLastScanSignature
+    || (now - animeFranchiseLastScanTime) > ANIME_FRANCHISE_RESCAN_INTERVAL_MS;
+  if (!shouldRun) return;
+  animeFranchiseLastScanSignature = signature;
+  if (animeFranchiseScanTimer) {
+    clearTimeout(animeFranchiseScanTimer);
+  }
+  animeFranchiseScanTimer = setTimeout(() => {
+    animeFranchiseScanTimer = null;
+    animeFranchiseLastScanTime = Date.now();
+    runAnimeFranchiseScan(pendingAnimeScanData);
+  }, 1000);
+}
+
+async function runAnimeFranchiseScan(data) {
+  if (animeFranchiseScanInflight) return;
+  animeFranchiseScanInflight = true;
+  try {
+    if (!data || typeof data !== 'object') return;
+    const seriesMap = buildAnimeFranchiseSeriesMap(data);
+    if (!seriesMap.size) return;
+    let scanned = 0;
+    for (const [seriesKey, info] of seriesMap.entries()) {
+      if (scanned >= ANIME_FRANCHISE_SCAN_SERIES_LIMIT) break;
+      const aniListId = info.representativeId;
+      if (!aniListId) continue;
+      scanned++;
+      let plan;
+      try {
+        plan = await fetchAniListFranchisePlan({
+          aniListId,
+          preferredSeriesName: info.seriesName,
+        });
+      } catch (err) {
+        console.warn('AniList franchise scan failed', err);
+        continue;
+      }
+      if (!plan || !Array.isArray(plan.entries) || !plan.entries.length) continue;
+      const existingIds = new Set(info.items.map(getAniListIdFromItem).filter(Boolean).map(String));
+      const missingEntries = plan.entries.filter(entry => entry && entry.aniListId && !existingIds.has(String(entry.aniListId)));
+      if (!missingEntries.length) {
+        animeFranchiseMissingHashes.delete(seriesKey);
+        continue;
+      }
+      const missingHash = missingEntries
+        .map(entry => String(entry.aniListId))
+        .sort()
+        .join(',');
+      const previousHash = animeFranchiseMissingHashes.get(seriesKey);
+      if (previousHash === missingHash) continue;
+      animeFranchiseMissingHashes.set(seriesKey, missingHash);
+      showAnimeFranchiseNotification(plan.seriesName || info.seriesName, missingEntries);
+    }
+  } finally {
+    animeFranchiseScanInflight = false;
   }
 }
