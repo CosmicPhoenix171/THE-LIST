@@ -50,7 +50,8 @@ const ANIME_FRANCHISE_RELATION_TYPES = new Set([
   'COMPILATION',
   'CONTAINS',
   'PARENT',
-  'CHILD'
+  'CHILD',
+  'OTHER'
 ]);
 const ANIME_FRANCHISE_ALLOWED_FORMATS = new Set([
   'TV',
@@ -60,7 +61,7 @@ const ANIME_FRANCHISE_ALLOWED_FORMATS = new Set([
   'MOVIE',
   'SPECIAL'
 ]);
-const ANIME_FRANCHISE_MAX_DEPTH = 2;
+const ANIME_FRANCHISE_MAX_DEPTH = 4;
 const ANIME_FRANCHISE_MAX_ENTRIES = 25;
 
 // -----------------------
