@@ -282,11 +282,30 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 @keyframes introTmReveal{0%{opacity:0;transform:translateY(-16px)}100%{opacity:1;transform:translateY(0)}}
 
 #tm-rain-layer{position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden}
-.tm-sprite{position:absolute;left:0;top:0;transform:translate(-50%,-50%);font-weight:900;color:var(--accent-300);text-shadow:0 4px 14px rgba(125,242,201,0.4);will-change:transform;user-select:none}
-.tm-sprite:nth-child(4n+1){color:#80ffea;text-shadow:0 4px 12px rgba(128,255,234,0.55)}
-.tm-sprite:nth-child(4n+2){color:#9ab7ff;text-shadow:0 4px 12px rgba(154,183,255,0.5)}
-.tm-sprite:nth-child(4n+3){color:#ffc2ef;text-shadow:0 4px 12px rgba(255,194,239,0.45)}
-.tm-sprite{transition:color .3s ease,text-shadow .3s ease}
+.tm-sprite{
+  position:absolute;
+  left:0;
+  top:0;
+  transform:translate(-50%,-50%);
+  font-weight:900;
+  color:#ff0080;
+  text-shadow:0 0 18px rgba(255,0,128,0.45);
+  will-change:transform;
+  user-select:none;
+  animation:tmRainbow 4.8s linear infinite;
+  transition:color .3s ease,text-shadow .3s ease;
+}
+.tm-sprite.tm-themed{animation:none}
+
+@keyframes tmRainbow{
+  0%{color:#ff2679;text-shadow:0 0 18px rgba(255,38,121,0.5)}
+  16%{color:#ff8a2b;text-shadow:0 0 18px rgba(255,138,43,0.5)}
+  32%{color:#ffe22b;text-shadow:0 0 18px rgba(255,226,43,0.5)}
+  48%{color:#5dff84;text-shadow:0 0 18px rgba(93,255,132,0.55)}
+  64%{color:#2ed8ff;text-shadow:0 0 18px rgba(46,216,255,0.55)}
+  80%{color:#8c6dff;text-shadow:0 0 18px rgba(140,109,255,0.55)}
+  100%{color:#ff2679;text-shadow:0 0 18px rgba(255,38,121,0.5)}
+}
 
 /* modal styles */
 .modal-backdrop{position:fixed;inset:0;background:rgba(8,13,20,0.75);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}

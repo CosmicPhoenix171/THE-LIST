@@ -213,11 +213,14 @@ const tmEasterEgg = (() => {
     el.className = 'tm-sprite';
     el.textContent = theme && theme.text ? theme.text : '™';
     el.style.fontSize = `${size}px`;
-    if (theme && theme.color) {
-      el.style.color = theme.color;
-    }
-    if (theme && theme.glow) {
-      el.style.textShadow = theme.glow;
+    if (theme) {
+      el.classList.add('tm-themed');
+      if (theme.color) {
+        el.style.color = theme.color;
+      }
+      if (theme.glow) {
+        el.style.textShadow = theme.glow;
+      }
     }
     el.style.setProperty('--tm-spin', `${sprite.spin}deg`);
     layer.appendChild(el);
