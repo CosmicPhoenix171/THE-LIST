@@ -66,6 +66,14 @@ const ANIME_FRANCHISE_MAX_ENTRIES = 25;
 const ANIME_FRANCHISE_SCAN_SERIES_LIMIT = 4;
 const ANIME_FRANCHISE_RESCAN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const ANIME_FRANCHISE_IGNORE_KEY = '__THE_LIST_ANIME_IGNORE__';
+const ANIME_STATUS_PRIORITY = {
+  RELEASING: 6,
+  NOT_YET_RELEASED: 5,
+  HIATUS: 4,
+  CANCELLED: 3,
+  FINISHED: 2,
+  UNKNOWN: 1,
+};
 
 // -----------------------
 // App state
@@ -1065,16 +1073,16 @@ function renderMovieCardContent(card, listType, cardId, item, entryId = cardId) 
   if (!card) return;
   card.dataset.entryId = entryId;
   card.querySelectorAll('.movie-card-summary, .movie-card-details').forEach(el => el.remove());
-  const summary = buildMovieCardSummary(listType, item);
+  const summary = buildMovieCardSummary(listType, item, { cardId, entryId });
   const details = buildMovieCardDetails(listType, cardId, entryId, item);
   card.insertBefore(summary, card.firstChild || null);
   card.appendChild(details);
 }
 
-function buildMovieCardSummary(listType, item) {
+function buildMovieCardSummary(listType, item, context = {}) {
   const summary = createEl('div', 'movie-card-summary');
   summary.appendChild(buildMovieArtwork(item));
-  summary.appendChild(buildMovieCardInfo(listType, item));
+  summary.appendChild(buildMovieCardInfo(listType, item, context));
   return summary;
 }
 
@@ -1095,7 +1103,7 @@ function buildMovieArtwork(item) {
   return wrapper;
 }
 
-function buildMovieCardInfo(listType, item) {
+function buildMovieCardInfo(listType, item, context = {}) {
   const info = createEl('div', 'movie-card-info');
   const header = createEl('div', 'movie-card-header');
   const title = createEl('div', 'title', { text: item.title || '(no title)' });
@@ -1103,19 +1111,30 @@ function buildMovieCardInfo(listType, item) {
   info.appendChild(header);
 
   if (listType === 'anime') {
-    const badges = buildAnimeSummaryBadges(item);
+    const badges = buildAnimeSummaryBadges(item, context);
     if (badges) info.appendChild(badges);
   }
 
   return info;
 }
 
-function buildAnimeSummaryBadges(item) {
+function buildAnimeSummaryBadges(item, context = {}) {
   if (!item) return null;
+  const metrics = deriveAnimeSeriesMetrics('anime', context.cardId, item);
+  if (!metrics) return null;
   const chips = [];
-  if (item.animeFormat) chips.push(formatAnimeFormatLabel(item.animeFormat));
-  if (item.animeEpisodes) chips.push(`${item.animeEpisodes} ep`);
-  if (item.animeStatus) chips.push(formatAnimeStatusLabel(item.animeStatus));
+  if (metrics.formatLabels.length) {
+    chips.push(metrics.formatLabels.join(' / '));
+  }
+  if (metrics.movieCount > 0) {
+    chips.push(`${metrics.movieCount} movie${metrics.movieCount === 1 ? '' : 's'}`);
+  }
+  if (metrics.totalEpisodes > 0) {
+    chips.push(`${metrics.totalEpisodes} ep total`);
+  }
+  if (metrics.statusLabel) {
+    chips.push(formatAnimeStatusLabel(metrics.statusLabel));
+  }
   if (!chips.length) return null;
   const row = createEl('div', 'anime-summary-badges');
   chips.forEach(text => row.appendChild(createEl('span', 'anime-chip', { text })));
@@ -1125,6 +1144,60 @@ function buildAnimeSummaryBadges(item) {
 function formatAnimeFormatLabel(value) {
   if (!value) return '';
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+}
+
+function deriveAnimeSeriesMetrics(listType, cardId, fallbackItem) {
+  const normalizedListType = listType || 'anime';
+  let entries = [];
+  if (cardId && normalizedListType === 'anime') {
+    const groupEntries = getSeriesGroupEntries(normalizedListType, cardId);
+    if (groupEntries && groupEntries.length) {
+      entries = groupEntries.map(entry => entry && entry.item).filter(Boolean);
+    }
+  }
+  if (!entries.length && fallbackItem) {
+    entries = [fallbackItem];
+  }
+  if (!entries.length) return null;
+
+  const formatLabels = new Map();
+  let movieCount = 0;
+  let totalEpisodes = 0;
+  let bestStatus = '';
+  let bestPriority = -1;
+
+  entries.forEach(entry => {
+    if (!entry) return;
+    const rawFormat = entry.animeFormat || entry.imdbType || '';
+    if (rawFormat) {
+      const normalized = String(rawFormat).toUpperCase();
+      if (!formatLabels.has(normalized)) {
+        formatLabels.set(normalized, formatAnimeFormatLabel(rawFormat));
+      }
+      if (normalized === 'MOVIE') {
+        movieCount++;
+      }
+    }
+    const epValue = Number(entry.animeEpisodes || entry.episodes);
+    if (Number.isFinite(epValue) && epValue > 0) {
+      totalEpisodes += epValue;
+    }
+    const status = (entry.animeStatus || entry.status || '').toUpperCase();
+    if (status) {
+      const priority = ANIME_STATUS_PRIORITY[status] || 0;
+      if (priority > bestPriority) {
+        bestPriority = priority;
+        bestStatus = status;
+      }
+    }
+  });
+
+  return {
+    formatLabels: Array.from(formatLabels.values()),
+    movieCount,
+    totalEpisodes,
+    statusLabel: bestStatus,
+  };
 }
 
 function buildMovieCardDetails(listType, cardId, entryId, item) {
