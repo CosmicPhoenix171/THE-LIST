@@ -37,6 +37,8 @@ const firebaseConfig = {
 // TMDb API powers metadata, autocomplete, and franchise info (recommended)
 // Create a key at https://www.themoviedb.org/settings/api and paste it here.
 const TMDB_API_KEY = '46dcf1eaa2ce4284037a00fdefca9bb8';
+const GOOGLE_BOOKS_API_KEY = '';
+const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
 const ANILIST_API_URL = 'https://graphql.anilist.co';
 const METADATA_SCHEMA_VERSION = 3;
 const APP_VERSION = 'test-pages-2025.11.15';
@@ -87,7 +89,7 @@ const expandedCards = { movies: new Set() };
 const sortModes = { movies: 'title', tvShows: 'title', anime: 'title', books: 'title' };
 const listCaches = {};
 const metadataRefreshInflight = new Set();
-const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
+const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
 const seriesGroups = {};
@@ -1543,6 +1545,7 @@ function buildStandardMetaText(listType, item) {
   if (item.year) metaParts.push(item.year);
   if (listType === 'books') {
     if (item.author) metaParts.push(item.author);
+    if (item.pageCount) metaParts.push(`${item.pageCount} pages`);
   } else {
     if (item.director) metaParts.push(item.director);
     if (item.imdbRating) metaParts.push(`IMDb ${item.imdbRating}`);
@@ -1564,6 +1567,9 @@ function appendMediaLinks(container, item) {
   }
   if (item.trailerUrl) {
     links.push({ href: item.trailerUrl, label: 'Watch Trailer' });
+  }
+  if (item.previewLink) {
+    links.push({ href: item.previewLink, label: 'Preview Book' });
   }
   links.forEach(link => {
     const anchor = createEl('a', 'meta-link', { text: link.label });
@@ -1727,15 +1733,20 @@ async function addItemFromForm(listType, form) {
     const selectedImdbId = form.dataset.selectedImdbId || '';
     const selectedTmdbId = form.dataset.selectedTmdbId || '';
     const selectedAniListId = form.dataset.selectedAnilistId || '';
-    const supportsMetadata = ['movies', 'tvShows', 'anime'].includes(listType);
+    const selectedGoogleBookId = form.dataset.selectedGoogleBookId || '';
+    const selectedGoogleIsbn = form.dataset.selectedGoogleIsbn || '';
+    const supportsMetadata = ['movies', 'tvShows', 'anime', 'books'].includes(listType);
     const useAniList = listType === 'anime';
-    const hasMetadataProvider = useAniList || Boolean(TMDB_API_KEY);
+    const useGoogleBooks = listType === 'books';
+    const hasMetadataProvider = useAniList || useGoogleBooks || Boolean(TMDB_API_KEY);
     let animeFranchisePlan = null;
     let animeFranchiseSelectionIds = null;
     let aniListTargetId = useAniList ? (selectedAniListId || '') : '';
     if (!metadata && supportsMetadata) {
       if (useAniList) {
         metadata = await fetchAniListMetadata({ aniListId: selectedAniListId, title, year });
+      } else if (useGoogleBooks) {
+        metadata = await fetchGoogleBooksMetadata({ volumeId: selectedGoogleBookId, title, author: creatorValue, isbn: selectedGoogleIsbn });
       } else if (!hasMetadataProvider) {
         maybeWarnAboutTmdbKey();
       } else {
@@ -1869,6 +1880,8 @@ async function addItemFromForm(listType, form) {
     delete form.dataset.selectedImdbId;
     delete form.dataset.selectedTmdbId;
     delete form.dataset.selectedAnilistId;
+    delete form.dataset.selectedGoogleBookId;
+    delete form.dataset.selectedGoogleIsbn;
     hideTitleSuggestions(form);
   } catch (err) {
     console.error('Unable to add item', err);
@@ -1988,16 +2001,20 @@ function titleSortKey(title) {
 function buildComparisonSignature(item) {
   if (!item) return null;
   const imdbId = item.imdbId || item.imdbID || '';
+  const googleBooksId = item.googleBooksId || item.GoogleBooksId || '';
   const title = normalizeTitleKey(item.title || item.Title || '');
   const year = sanitizeYear(item.year || item.Year || '');
   const series = normalizeTitleKey(item.seriesName || '');
   const order = item.seriesOrder !== undefined && item.seriesOrder !== null ? item.seriesOrder : null;
-  return { imdbId, title, year, series, order };
+  return { imdbId, googleBooksId, title, year, series, order };
 }
 
 function signaturesMatch(candidate, existing) {
   if (!candidate || !existing) return false;
   if (candidate.imdbId && existing.imdbId && candidate.imdbId === existing.imdbId) {
+    return true;
+  }
+  if (candidate.googleBooksId && existing.googleBooksId && candidate.googleBooksId === existing.googleBooksId) {
     return true;
   }
   if (candidate.title && existing.title) {
@@ -2184,6 +2201,9 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
   const directorFromApi = metadata.Director && metadata.Director !== 'N/A' ? metadata.Director : '';
   setField('director', directorFromApi);
 
+  const authorFromApi = metadata.Author && metadata.Author !== 'N/A' ? metadata.Author : '';
+  setField('author', authorFromApi);
+
   const imdbIdValue = metadata.imdbID && metadata.imdbID !== 'N/A' ? metadata.imdbID : '';
   setField('imdbId', imdbIdValue);
   if (imdbIdValue) {
@@ -2260,6 +2280,31 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
 
   const tmdbIdValue = metadata.TmdbID && metadata.TmdbID !== 'N/A' ? metadata.TmdbID : (metadata.TmdbId || '');
   setField('tmdbId', tmdbIdValue);
+
+  if (metadata.PageCount !== undefined && metadata.PageCount !== null && metadata.PageCount !== '') {
+    setField('pageCount', metadata.PageCount);
+  }
+  if (Array.isArray(metadata.Categories) && metadata.Categories.length) {
+    setField('bookCategories', metadata.Categories);
+  }
+  if (metadata.Publisher) {
+    setField('publisher', metadata.Publisher);
+  }
+  if (metadata.PreviewLink) {
+    setField('previewLink', metadata.PreviewLink);
+  }
+  if (metadata.GoogleBooksId) {
+    setField('googleBooksId', metadata.GoogleBooksId);
+  }
+  if (metadata.GoogleBooksUrl) {
+    setField('googleBooksUrl', metadata.GoogleBooksUrl);
+  }
+  if (metadata.AverageRating) {
+    setField('averageRating', metadata.AverageRating);
+  }
+  if (metadata.isbn) {
+    setField('isbn', metadata.isbn);
+  }
 
   const effectiveTitle = (metadata.Title && metadata.Title !== 'N/A') ? metadata.Title : fallbackTitle;
   const effectiveYear = apiYear || fallbackYear;
@@ -2564,6 +2609,11 @@ function renderTitleSuggestions(container, suggestions, onSelect) {
     note.className = 'suggestions-note';
     note.textContent = 'Suggestions powered by AniList.';
     container.appendChild(note);
+  } else if (provider === 'googleBooks') {
+    const note = document.createElement('div');
+    note.className = 'suggestions-note';
+    note.textContent = 'Suggestions powered by Google Books.';
+    container.appendChild(note);
   }
 
   suggestions.forEach(suggestion => {
@@ -2641,7 +2691,8 @@ function setupFormAutocomplete(form, listType) {
   }
 
   const useAniList = listType === 'anime';
-  const hasSuggestionProvider = useAniList || Boolean(TMDB_API_KEY);
+  const useGoogleBooks = listType === 'books';
+  const hasSuggestionProvider = useAniList || useGoogleBooks || Boolean(TMDB_API_KEY);
   if (!hasSuggestionProvider) {
     maybeWarnAboutTmdbKey();
     return;
@@ -2665,7 +2716,9 @@ function setupFormAutocomplete(form, listType) {
     const currentToken = ++lastFetchToken;
     const results = useAniList
       ? await fetchAniListSuggestions(query)
-      : await fetchTmdbSuggestions(listType, query);
+      : useGoogleBooks
+        ? await fetchGoogleBooksSuggestions(query)
+        : await fetchTmdbSuggestions(listType, query);
     if (currentToken !== lastFetchToken) return;
     renderTitleSuggestions(suggestionsEl, results, async (suggestion) => {
       titleInput.value = suggestion.title || '';
@@ -2674,14 +2727,14 @@ function setupFormAutocomplete(form, listType) {
         yearInput.value = suggestionYear;
       }
       form.__selectedMetadata = null;
-      if (!useAniList && suggestion.imdbID) {
+      if (!useAniList && !useGoogleBooks && suggestion.imdbID) {
         form.dataset.selectedImdbId = suggestion.imdbID;
-      } else if (!useAniList) {
+      } else if (!useAniList && !useGoogleBooks) {
         delete form.dataset.selectedImdbId;
       }
-      if (!useAniList && suggestion.tmdbId) {
+      if (!useAniList && !useGoogleBooks && suggestion.tmdbId) {
         form.dataset.selectedTmdbId = suggestion.tmdbId;
-      } else if (!useAniList) {
+      } else if (!useAniList && !useGoogleBooks) {
         delete form.dataset.selectedTmdbId;
       }
       if (useAniList) {
@@ -2706,6 +2759,40 @@ function setupFormAutocomplete(form, listType) {
           }
         } catch (err) {
           console.warn('Unable to prefill AniList metadata', err);
+        }
+      } else if (useGoogleBooks) {
+        delete form.dataset.selectedImdbId;
+        delete form.dataset.selectedTmdbId;
+        delete form.dataset.selectedAnilistId;
+        if (suggestion.googleBooksId) {
+          form.dataset.selectedGoogleBookId = suggestion.googleBooksId;
+        } else {
+          delete form.dataset.selectedGoogleBookId;
+        }
+        if (suggestion.isbn) {
+          form.dataset.selectedGoogleIsbn = suggestion.isbn;
+        } else {
+          delete form.dataset.selectedGoogleIsbn;
+        }
+        try {
+          const detail = await fetchGoogleBooksMetadata({
+            volumeId: suggestion.googleBooksId,
+            title: suggestion.title,
+            author: suggestion.author,
+            isbn: suggestion.isbn,
+          });
+          if (detail) {
+            form.__selectedMetadata = detail;
+            if (yearInput && detail.Year) {
+              const detailYear = extractPrimaryYear(detail.Year);
+              if (detailYear) yearInput.value = detailYear;
+            }
+            if (creatorInput && (!creatorInput.value || creatorInput.value === '') && detail.Author) {
+              creatorInput.value = detail.Author;
+            }
+          }
+        } catch (err) {
+          console.warn('Unable to prefill Google Books metadata', err);
         }
       } else if (TMDB_API_KEY && suggestion.tmdbId) {
         try {
@@ -2741,6 +2828,8 @@ function setupFormAutocomplete(form, listType) {
     delete form.dataset.selectedImdbId;
     delete form.dataset.selectedTmdbId;
     delete form.dataset.selectedAnilistId;
+    delete form.dataset.selectedGoogleBookId;
+    delete form.dataset.selectedGoogleIsbn;
     if (query.length < 3) {
       lastFetchToken++;
       hideTitleSuggestions(form);
@@ -4054,4 +4143,142 @@ async function runAnimeFranchiseScan(data) {
   } finally {
     animeFranchiseScanInflight = false;
   }
+}
+
+function buildGoogleBooksQuery(search) {
+  if (!search) return '';
+  const trimmed = search.trim();
+  return trimmed || '';
+}
+
+function pickGoogleBooksThumbnail(images = {}) {
+  return images.extraLarge || images.large || images.medium || images.thumbnail || images.smallThumbnail || images.small || images.tiny || '';
+}
+
+function normalizeGoogleBooksAuthors(authors) {
+  if (!Array.isArray(authors)) return '';
+  return authors.filter(Boolean).join(', ');
+}
+
+function extractGoogleBooksIsbn(volumeInfo) {
+  const identifiers = Array.isArray(volumeInfo?.industryIdentifiers) ? volumeInfo.industryIdentifiers : [];
+  const isbn13 = identifiers.find(id => id && id.type === 'ISBN_13');
+  if (isbn13 && isbn13.identifier) return isbn13.identifier;
+  const isbn10 = identifiers.find(id => id && id.type === 'ISBN_10');
+  if (isbn10 && isbn10.identifier) return isbn10.identifier;
+  return '';
+}
+
+function mapGoogleVolumeToSuggestion(volume) {
+  if (!volume || !volume.volumeInfo) return null;
+  const info = volume.volumeInfo;
+  const title = info.title || '';
+  if (!title) return null;
+  return {
+    source: 'googleBooks',
+    title,
+    year: extractPrimaryYear(info.publishedDate || ''),
+    author: normalizeGoogleBooksAuthors(info.authors),
+    googleBooksId: volume.id || '',
+    isbn: extractGoogleBooksIsbn(info),
+    poster: pickGoogleBooksThumbnail(info.imageLinks || {}),
+    pageCount: info.pageCount || null,
+  };
+}
+
+async function fetchGoogleBooksSuggestions(query) {
+  const q = buildGoogleBooksQuery(query);
+  if (!q) return [];
+  const params = new URLSearchParams({
+    q,
+    printType: 'books',
+    maxResults: '10',
+    orderBy: 'relevance',
+    fields: 'items(id,volumeInfo/title,volumeInfo/authors,volumeInfo/publishedDate,volumeInfo/imageLinks,volumeInfo/industryIdentifiers,volumeInfo/pageCount)'
+  });
+  if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
+  let payload;
+  try {
+    const resp = await fetch(`${GOOGLE_BOOKS_API_URL}/volumes?${params.toString()}`);
+    if (!resp.ok) return [];
+    payload = await resp.json();
+  } catch (err) {
+    console.warn('Google Books suggestion fetch failed', err);
+    return [];
+  }
+  if (!payload || !Array.isArray(payload.items)) return [];
+  return payload.items
+    .map(mapGoogleVolumeToSuggestion)
+    .filter(Boolean);
+}
+
+function mapGoogleVolumeToMetadata(volume) {
+  if (!volume || !volume.volumeInfo) return null;
+  const info = volume.volumeInfo;
+  const authors = normalizeGoogleBooksAuthors(info.authors);
+  const categories = Array.isArray(info.categories) ? info.categories.filter(Boolean) : [];
+  return {
+    Title: info.title || '',
+    Year: extractPrimaryYear(info.publishedDate || ''),
+    Author: authors,
+    Plot: info.description || '',
+    Poster: pickGoogleBooksThumbnail(info.imageLinks || {}) || 'N/A',
+    PageCount: info.pageCount || '',
+    Categories: categories,
+    Publisher: info.publisher || '',
+    PreviewLink: info.previewLink || info.infoLink || volume.selfLink || '',
+    AverageRating: info.averageRating || '',
+    GoogleBooksId: volume.id || '',
+    GoogleBooksUrl: info.infoLink || volume.selfLink || '',
+    isbn: extractGoogleBooksIsbn(info),
+  };
+}
+
+async function fetchGoogleBooksVolumeById(volumeId) {
+  if (!volumeId) return null;
+  try {
+    const params = new URLSearchParams();
+    if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
+    const resp = await fetch(`${GOOGLE_BOOKS_API_URL}/volumes/${volumeId}?${params.toString()}`);
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch (err) {
+    console.warn('Google Books volume fetch failed', err);
+    return null;
+  }
+}
+
+async function fetchGoogleBooksMetadata(lookup = {}) {
+  if (!lookup) return null;
+  const { volumeId, title, author, isbn } = lookup;
+  let volume = null;
+  if (volumeId) {
+    volume = await fetchGoogleBooksVolumeById(volumeId);
+  }
+  if (!volume) {
+    const terms = [];
+    if (isbn) terms.push(`isbn:${isbn}`);
+    if (title) terms.push(title);
+    if (author) terms.push(`inauthor:${author}`);
+    const query = terms.join(' ');
+    const params = new URLSearchParams({
+      q: query || title || author || '',
+      printType: 'books',
+      maxResults: '5',
+    });
+    if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
+    try {
+      const resp = await fetch(`${GOOGLE_BOOKS_API_URL}/volumes?${params.toString()}`);
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json && Array.isArray(json.items) && json.items.length) {
+          volume = json.items[0];
+        }
+      }
+    } catch (err) {
+      console.warn('Google Books metadata search failed', err);
+    }
+  }
+  if (!volume) return null;
+  return mapGoogleVolumeToMetadata(volume);
 }
