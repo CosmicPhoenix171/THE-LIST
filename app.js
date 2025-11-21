@@ -55,8 +55,9 @@ const metadataRefreshInflight = new Set();
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
-const seriesGroups = { movies: new Map() };
+const seriesGroups = {};
 const seriesCarouselState = { movies: new Map() };
+const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
 
@@ -639,8 +640,8 @@ function renderList(listType, data) {
     if (ta < tb) return -1; if (ta > tb) return 1; return 0;
   });
 
-  if (listType === 'movies') {
-    renderMoviesGrid(container, filtered);
+  if (isCollapsibleList(listType)) {
+    renderCollapsibleMediaGrid(listType, container, filtered);
     return;
   }
 
@@ -649,6 +650,10 @@ function renderList(listType, data) {
   if (listType in expandedCards) {
     updateCollapsibleCardStates(listType);
   }
+}
+
+function isCollapsibleList(listType) {
+  return COLLAPSIBLE_LISTS.has(listType);
 }
 
 function listSupportsActorFilter(listType) {
@@ -673,7 +678,7 @@ function matchesActorFilter(listType, item, filterValue = null) {
   return fallback.includes(activeFilter);
 }
 
-function renderMoviesGrid(container, entries) {
+function renderCollapsibleMediaGrid(listType, container, entries) {
   const grid = createEl('div', 'movies-grid');
   const visibleIds = new Set();
   const seriesBuckets = new Map(); // seriesKey -> { entries: [] }
@@ -709,7 +714,7 @@ function renderMoviesGrid(container, entries) {
       leaderMembersByCardId.set(leader.id, compactEntries);
     }
   });
-  seriesGroups.movies = leaderMembersByCardId;
+  seriesGroups[listType] = leaderMembersByCardId;
 
   records.forEach(record => {
     const { id, item, index, seriesKey } = record;
@@ -719,14 +724,14 @@ function renderMoviesGrid(container, entries) {
     let displayEntryId = id;
     if (!hideCard && bucket && bucket.leaderId === id) {
       const entries = leaderMembersByCardId.get(id) || [];
-      const active = resolveSeriesDisplayEntry('movies', id, entries);
+      const active = resolveSeriesDisplayEntry(listType, id, entries);
       if (active && active.item) {
         displayItem = active.item;
         displayEntryId = active.id;
       }
     }
     visibleIds.add(id);
-    grid.appendChild(buildCollapsibleMovieCard(id, displayItem, index, {
+    grid.appendChild(buildCollapsibleMovieCard(listType, id, displayItem, index, {
       hideCard,
       displayEntryId,
     }));
@@ -734,14 +739,14 @@ function renderMoviesGrid(container, entries) {
 
   container.appendChild(grid);
 
-  const expandedSet = ensureExpandedSet('movies');
+  const expandedSet = ensureExpandedSet(listType);
   expandedSet.forEach(cardId => {
     if (!visibleIds.has(cardId)) {
       expandedSet.delete(cardId);
     }
   });
 
-  const carouselStore = ensureSeriesCarouselStore('movies');
+  const carouselStore = ensureSeriesCarouselStore(listType);
   const leaderIds = new Set(leaderMembersByCardId.keys());
   carouselStore.forEach((_, key) => {
     if (!leaderIds.has(key)) {
@@ -749,7 +754,7 @@ function renderMoviesGrid(container, entries) {
     }
   });
 
-  updateCollapsibleCardStates('movies');
+  updateCollapsibleCardStates(listType);
 }
 
 function renderStandardList(container, listType, entries) {
@@ -759,7 +764,7 @@ function renderStandardList(container, listType, entries) {
   });
 }
 
-function buildCollapsibleMovieCard(id, item, positionIndex = 0, options = {}) {
+function buildCollapsibleMovieCard(listType, id, item, positionIndex = 0, options = {}) {
   const { hideCard = false, displayEntryId = id, interactive = true } = options;
   const card = createEl('div', 'card collapsible movie-card');
   card.dataset.id = id;
@@ -768,13 +773,13 @@ function buildCollapsibleMovieCard(id, item, positionIndex = 0, options = {}) {
   if (hideCard) {
     card.classList.add('series-hidden');
   }
-  if (ensureExpandedSet('movies').has(id)) {
+  if (ensureExpandedSet(listType).has(id)) {
     card.classList.add('expanded');
   }
   if (interactive) {
-    card.addEventListener('click', () => toggleCardExpansion('movies', id));
+    card.addEventListener('click', () => toggleCardExpansion(listType, id));
   }
-  renderMovieCardContent(card, 'movies', id, item, displayEntryId);
+  renderMovieCardContent(card, listType, id, item, displayEntryId);
   return card;
 }
 
@@ -862,7 +867,7 @@ function buildMovieCardDetails(listType, cardId, entryId, item) {
     details.appendChild(createEl('div', 'notes detail-block', { text: item.notes }));
   }
 
-  if (listType === 'movies') {
+  if (isCollapsibleList(listType)) {
     const seriesBlock = buildSeriesCarouselBlock(listType, cardId);
     if (seriesBlock) {
       details.appendChild(seriesBlock);
@@ -2575,8 +2580,8 @@ function renderWheelResult(item, listType) {
   const cardId = entryId || `wheel-${Date.now()}`;
   let cardNode = null;
 
-  if (listType === 'movies') {
-    cardNode = buildCollapsibleMovieCard(cardId, item, 0, {
+  if (isCollapsibleList(listType)) {
+    cardNode = buildCollapsibleMovieCard(listType, cardId, item, 0, {
       hideCard: false,
       displayEntryId: entryId || cardId,
       interactive: false,
