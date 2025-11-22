@@ -115,6 +115,36 @@
             <div id="books-list"></div>
           </div>
         </section>
+          <section id="wheel" class="section">
+            <h2>Wheel Spinner</h2>
+            <div class="wheel-launch">
+              <p>Let the wheel pick what you watch or read next.</p>
+              <button id="open-wheel-modal" type="button" class="btn primary">Open Wheel Spinner</button>
+            </div>
+
+            <template id="wheel-modal-template">
+              <div class="wheel-modal-content">
+                <div class="wheel-modal-header">
+                  <h3>Wheel Spinner</h3>
+                  <button type="button" class="btn ghost" data-wheel-close>Close</button>
+                </div>
+                <p class="small">Choose a list, then spin to get a random pick.</p>
+                <div class="spinner-controls">
+                  <select data-wheel-source>
+                    <option value="movies">Movies</option>
+                    <option value="tvShows">TV Shows</option>
+                    <option value="anime">Anime</option>
+                    <option value="books">Books</option>
+                  </select>
+                  <button class="btn primary" data-wheel-spin>Spin the Wheel</button>
+                </div>
+                <div class="wheel-area">
+                  <div class="wheel-spinner hidden" data-wheel-spinner></div>
+                  <div class="wheel-result" data-wheel-result></div>
+                </div>
+              </div>
+            </template>
+          </section>
 
         <section id="library" class="section">
           <h2>Your Library</h2>
