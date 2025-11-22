@@ -1207,8 +1207,8 @@ function buildMovieCardInfo(listType, item, context = {}) {
   header.appendChild(title);
   info.appendChild(header);
 
-  if (listType === 'anime') {
-    const badges = buildAnimeSummaryBadges(item, context);
+  if (isCollapsibleList(listType)) {
+    const badges = buildAnimeSummaryBadges(item, { ...context, listType });
     if (badges) info.appendChild(badges);
   }
 
@@ -1217,7 +1217,8 @@ function buildMovieCardInfo(listType, item, context = {}) {
 
 function buildAnimeSummaryBadges(item, context = {}) {
   if (!item) return null;
-  const metrics = deriveAnimeSeriesMetrics('anime', context.cardId, item);
+  const listType = context.listType || 'anime';
+  const metrics = deriveAnimeSeriesMetrics(listType, context.cardId, item);
   if (!metrics) return null;
   const chips = [];
   if (metrics.formatLabels.length) {
@@ -1246,7 +1247,7 @@ function formatAnimeFormatLabel(value) {
 function deriveAnimeSeriesMetrics(listType, cardId, fallbackItem) {
   const normalizedListType = listType || 'anime';
   let entries = [];
-  if (cardId && normalizedListType === 'anime') {
+  if (cardId && isCollapsibleList(normalizedListType)) {
     const groupEntries = getSeriesGroupEntries(normalizedListType, cardId);
     if (groupEntries && groupEntries.length) {
       entries = groupEntries.map(entry => entry && entry.item).filter(Boolean);
