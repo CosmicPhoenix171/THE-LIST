@@ -90,6 +90,7 @@ const sortModes = { movies: 'title', tvShows: 'title', anime: 'title', books: 't
 const listCaches = {};
 const metadataRefreshInflight = new Set();
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
+const PRIMARY_LIST_TYPES = ['movies', 'tvShows', 'anime', 'books'];
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
 const seriesGroups = {};
@@ -105,8 +106,6 @@ const appRoot = document.getElementById('app');
 const userNameEl = document.getElementById('user-name');
 const signOutBtn = document.getElementById('sign-out');
 const backToTopBtn = document.getElementById('back-to-top');
-const tabs = document.querySelectorAll('.tab');
-const sections = document.querySelectorAll('.section');
 const modalRoot = document.getElementById('modal-root');
 const wheelSpinnerEl = document.getElementById('wheel-spinner');
 const wheelResultEl = document.getElementById('wheel-result');
@@ -394,8 +393,6 @@ function initFirebase() {
   signOutBtn.addEventListener('click', () => signOut());
 
   // Tab switching
-  tabs.forEach(t => t.addEventListener('click', () => switchSection(t.dataset.section)));
-
   // Add form handlers
   document.querySelectorAll('.add-form').forEach(form => {
     const listType = form.dataset.list;
@@ -833,9 +830,11 @@ function showAppForUser(user) {
   userNameEl.textContent = user.displayName || user.email || 'You';
   updateBackToTopVisibility();
   playTheListIntro();
+  loadPrimaryLists();
+}
 
-  // load default section
-  switchSection('movies');
+function loadPrimaryLists() {
+  PRIMARY_LIST_TYPES.forEach(listType => loadList(listType));
 }
 
 function playTheListIntro() {
@@ -894,16 +893,6 @@ function safeLocalStorageRemove(key) {
     if (!window.localStorage) return;
     window.localStorage.removeItem(key);
   } catch (_) {}
-}
-
-function switchSection(sectionId) {
-  tabs.forEach(t => t.classList.toggle('active', t.dataset.section === sectionId));
-  sections.forEach(s => s.classList.toggle('hidden', s.id !== sectionId));
-
-  // load data when switched to a list
-  if (['movies','tvShows','anime','books'].includes(sectionId)) {
-    loadList(sectionId);
-  }
 }
 
 function updateBackToTopVisibility() {
@@ -2681,7 +2670,7 @@ function resetFilterState() {
     const mode = sortModes[listType] || 'title';
     sel.value = mode;
   });
-  updateCollapsibleCardStates('movies');
+  COLLAPSIBLE_LISTS.forEach(listType => updateCollapsibleCardStates(listType));
 }
 
 function renderTitleSuggestions(container, suggestions, onSelect) {
