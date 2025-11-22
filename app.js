@@ -120,9 +120,13 @@ const modalRoot = document.getElementById('modal-root');
 const combinedListEl = document.getElementById('combined-list');
 const unifiedSearchInput = document.getElementById('library-search');
 const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
-const wheelSpinnerEl = document.getElementById('wheel-spinner');
-const wheelResultEl = document.getElementById('wheel-result');
 const notificationCenter = document.getElementById('notification-center');
+const wheelModalTrigger = document.getElementById('open-wheel-modal');
+const wheelModalTemplate = document.getElementById('wheel-modal-template');
+let wheelSourceSelect = null;
+let wheelSpinnerEl = null;
+let wheelResultEl = null;
+let wheelModalState = null;
 const addModalTrigger = document.getElementById('open-add-modal');
 const addFormTemplatesContainer = document.getElementById('add-form-templates');
 const addFormTemplateMap = {};
@@ -418,6 +422,7 @@ function initFirebase() {
   signOutBtn.addEventListener('click', () => signOut());
 
   setupAddModal();
+  setupWheelModal();
 
   document.querySelectorAll('[data-role="actor-filter"]').forEach(input => {
     const listType = input.dataset.list;
@@ -442,12 +447,6 @@ function initFirebase() {
     });
   });
 
-  // Wheel
-  document.getElementById('spin-wheel').addEventListener('click', () => {
-    const src = document.getElementById('wheel-source').value;
-    spinWheel(src);
-  });
-
   if (backToTopBtn) {
     backToTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     window.addEventListener('scroll', updateBackToTopVisibility, { passive: true });
@@ -464,6 +463,7 @@ function openAddModal(initialType = PRIMARY_LIST_TYPES[0]) {
   if (!modalRoot) return;
   const defaultType = PRIMARY_LIST_TYPES.includes(initialType) ? initialType : PRIMARY_LIST_TYPES[0];
   closeAddModal();
+  closeWheelModal();
 
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop add-item-backdrop';
@@ -596,6 +596,107 @@ function setActiveAddModalType(listType) {
   });
 }
 
+function setupWheelModal() {
+  if (!wheelModalTrigger || !wheelModalTemplate || !modalRoot) return;
+  wheelModalTrigger.addEventListener('click', () => openWheelModal());
+}
+
+function openWheelModal() {
+  if (!wheelModalTemplate || !modalRoot) return;
+  closeAddModal();
+  closeWheelModal();
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop wheel-modal-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal wheel-modal';
+  const fragment = wheelModalTemplate.content.cloneNode(true);
+  modal.appendChild(fragment);
+  backdrop.appendChild(modal);
+  modalRoot.innerHTML = '';
+  modalRoot.appendChild(backdrop);
+
+  const sourceSelect = modal.querySelector('[data-wheel-source]');
+  const spinButton = modal.querySelector('[data-wheel-spin]');
+  const spinnerEl = modal.querySelector('[data-wheel-spinner]');
+  const resultEl = modal.querySelector('[data-wheel-result]');
+  const closeBtn = modal.querySelector('[data-wheel-close]');
+
+  wheelSourceSelect = sourceSelect || null;
+  wheelSpinnerEl = spinnerEl || null;
+  wheelResultEl = resultEl || null;
+  if (wheelSpinnerEl) {
+    wheelSpinnerEl.classList.add('hidden');
+    wheelSpinnerEl.classList.remove('spinning');
+    wheelSpinnerEl.innerHTML = '';
+  }
+  if (wheelResultEl) {
+    wheelResultEl.innerHTML = '';
+  }
+
+  const spinHandler = () => {
+    if (!wheelSourceSelect) return;
+    spinWheel(wheelSourceSelect.value);
+  };
+  if (spinButton) {
+    spinButton.addEventListener('click', spinHandler);
+  }
+
+  const closeHandler = () => closeWheelModal();
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeHandler);
+  }
+
+  const backdropHandler = (event) => {
+    if (event.target === backdrop) {
+      closeWheelModal();
+    }
+  };
+  backdrop.addEventListener('click', backdropHandler);
+
+  const keyHandler = (event) => {
+    if (event.key === 'Escape') {
+      closeWheelModal();
+    }
+  };
+  document.addEventListener('keydown', keyHandler);
+
+  wheelModalState = {
+    backdrop,
+    modal,
+    spinButton,
+    spinHandler,
+    closeBtn,
+    closeHandler,
+    backdropHandler,
+    keyHandler,
+  };
+}
+
+function closeWheelModal() {
+  if (wheelModalState) {
+    if (wheelModalState.spinButton && wheelModalState.spinHandler) {
+      wheelModalState.spinButton.removeEventListener('click', wheelModalState.spinHandler);
+    }
+    if (wheelModalState.closeBtn && wheelModalState.closeHandler) {
+      wheelModalState.closeBtn.removeEventListener('click', wheelModalState.closeHandler);
+    }
+    if (wheelModalState.backdrop && wheelModalState.backdropHandler) {
+      wheelModalState.backdrop.removeEventListener('click', wheelModalState.backdropHandler);
+    }
+    if (wheelModalState.keyHandler) {
+      document.removeEventListener('keydown', wheelModalState.keyHandler);
+    }
+    if (wheelModalState.backdrop && wheelModalState.backdrop.parentNode) {
+      wheelModalState.backdrop.parentNode.removeChild(wheelModalState.backdrop);
+    }
+  }
+  clearWheelAnimation();
+  wheelModalState = null;
+  wheelSourceSelect = null;
+  wheelSpinnerEl = null;
+  wheelResultEl = null;
+}
+
 // Prompt user to add missing collection parts
 function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
   if (!collInfo || !Array.isArray(collInfo.parts)) return;
@@ -606,6 +707,7 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
   if (!missing.length) return;
   if (!modalRoot) return;
   closeAddModal();
+  closeWheelModal();
   modalRoot.innerHTML = '';
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -715,6 +817,7 @@ function promptAnimeFranchiseSelection(plan, { rootAniListId, title } = {}) {
     return Promise.resolve(selectable.map(entry => entry.aniListId));
   }
   closeAddModal();
+  closeWheelModal();
   return new Promise(resolve => {
     modalRoot.innerHTML = '';
     const backdrop = document.createElement('div');
@@ -3613,6 +3716,7 @@ function deleteItem(listType, itemId) {
 function openEditModal(listType, itemId, item) {
   if (!modalRoot) return;
   closeAddModal();
+  closeWheelModal();
   modalRoot.innerHTML = '';
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -3738,11 +3842,13 @@ function loadSpinnerSourceData(listType) {
 function clearWheelAnimation() {
   spinTimeouts.forEach(id => clearTimeout(id));
   spinTimeouts = [];
+  if (!wheelSpinnerEl) return;
   wheelSpinnerEl.classList.remove('spinning');
   wheelSpinnerEl.innerHTML = '';
 }
 
 function renderWheelResult(item, listType) {
+  if (!wheelResultEl) return;
   if (!item) {
     wheelResultEl.textContent = '';
     return;
@@ -3780,6 +3886,7 @@ function renderWheelResult(item, listType) {
 function buildRelatedModal(currentItem, related) {
   if (!modalRoot) return;
   closeAddModal();
+  closeWheelModal();
   modalRoot.innerHTML = '';
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -3952,7 +4059,7 @@ function resolveSeriesRedirect(listType, item, rawData) {
 
 function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverride) {
   const len = candidates.length;
-  if (len === 0) return;
+  if (len === 0 || !wheelSpinnerEl) return;
 
   const chosenItem = candidates[chosenIndex];
   const finalDisplayItem = finalItemOverride || chosenItem;
@@ -3992,6 +4099,7 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverri
 
   sequence.forEach((item, idx) => {
     const timeout = setTimeout(() => {
+      if (!wheelSpinnerEl) return;
       const isFinal = idx === sequence.length - 1;
       wheelSpinnerEl.innerHTML = '';
       const span = document.createElement('span');
@@ -4015,6 +4123,10 @@ function spinWheel(listType) {
     alert('Not signed in');
     return;
   }
+  if (!wheelSpinnerEl || !wheelResultEl) {
+    console.warn('Wheel spinner UI is not mounted. Open the wheel modal first.');
+    return;
+  }
   clearWheelAnimation();
   wheelResultEl.innerHTML = '';
   wheelSpinnerEl.classList.remove('hidden');
@@ -4025,6 +4137,10 @@ function spinWheel(listType) {
   wheelSpinnerEl.appendChild(placeholder);
 
   loadSpinnerSourceData(listType).then(({ data, source }) => {
+    if (!wheelSpinnerEl || !wheelResultEl) {
+      clearWheelAnimation();
+      return;
+    }
     const scopedData = buildSpinnerDataScope(listType, data);
     const candidates = buildSpinnerCandidates(listType, scopedData);
     try {
@@ -4036,6 +4152,7 @@ function spinWheel(listType) {
       });
     } catch (_) {}
     if (candidates.length === 0) {
+      if (!wheelSpinnerEl || !wheelResultEl) return;
       clearWheelAnimation();
       const emptyState = document.createElement('span');
       emptyState.className = 'spin-text';
@@ -4051,6 +4168,10 @@ function spinWheel(listType) {
     animateWheelSequence(candidates, chosenIndex, listType, resolvedCandidate);
   }).catch(err => {
     console.error('Wheel load failed', err);
+    if (!wheelSpinnerEl || !wheelResultEl) {
+      clearWheelAnimation();
+      return;
+    }
     clearWheelAnimation();
     const errorState = document.createElement('span');
     errorState.className = 'spin-text';
