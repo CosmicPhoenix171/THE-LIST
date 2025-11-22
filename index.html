@@ -29,116 +29,98 @@
       </header>
 
       <main class="main">
-        <!-- Section: Movies -->
-        <section id="movies" class="section">
-          <h2>Movies</h2>
+        <section id="library" class="section">
+          <h2>Your Library</h2>
           <div class="section-content">
-            <div class="filter-bar">
-              <input type="search" placeholder="Filter by actor..." data-role="actor-filter" data-list="movies" aria-label="Filter movies by actor" />
-              <select data-role="sort" data-list="movies" aria-label="Sort movies">
-                <option value="title">Title A–Z</option>
-                <option value="yearDesc">Year ↓</option>
-                <option value="yearAsc">Year ↑</option>
-                <option value="director">Director A–Z</option>
-                <option value="series">Series / Order</option>
-              </select>
+            <div class="library-filter-bar">
+              <input type="search" id="library-search" placeholder="Search everything..." aria-label="Search across all saved items" />
+              <div class="type-filter-group" role="group" aria-label="Filter by media type">
+                <button type="button" class="type-filter active" data-type-toggle="movies" aria-pressed="true">Movies</button>
+                <button type="button" class="type-filter active" data-type-toggle="tvShows" aria-pressed="true">TV Shows</button>
+                <button type="button" class="type-filter active" data-type-toggle="anime" aria-pressed="true">Anime</button>
+                <button type="button" class="type-filter active" data-type-toggle="books" aria-pressed="true">Books</button>
+              </div>
             </div>
-            <div class="list-stats" id="movies-stats" aria-live="polite"></div>
-            <form class="add-form" data-list="movies">
-              <div class="input-suggest">
-                <input name="title" placeholder="Title" autocomplete="off" required />
-                <div class="suggestions" data-role="title-suggestions"></div>
-              </div>
-              <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-              <input name="director" placeholder="Director (optional)" />
-              <input name="seriesName" placeholder="Series name (optional)" />
-              <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
-              <textarea name="notes" placeholder="Notes (optional)"></textarea>
-              <button type="submit" class="btn primary">Add</button>
-            </form>
-            <div class="list" id="movies-list"></div>
-          </div>
-        </section>
-
-        <!-- Section: TV Shows -->
-        <section id="tvShows" class="section">
-          <h2>TV Shows</h2>
-          <div class="section-content">
-            <div class="filter-bar">
-              <input type="search" placeholder="Filter by actor..." data-role="actor-filter" data-list="tvShows" aria-label="Filter TV shows by actor" />
-              <select data-role="sort" data-list="tvShows" aria-label="Sort TV shows">
-                <option value="title">Title A–Z</option>
-                <option value="yearDesc">Year ↓</option>
-                <option value="yearAsc">Year ↑</option>
-                <option value="director">Showrunner A–Z</option>
-                <option value="series">Series / Order</option>
-              </select>
+            <div class="list" id="combined-list">
+              <div class="small">Loading your library...</div>
             </div>
-            <form class="add-form" data-list="tvShows">
-              <div class="input-suggest">
-                <input name="title" placeholder="Title" autocomplete="off" required />
-                <div class="suggestions" data-role="title-suggestions"></div>
-              </div>
-              <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-              <input name="director" placeholder="Director / Showrunner (optional)" />
-              <input name="seriesName" placeholder="Series name (optional)" />
-              <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
-              <textarea name="notes" placeholder="Notes (optional)"></textarea>
-              <button type="submit" class="btn primary">Add</button>
-            </form>
-            <div class="list" id="tvShows-list"></div>
           </div>
         </section>
 
-        <!-- Section: Anime -->
-        <section id="anime" class="section">
-          <h2>Anime</h2>
-          <div class="section-content">
-            <div class="filter-bar">
-              <input type="search" placeholder="Filter by actor..." data-role="actor-filter" data-list="anime" aria-label="Filter anime by voice actor" />
-              <select data-role="sort" data-list="anime" aria-label="Sort anime">
-                <option value="title">Title A–Z</option>
-                <option value="yearDesc">Year ↓</option>
-                <option value="yearAsc">Year ↑</option>
-                <option value="director">Director/Studio A–Z</option>
-                <option value="series">Series / Order</option>
-              </select>
-            </div>
-            <form class="add-form" data-list="anime">
-              <div class="input-suggest">
-                <input name="title" placeholder="Title" autocomplete="off" required />
-                <div class="suggestions" data-role="title-suggestions"></div>
-              </div>
-              <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-              <input name="director" placeholder="Director / Studio (optional)" />
-              <input name="seriesName" placeholder="Series name (optional)" />
-              <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
-              <textarea name="notes" placeholder="Notes (optional)"></textarea>
-              <button type="submit" class="btn primary">Add</button>
-            </form>
-            <div class="list" id="anime-list"></div>
+        <section id="add-media" class="section">
+          <h2>Add New Items</h2>
+          <div class="add-forms-grid">
+            <article class="add-panel">
+              <h3>Movies</h3>
+              <form class="add-form" data-list="movies">
+                <div class="input-suggest">
+                  <input name="title" placeholder="Title" autocomplete="off" required />
+                  <div class="suggestions" data-role="title-suggestions"></div>
+                </div>
+                <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                <input name="director" placeholder="Director (optional)" />
+                <input name="seriesName" placeholder="Series name (optional)" />
+                <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
+                <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                <button type="submit" class="btn primary">Add Movie</button>
+              </form>
+            </article>
+
+            <article class="add-panel">
+              <h3>TV Shows</h3>
+              <form class="add-form" data-list="tvShows">
+                <div class="input-suggest">
+                  <input name="title" placeholder="Title" autocomplete="off" required />
+                  <div class="suggestions" data-role="title-suggestions"></div>
+                </div>
+                <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                <input name="director" placeholder="Director / Showrunner (optional)" />
+                <input name="seriesName" placeholder="Series name (optional)" />
+                <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
+                <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                <button type="submit" class="btn primary">Add TV Show</button>
+              </form>
+            </article>
+
+            <article class="add-panel">
+              <h3>Anime</h3>
+              <form class="add-form" data-list="anime">
+                <div class="input-suggest">
+                  <input name="title" placeholder="Title" autocomplete="off" required />
+                  <div class="suggestions" data-role="title-suggestions"></div>
+                </div>
+                <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                <input name="director" placeholder="Director / Studio (optional)" />
+                <input name="seriesName" placeholder="Series name (optional)" />
+                <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
+                <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                <button type="submit" class="btn primary">Add Anime</button>
+              </form>
+            </article>
+
+            <article class="add-panel">
+              <h3>Books</h3>
+              <form class="add-form" data-list="books">
+                <div class="input-suggest">
+                  <input name="title" placeholder="Title" autocomplete="off" required />
+                  <div class="suggestions" data-role="title-suggestions"></div>
+                </div>
+                <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                <input name="author" placeholder="Author (optional)" />
+                <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                <button type="submit" class="btn primary">Add Book</button>
+              </form>
+            </article>
+          </div>
+
+          <div class="sr-only" aria-hidden="true">
+            <div id="movies-list"></div>
+            <div id="tvShows-list"></div>
+            <div id="anime-list"></div>
+            <div id="books-list"></div>
           </div>
         </section>
 
-        <!-- Section: Books -->
-        <section id="books" class="section">
-          <h2>Books</h2>
-          <div class="section-content">
-            <form class="add-form" data-list="books">
-              <div class="input-suggest">
-                <input name="title" placeholder="Title" autocomplete="off" required />
-                <div class="suggestions" data-role="title-suggestions"></div>
-              </div>
-              <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-              <input name="author" placeholder="Author (optional)" />
-              <textarea name="notes" placeholder="Notes (optional)"></textarea>
-              <button type="submit" class="btn primary">Add</button>
-            </form>
-            <div class="list" id="books-list"></div>
-          </div>
-        </section>
-
-        <!-- Section: Wheel Spinner -->
         <section id="wheel" class="section">
           <h2>Wheel Spinner</h2>
           <div class="section-content">

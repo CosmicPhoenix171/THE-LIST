@@ -91,6 +91,12 @@ const listCaches = {};
 const metadataRefreshInflight = new Set();
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
 const PRIMARY_LIST_TYPES = ['movies', 'tvShows', 'anime', 'books'];
+const LIST_TYPE_LABELS = {
+  movies: 'Movie',
+  tvShows: 'TV Show',
+  anime: 'Anime',
+  books: 'Book',
+};
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
 const seriesGroups = {};
@@ -98,6 +104,10 @@ const seriesCarouselState = { movies: new Map(), tvShows: new Map(), anime: new 
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
+const unifiedFilters = {
+  search: '',
+  types: new Set(PRIMARY_LIST_TYPES),
+};
 
 // DOM references
 const loginScreen = document.getElementById('login-screen');
@@ -107,6 +117,9 @@ const userNameEl = document.getElementById('user-name');
 const signOutBtn = document.getElementById('sign-out');
 const backToTopBtn = document.getElementById('back-to-top');
 const modalRoot = document.getElementById('modal-root');
+const combinedListEl = document.getElementById('combined-list');
+const unifiedSearchInput = document.getElementById('library-search');
+const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
 const wheelSpinnerEl = document.getElementById('wheel-spinner');
 const wheelResultEl = document.getElementById('wheel-result');
 const notificationCenter = document.getElementById('notification-center');
@@ -837,6 +850,49 @@ function loadPrimaryLists() {
   PRIMARY_LIST_TYPES.forEach(listType => loadList(listType));
 }
 
+function initUnifiedLibraryControls() {
+  if (unifiedSearchInput) {
+    unifiedSearchInput.addEventListener('input', debounce((ev) => {
+      unifiedFilters.search = (ev.target.value || '').trim().toLowerCase();
+      renderUnifiedLibrary();
+    }, 180));
+  }
+  typeFilterButtons.forEach(btn => {
+    const type = btn.dataset.typeToggle;
+    btn.addEventListener('click', () => toggleUnifiedTypeFilter(type));
+  });
+  updateUnifiedTypeControls();
+}
+
+function toggleUnifiedTypeFilter(listType) {
+  if (!listType) return;
+  const filters = unifiedFilters.types;
+  if (filters.has(listType)) {
+    if (filters.size === 1) return; // always keep at least one type active
+    filters.delete(listType);
+  } else {
+    filters.add(listType);
+  }
+  updateUnifiedTypeControls();
+  renderUnifiedLibrary();
+}
+
+function updateUnifiedTypeControls() {
+  typeFilterButtons.forEach(btn => {
+    const type = btn.dataset.typeToggle;
+    const isActive = !!(type && unifiedFilters.types.has(type));
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+
+function resetUnifiedFilters() {
+  unifiedFilters.search = '';
+  unifiedFilters.types = new Set(PRIMARY_LIST_TYPES);
+  if (unifiedSearchInput) unifiedSearchInput.value = '';
+  updateUnifiedTypeControls();
+}
+
 function playTheListIntro() {
   if (introPlayed) return;
   const intro = document.getElementById('the-list-intro');
@@ -914,7 +970,9 @@ function detachAllListeners() {
 function loadList(listType) {
   if (!currentUser) return;
   const listContainer = document.getElementById(`${listType}-list`);
-  listContainer.innerHTML = 'Loading...';
+  if (listContainer) {
+    listContainer.innerHTML = 'Loading...';
+  }
 
   // remove previous listener for this list
   if (listeners[listType]) {
@@ -932,7 +990,9 @@ function loadList(listType) {
     }
   }, (err) => {
     console.error('DB read error', err);
-    listContainer.innerHTML = '<div class="small">Unable to load items.</div>';
+    if (listContainer) {
+      listContainer.innerHTML = '<div class="small">Unable to load items.</div>';
+    }
   });
 
   // store unsubscribe
@@ -958,7 +1018,9 @@ function createEl(tag, classNames = '', options = {}) {
 function renderList(listType, data) {
   listCaches[listType] = data;
   const container = document.getElementById(`${listType}-list`);
-  container.innerHTML = '';
+  if (container) {
+    container.innerHTML = '';
+  }
 
   const entries = Object.entries(data || {});
   const supportsActorFilter = listSupportsActorFilter(listType);
@@ -973,8 +1035,11 @@ function renderList(listType, data) {
     const message = supportsActorFilter && filterValue
       ? 'No items match this actor filter yet.'
       : 'No items yet. Add something!';
-    container.innerHTML = '<div class="small">' + message + '</div>';
+    if (container) {
+      container.innerHTML = '<div class="small">' + message + '</div>';
+    }
     updateListStats(listType, filtered);
+    renderUnifiedLibrary();
     return;
   }
 
@@ -1012,16 +1077,182 @@ function renderList(listType, data) {
     if (ta < tb) return -1; if (ta > tb) return 1; return 0;
   });
 
-  if (isCollapsibleList(listType)) {
+  if (isCollapsibleList(listType) && container) {
     renderCollapsibleMediaGrid(listType, container, filtered);
-    return;
+  } else if (container) {
+    renderStandardList(container, listType, filtered);
   }
-
-  renderStandardList(container, listType, filtered);
 
   if (listType in expandedCards) {
     updateCollapsibleCardStates(listType);
   }
+
+  renderUnifiedLibrary();
+}
+
+function renderUnifiedLibrary() {
+  if (!combinedListEl) return;
+  const hasLoadedAny = PRIMARY_LIST_TYPES.some(type => listCaches[type] !== undefined);
+  if (!hasLoadedAny) {
+    combinedListEl.innerHTML = '<div class="small">Loading your library...</div>';
+    return;
+  }
+  const items = [];
+  PRIMARY_LIST_TYPES.forEach(listType => {
+    const cache = listCaches[listType] || {};
+    Object.entries(cache).forEach(([id, item]) => {
+      if (item) items.push({ listType, id, item });
+    });
+  });
+
+  const activeTypes = unifiedFilters.types;
+  let filtered = items.filter(entry => activeTypes.has(entry.listType));
+  const query = unifiedFilters.search;
+  if (query) {
+    filtered = filtered.filter(({ item }) => matchesUnifiedSearch(item, query));
+  }
+
+  filtered.sort((a, b) => {
+    const ta = titleSortKey(a.item?.title || '');
+    const tb = titleSortKey(b.item?.title || '');
+    if (ta < tb) return -1;
+    if (ta > tb) return 1;
+    const ya = Number(a.item?.year) || 9999;
+    const yb = Number(b.item?.year) || 9999;
+    if (ya !== yb) return ya - yb;
+    const idxA = Math.max(PRIMARY_LIST_TYPES.indexOf(a.listType), 0);
+    const idxB = Math.max(PRIMARY_LIST_TYPES.indexOf(b.listType), 0);
+    return idxA - idxB;
+  });
+
+  combinedListEl.innerHTML = '';
+  if (!filtered.length) {
+    combinedListEl.innerHTML = '<div class="small">No entries match the current filters yet.</div>';
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  filtered.forEach(entry => fragment.appendChild(buildUnifiedCard(entry)));
+  combinedListEl.appendChild(fragment);
+}
+
+function matchesUnifiedSearch(item, query) {
+  if (!query) return true;
+  if (!item) return false;
+  const fields = [
+    item.title,
+    item.notes,
+    item.plot,
+    item.seriesName,
+    item.director,
+    item.author,
+    Array.isArray(item.actors) ? item.actors.join(' ') : item.actors,
+    Array.isArray(item.animeGenres) ? item.animeGenres.join(' ') : item.animeGenres,
+  ];
+  return fields.some(field => field && String(field).toLowerCase().includes(query));
+}
+
+function buildUnifiedCard(entry) {
+  const { listType, id, item } = entry;
+  const card = createEl('article', 'card unified-card');
+  card.dataset.listType = listType;
+  card.dataset.id = id;
+
+  const header = createEl('div', 'unified-card-header');
+  const titleRow = createEl('div', 'unified-card-title-row');
+  titleRow.appendChild(createTypeChip(listType));
+  titleRow.appendChild(createEl('div', 'title', { text: item?.title || '(Untitled)' }));
+  header.appendChild(titleRow);
+
+  const meta = buildUnifiedMeta(listType, item);
+  if (meta) {
+    header.appendChild(createEl('div', 'meta', { text: meta }));
+  }
+  card.appendChild(header);
+
+  const body = createEl('div', 'unified-card-body');
+  let hasBody = false;
+  const seriesLine = buildSeriesLine(item);
+  if (seriesLine) {
+    body.appendChild(seriesLine);
+    hasBody = true;
+  }
+  if (listType !== 'books') {
+    const castLine = buildMovieCastLine(item);
+    if (castLine) {
+      body.appendChild(castLine);
+      hasBody = true;
+    }
+  }
+  const description = buildUnifiedDescription(item);
+  if (description) {
+    body.appendChild(createEl('div', 'notes', { text: description }));
+    hasBody = true;
+  }
+  if (listType === 'anime' && Array.isArray(item?.animeGenres) && item.animeGenres.length) {
+    body.appendChild(createEl('div', 'anime-genres', { text: `Genres: ${item.animeGenres.join(', ')}` }));
+    hasBody = true;
+  }
+  if (hasBody) {
+    card.appendChild(body);
+  }
+
+  const actions = createEl('div', 'actions unified-card-actions');
+  const editBtn = createEl('button', 'btn secondary', { text: 'Edit' });
+  editBtn.type = 'button';
+  editBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    openEditModal(listType, id, item);
+  });
+  actions.appendChild(editBtn);
+
+  const deleteBtn = createEl('button', 'btn ghost', { text: 'Delete' });
+  deleteBtn.type = 'button';
+  deleteBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    deleteItem(listType, id);
+  });
+  actions.appendChild(deleteBtn);
+  card.appendChild(actions);
+  return card;
+}
+
+function createTypeChip(listType) {
+  const label = formatListTypeLabel(listType);
+  return createEl('span', `type-chip ${listType}`, { text: label });
+}
+
+function formatListTypeLabel(listType) {
+  return LIST_TYPE_LABELS[listType] || listType;
+}
+
+function buildUnifiedMeta(listType, item = {}) {
+  const parts = [];
+  if (item.year) parts.push(item.year);
+  if (listType === 'books' && item.author) {
+    parts.push(item.author);
+  } else if (item.director) {
+    parts.push(item.director);
+  } else if (item.author) {
+    parts.push(item.author);
+  }
+  if (listType === 'anime' && item.animeEpisodes) {
+    parts.push(`${item.animeEpisodes} ep${item.animeEpisodes === 1 ? '' : 's'}`);
+  }
+  if (listType === 'movies' && item.runtime) {
+    parts.push(item.runtime);
+  }
+  if (item.imdbRating) {
+    parts.push(`IMDb ${item.imdbRating}`);
+  }
+  return parts.join(' • ');
+}
+
+function buildUnifiedDescription(item = {}) {
+  if (item.notes) return item.notes;
+  if (item.plot) return item.plot;
+  if (item.summary) return item.summary;
+  return '';
 }
 
 function isCollapsibleList(listType) {
@@ -2671,6 +2902,8 @@ function resetFilterState() {
     sel.value = mode;
   });
   COLLAPSIBLE_LISTS.forEach(listType => updateCollapsibleCardStates(listType));
+  resetUnifiedFilters();
+  renderUnifiedLibrary();
 }
 
 function renderTitleSuggestions(container, suggestions, onSelect) {
@@ -3732,6 +3965,8 @@ if (auth) {
 }
 
 tmEasterEgg.bindTriggers();
+initUnifiedLibraryControls();
+renderUnifiedLibrary();
 
 function updateListStats(listType, entries) {
   const statsEl = document.getElementById(`${listType}-stats`);
