@@ -39,7 +39,8 @@ const firebaseConfig = {
 const TMDB_API_KEY = '46dcf1eaa2ce4284037a00fdefca9bb8';
 const GOOGLE_BOOKS_API_KEY = '';
 const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
-const ANILIST_API_URL = 'https://graphql.anilist.co';
+const JIKAN_API_BASE_URL = 'https://api.jikan.moe/v4';
+const MYANIMELIST_ANIME_URL = 'https://myanimelist.net/anime';
 const METADATA_SCHEMA_VERSION = 3;
 const APP_VERSION = 'test-pages-2025.11.15';
 const ANIME_FRANCHISE_RELATION_TYPES = new Set([
@@ -964,8 +965,8 @@ function showAnimeFranchiseNotification(seriesName, missingEntries) {
   }
   const summary = segments.join(' | ');
   const body = summary
-    ? `${summary} ready to add from AniList. Use the anime Add form to pull them in.`
-    : 'New related entries are available on AniList. Use the anime Add form to pull them in.';
+    ? `${summary} ready to add from MyAnimeList. Use the anime Add form to pull them in.`
+    : 'New related entries are available on MyAnimeList. Use the anime Add form to pull them in.';
   const heading = seriesName ? `New entries for ${seriesName}` : 'New anime entries found';
   pushNotification({ title: heading, message: body });
 }
@@ -1800,7 +1801,7 @@ function buildAnimeDetailBlock(item) {
     block.appendChild(genres);
   }
   if (item.aniListUrl) {
-    const link = createEl('a', 'meta-link', { text: 'View on AniList' });
+    const link = createEl('a', 'meta-link', { text: 'View on MyAnimeList' });
     link.href = item.aniListUrl;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
@@ -1968,7 +1969,7 @@ function buildMovieLinks(listType, item) {
     links.appendChild(trailer);
   }
   if (listType === 'anime' && item.aniListUrl) {
-    const aniList = createEl('a', 'meta-link', { text: 'View on AniList' });
+    const aniList = createEl('a', 'meta-link', { text: 'View on MyAnimeList' });
     aniList.href = item.aniListUrl;
     aniList.target = '_blank';
     aniList.rel = 'noopener noreferrer';
@@ -2283,7 +2284,7 @@ async function addItemFromForm(listType, form) {
             preferredSeriesName: seriesNameValue || (metadata && metadata.Title) || title,
           });
         } catch (err) {
-          console.warn('Unable to build AniList franchise plan', err);
+          console.warn('Unable to build MyAnimeList franchise plan', err);
         }
       }
     }
@@ -2294,7 +2295,7 @@ async function addItemFromForm(listType, form) {
           title,
         });
       } catch (err) {
-        console.warn('AniList franchise selection prompt failed', err);
+        console.warn('Franchise selection prompt failed', err);
         animeFranchiseSelectionIds = null;
       }
     }
@@ -3011,10 +3012,10 @@ function refreshAniListMetadataForItem(itemId, item) {
       fallbackYear: item.year || '',
     });
     if (Object.keys(updates).length === 0) return;
-    console.debug('[AniList] Applying updates for', `${listType}:${itemId}`, updates);
+    console.debug('[MyAnimeList] Applying updates for', `${listType}:${itemId}`, updates);
     return updateItem(listType, itemId, updates);
   }).catch(err => {
-    console.warn('AniList metadata refresh failed', err);
+    console.warn('MyAnimeList metadata refresh failed', err);
   }).finally(() => {
     metadataRefreshInflight.delete(key);
   });
@@ -3125,10 +3126,10 @@ function renderTitleSuggestions(container, suggestions, onSelect) {
     note.className = 'suggestions-note';
     note.textContent = 'Suggestions powered by TMDb.';
     container.appendChild(note);
-  } else if (provider === 'anilist') {
+  } else if (provider === 'anilist' || provider === 'jikan') {
     const note = document.createElement('div');
     note.className = 'suggestions-note';
-    note.textContent = 'Suggestions powered by AniList.';
+    note.textContent = 'Suggestions powered by MyAnimeList via Jikan.';
     container.appendChild(note);
   } else if (provider === 'googleBooks') {
     const note = document.createElement('div');
@@ -3279,7 +3280,7 @@ function setupFormAutocomplete(form, listType) {
             }
           }
         } catch (err) {
-          console.warn('Unable to prefill AniList metadata', err);
+          console.warn('Unable to prefill MyAnimeList metadata', err);
         }
       } else if (useGoogleBooks) {
         delete form.dataset.selectedImdbId;
@@ -4225,8 +4226,36 @@ function sanitizeAniListDescription(text) {
   return stripped.replace(/\s+\n/g, '\n').replace(/\n{2,}/g, '\n\n').trim();
 }
 
-function pickAniListTitle(titleObj = {}) {
-  return titleObj.english || titleObj.romaji || titleObj.native || '';
+function pickAnimeTitle(source = {}) {
+  if (!source) return '';
+  if (typeof source === 'string') return source;
+  const seen = new Set();
+  const candidates = [];
+  const pushCandidate = (value) => {
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    candidates.push(trimmed);
+  };
+  if (typeof source.title === 'string') pushCandidate(source.title);
+  if (source.titleEnglish) pushCandidate(source.titleEnglish);
+  if (source.title_english) pushCandidate(source.title_english);
+  if (source.title_japanese) pushCandidate(source.title_japanese);
+  if (typeof source.name === 'string') pushCandidate(source.name);
+  if (Array.isArray(source.titles)) {
+    source.titles.forEach(entry => {
+      if (entry && entry.title) pushCandidate(entry.title);
+    });
+  }
+  if (source.english) pushCandidate(source.english);
+  if (source.romaji) pushCandidate(source.romaji);
+  if (source.native) pushCandidate(source.native);
+  if (typeof source === 'object' && source.title && typeof source.title === 'object') {
+    pushCandidate(source.title.english);
+    pushCandidate(source.title.romaji);
+    pushCandidate(source.title.native);
+  }
+  return candidates[0] || '';
 }
 
 function formatAnimeStatusLabel(value) {
@@ -4242,144 +4271,204 @@ function formatAnimeStatusLabel(value) {
   return lookup[normalized] || value.toString().replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
 }
 
-async function fetchAniListGraphQL(query, variables = {}) {
+function normalizeAnimeStatus(value) {
+  if (!value) return '';
+  const raw = String(value).trim().toUpperCase().replace(/\s+/g, '_');
+  const mapping = {
+    FINISHED_AIRING: 'FINISHED',
+    CURRENTLY_AIRING: 'RELEASING',
+    NOT_YET_AIRED: 'NOT_YET_RELEASED',
+  };
+  return mapping[raw] || raw || '';
+}
+
+function extractAnimeYear(media) {
+  if (!media) return '';
+  if (media.year) return String(media.year);
+  if (media.seasonYear) return String(media.seasonYear);
+  if (media.startDate && media.startDate.year) return String(media.startDate.year);
+  if (media.aired && media.aired.from) return extractPrimaryYear(media.aired.from);
+  if (media.releaseDate) return extractPrimaryYear(media.releaseDate);
+  return '';
+}
+
+function extractAnimeDurationMinutes(media) {
+  if (!media) return '';
+  if (typeof media.duration === 'number' && Number.isFinite(media.duration)) {
+    return media.duration;
+  }
+  if (typeof media.averageEpisodeDuration === 'number' && Number.isFinite(media.averageEpisodeDuration)) {
+    return media.averageEpisodeDuration;
+  }
+  if (typeof media.duration === 'string') {
+    const match = media.duration.match(/(\d+)/);
+    if (match) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value)) return value;
+    }
+  }
+  if (typeof media.durationMinutes === 'number' && Number.isFinite(media.durationMinutes)) {
+    return media.durationMinutes;
+  }
+  return '';
+}
+
+async function fetchJikanJson(path, params = {}) {
   try {
-    const resp = await fetch(ANILIST_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ query, variables }),
+    const url = new URL(`${JIKAN_API_BASE_URL}${path}`);
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      url.searchParams.set(key, value);
+    });
+    const resp = await fetch(url.toString(), {
+      headers: { 'Accept': 'application/json' },
     });
     if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(errText || 'AniList request failed');
-    }
-    const json = await resp.json();
-    if (json.errors) {
-      console.warn('AniList errors', json.errors);
+      const text = await resp.text();
+      console.warn('Jikan request failed', resp.status, path, text);
       return null;
     }
-    return json.data || null;
+    return await resp.json();
   } catch (err) {
-    console.warn('AniList request failed', err);
+    console.warn('Jikan request error', err);
     return null;
   }
 }
 
-async function fetchAniListSuggestions(query) {
+async function fetchJikanAnimeDetails(id) {
+  const numericId = Number(id);
+  if (!Number.isFinite(numericId) || numericId <= 0) return null;
+  const json = await fetchJikanJson(`/anime/${numericId}/full`);
+  return json && json.data ? json.data : null;
+}
+
+async function fetchJikanAnimeSearch(query, limit = 10) {
   if (!query || query.length < 2) return [];
-  const gql = `
-    query ($search: String) {
-      Page(perPage: 10) {
-        media(search: $search, type: ANIME) {
-          id
-          title { romaji english native }
-          seasonYear
-          format
-          episodes
-          coverImage { medium }
-        }
-      }
-    }
-  `;
-  const data = await fetchAniListGraphQL(gql, { search: query });
-  if (!data || !data.Page || !Array.isArray(data.Page.media)) return [];
-  return data.Page.media.map(media => ({
-    source: 'anilist',
-    title: pickAniListTitle(media.title),
-    year: media.seasonYear || '',
-    anilistId: media.id,
-    format: media.format || '',
-    episodes: media.episodes || null,
-    poster: media.coverImage?.medium || '',
+  const json = await fetchJikanJson('/anime', {
+    q: query,
+    limit: String(limit),
+    order_by: 'score',
+    sort: 'desc',
+    sfw: 'true',
+  });
+  if (!json || !Array.isArray(json.data)) return [];
+  return json.data;
+}
+
+async function fetchAniListSuggestions(query) {
+  const entries = await fetchJikanAnimeSearch(query, 10);
+  if (!entries.length) return [];
+  return entries.map(anime => ({
+    source: 'jikan',
+    title: pickAnimeTitle(anime),
+    year: anime.year || extractPrimaryYear(anime.aired?.from || ''),
+    anilistId: anime.mal_id,
+    format: anime.type || '',
+    episodes: anime.episodes || null,
+    poster: anime.images?.jpg?.image_url || anime.images?.webp?.image_url || '',
   })).filter(entry => entry.title);
 }
 
 async function fetchAniListMetadata(lookup = {}) {
   if (!lookup) return null;
-  const gql = `
-    query ($id: Int, $search: String) {
-      Media(id: $id, search: $search, type: ANIME) {
-        id
-        siteUrl
-        title { romaji english native }
-        description(asHtml: true)
-        seasonYear
-        episodes
-        duration
-        format
-        status
-        averageScore
-        coverImage { large extraLarge }
-        studios(isMain: true) { nodes { name } }
-        genres
-        tags { name rank }
-        externalLinks { language site }
-        characters(perPage: 25) {
-          edges {
-            voiceActors(language: ENGLISH) {
-              id
-            }
-          }
-        }
+  let anime = null;
+  if (lookup.aniListId) {
+    anime = await fetchJikanAnimeDetails(lookup.aniListId);
+  }
+  if (!anime && lookup.title) {
+    const params = {
+      q: lookup.title,
+      limit: '5',
+      order_by: 'score',
+      sort: 'desc',
+      sfw: 'true',
+    };
+    if (lookup.year) {
+      const year = sanitizeYear(lookup.year);
+      if (year) {
+        params.start_date = `${year}-01-01`;
+        params.end_date = `${year}-12-31`;
       }
     }
-  `;
-  const variables = lookup.aniListId
-    ? { id: Number(lookup.aniListId) }
-    : { search: lookup.title || '' };
-  if (!variables.id && !variables.search) return null;
-  const data = await fetchAniListGraphQL(gql, variables);
-  if (!data || !data.Media) return null;
-  return mapAniListMediaToMetadata(data.Media);
+    const json = await fetchJikanJson('/anime', params);
+    if (json && Array.isArray(json.data) && json.data.length) {
+      anime = await fetchJikanAnimeDetails(json.data[0].mal_id);
+    }
+  }
+  if (!anime) return null;
+  return mapAniListMediaToMetadata(anime);
 }
 
 function mapAniListMediaToMetadata(media) {
   if (!media) return null;
-  const studioNames = Array.isArray(media.studios?.nodes)
-    ? media.studios.nodes.map(node => node && node.name).filter(Boolean)
-    : [];
-  const description = sanitizeAniListDescription(media.description || '');
-  const cover = media.coverImage?.extraLarge || media.coverImage?.large || '';
-  const duration = media.duration ? `${media.duration} min/ep` : '';
-  const genreList = Array.isArray(media.genres) ? media.genres.filter(Boolean) : [];
-  const englishLinks = Array.isArray(media.externalLinks)
-    ? media.externalLinks.some(link => (link?.language || '').toLowerCase().startsWith('en'))
-    : false;
-  const englishVoiceActors = Array.isArray(media.characters?.edges)
-    ? media.characters.edges.some(edge => Array.isArray(edge?.voiceActors) && edge.voiceActors.length > 0)
-    : false;
-  const englishDubAvailable = englishVoiceActors || englishLinks;
+  const studioNodes = Array.isArray(media.studios?.nodes)
+    ? media.studios.nodes
+    : Array.isArray(media.studios)
+      ? media.studios
+      : [];
+  const studioNames = studioNodes
+    .map(node => {
+      if (!node) return '';
+      if (typeof node === 'string') return node;
+      return node.name || '';
+    })
+    .filter(Boolean);
+  const description = sanitizeAniListDescription(media.description || media.synopsis || '');
+  const cover = media.coverImage?.extraLarge
+    || media.coverImage?.large
+    || media.images?.jpg?.large_image_url
+    || media.images?.jpg?.image_url
+    || media.images?.webp?.large_image_url
+    || media.images?.webp?.image_url
+    || '';
+  const durationMinutes = extractAnimeDurationMinutes(media);
+  const runtime = durationMinutes ? `${durationMinutes} min/ep` : '';
+  const genreBuckets = [];
+  ['genres', 'themes', 'demographics'].forEach(key => {
+    const list = Array.isArray(media[key]) ? media[key] : [];
+    list.forEach(entry => {
+      if (entry && entry.name) genreBuckets.push(entry.name);
+    });
+  });
+  const englishDubAvailable = Array.isArray(media.licensors) && media.licensors.length > 0;
+  const normalizedStatus = normalizeAnimeStatus(media.status);
+  const year = extractAnimeYear(media);
+  const malId = media.mal_id || media.id || '';
+  const malUrl = media.url || (malId ? `${MYANIMELIST_ANIME_URL}/${malId}` : '');
+  const imdbRating = media.score ? parseFloat(media.score).toFixed(1) : (media.averageScore ? (media.averageScore / 10).toFixed(1) : '');
 
   return {
-    Title: pickAniListTitle(media.title),
-    Year: media.seasonYear ? String(media.seasonYear) : '',
+    Title: pickAnimeTitle(media.title || media),
+    Year: year,
     Director: studioNames.join(', '),
-    Runtime: duration,
+    Runtime: runtime,
     Poster: cover || 'N/A',
     Plot: description,
     imdbID: '',
-    imdbRating: media.averageScore ? (media.averageScore / 10).toFixed(1) : '',
+    imdbRating,
     Actors: '',
     Type: 'anime',
     OriginalLanguage: 'Japanese',
     OriginalLanguageIso: 'ja',
     EnglishDubAvailable: englishDubAvailable,
     AnimeEpisodes: media.episodes || '',
-    AnimeDuration: media.duration || '',
-    AnimeFormat: media.format || '',
-    AnimeStatus: media.status || '',
-    AnimeGenres: genreList,
-    AniListUrl: media.siteUrl || (media.id ? `https://anilist.co/anime/${media.id}` : ''),
-    AniListId: media.id || '',
+    AnimeDuration: durationMinutes || '',
+    AnimeFormat: media.format || media.type || '',
+    AnimeStatus: normalizedStatus,
+    AnimeGenres: genreBuckets,
+    AniListUrl: malUrl,
+    AniListId: malId,
   };
 }
 
 function isSupportedAnimeRelationType(value) {
   if (!value) return false;
-  return ANIME_FRANCHISE_RELATION_TYPES.has(String(value).toUpperCase());
+  return ANIME_FRANCHISE_RELATION_TYPES.has(normalizeAnimeRelationType(value));
+}
+
+function normalizeAnimeRelationType(value) {
+  if (!value) return '';
+  return String(value).trim().toUpperCase().replace(/\s+/g, '_');
 }
 
 function isSupportedAnimeFormat(format) {
@@ -4438,59 +4527,33 @@ function deriveAnimeSeriesName(entries, preferred) {
 }
 
 async function fetchAniListMediaWithRelations(aniListId) {
-  if (!aniListId) return null;
-  const id = Number(aniListId);
-  if (!Number.isFinite(id) || id <= 0) return null;
-  const gql = `
-    query ($id: Int) {
-      Media(id: $id, type: ANIME) {
-        id
-        title { romaji english native }
-        seasonYear
-        episodes
-        duration
-        format
-        status
-        siteUrl
-        coverImage { extraLarge large medium }
-        relations {
-          edges {
-            relationType
-            node {
-              id
-              title { romaji english native }
-              seasonYear
-              episodes
-              duration
-              format
-              status
-              siteUrl
-              coverImage { large medium }
-            }
-          }
-        }
-      }
-    }
-  `;
-  const data = await fetchAniListGraphQL(gql, { id });
-  return data && data.Media ? data.Media : null;
+  return fetchJikanAnimeDetails(aniListId);
 }
 
 function mapAniListMediaToFranchiseEntry(media, relationType, depth) {
   if (!media) return null;
-  const title = pickAniListTitle(media.title);
+  const title = pickAnimeTitle(media.title || media);
   if (!title) return null;
-  const yearValue = media.seasonYear ? Number(media.seasonYear) : null;
+  const yearString = extractAnimeYear(media);
+  const yearValue = yearString ? Number(yearString) : null;
+  const malId = media.mal_id || media.id || null;
+  const cover = media.coverImage?.extraLarge
+    || media.coverImage?.large
+    || media.images?.jpg?.large_image_url
+    || media.images?.jpg?.image_url
+    || media.images?.webp?.large_image_url
+    || media.images?.webp?.image_url
+    || '';
   return {
-    aniListId: media.id || null,
+    aniListId: malId,
     title,
     year: Number.isFinite(yearValue) ? yearValue : null,
-    format: media.format || '',
+    format: media.format || media.type || '',
     episodes: media.episodes || null,
-    duration: media.duration || null,
-    status: media.status || '',
-    siteUrl: media.siteUrl || (media.id ? `https://anilist.co/anime/${media.id}` : ''),
-    cover: media.coverImage?.extraLarge || media.coverImage?.large || media.coverImage?.medium || '',
+    duration: extractAnimeDurationMinutes(media) || null,
+    status: normalizeAnimeStatus(media.status),
+    siteUrl: media.url || (malId ? `${MYANIMELIST_ANIME_URL}/${malId}` : ''),
+    cover,
     relationType: relationType || '',
     depth: depth || 0,
   };
@@ -4518,12 +4581,16 @@ async function fetchAniListFranchisePlan({ aniListId, preferredSeriesName } = {}
     const entry = mapAniListMediaToFranchiseEntry(media, current.relationType, current.depth);
     if (entry) entries.push(entry);
     if (current.depth >= ANIME_FRANCHISE_MAX_DEPTH) continue;
-    const edges = Array.isArray(media.relations?.edges) ? media.relations.edges : [];
-    edges.forEach(edge => {
-      const childId = edge?.node?.id;
-      if (!childId || seen.has(childId)) return;
-      if (!isSupportedAnimeRelationType(edge.relationType)) return;
-      queue.push({ id: childId, depth: current.depth + 1, relationType: edge.relationType });
+    const relationGroups = Array.isArray(media.relations) ? media.relations : [];
+    relationGroups.forEach(group => {
+      const normalizedRelation = normalizeAnimeRelationType(group?.relation || group?.relationType || '');
+      if (!isSupportedAnimeRelationType(normalizedRelation)) return;
+      const nodes = Array.isArray(group.entry) ? group.entry : Array.isArray(group.edges) ? group.edges.map(edge => edge?.node) : [];
+      nodes.forEach(node => {
+        const childId = node?.mal_id || node?.id;
+        if (!childId || seen.has(childId)) return;
+        queue.push({ id: childId, depth: current.depth + 1, relationType: normalizedRelation });
+      });
     });
   }
 
@@ -4582,7 +4649,7 @@ async function autoAddAnimeFranchiseEntries(plan, rootAniListId, selectedIds) {
   }
   if (addedCount > 0) {
     try {
-      console.info(`[AniList] Auto-added ${addedCount} related anime entries for "${plan.seriesName}"`);
+      console.info(`[MyAnimeList] Auto-added ${addedCount} related anime entries for "${plan.seriesName}"`);
     } catch (_) {}
   }
 }
@@ -4665,7 +4732,7 @@ async function runAnimeFranchiseScan(data) {
           preferredSeriesName: info.seriesName,
         });
       } catch (err) {
-        console.warn('AniList franchise scan failed', err);
+        console.warn('MyAnimeList franchise scan failed', err);
         continue;
       }
       if (!plan || !Array.isArray(plan.entries) || !plan.entries.length) continue;
