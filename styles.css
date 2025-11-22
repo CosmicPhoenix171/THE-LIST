@@ -18,6 +18,10 @@
   --danger-300:#ff6b6b;
   --warning-300:#f5c568;
   --success-300:#47e6a1;
+  --movies-pill-color:#3da9f5;
+  --tv-pill-color:#c084fc;
+  --anime-pill-color:#fb923c;
+  --books-pill-color:#4ade80;
 }
 
 *{box-sizing:border-box}
@@ -114,6 +118,12 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .add-type-tabs{display:flex;flex-wrap:wrap;gap:.5rem}
 .add-type-tab{border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:var(--text-300);border-radius:999px;padding:.4rem .95rem;font-weight:600;font-size:.85rem;cursor:pointer;transition:all .18s ease}
 .add-type-tab.active{background:linear-gradient(135deg,var(--accent-300),#50c9ff);color:#08131b;border-color:transparent;box-shadow:0 8px 20px rgba(80,201,255,0.25)}
+.type-filter,.add-type-tab{--type-accent-color:rgba(255,255,255,0.08)}
+.type-filter[data-type-toggle="movies"],.add-type-tab[data-type="movies"]{--type-accent-color:var(--movies-pill-color)}
+.type-filter[data-type-toggle="tvShows"],.add-type-tab[data-type="tvShows"]{--type-accent-color:var(--tv-pill-color)}
+.type-filter[data-type-toggle="anime"],.add-type-tab[data-type="anime"]{--type-accent-color:var(--anime-pill-color)}
+.type-filter[data-type-toggle="books"],.add-type-tab[data-type="books"]{--type-accent-color:var(--books-pill-color)}
+:is(.type-filter[data-type-toggle],.add-type-tab[data-type]){border-color:var(--type-accent-color)}
 .add-modal-form{margin-top:.35rem;overflow-y:auto;padding-right:.35rem;max-height:100%}
 .add-modal-form .add-panel{box-shadow:none}
 .wheel-modal .wheel-area{margin-top:.75rem}
