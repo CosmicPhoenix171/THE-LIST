@@ -18,123 +18,131 @@
     </div>
 
     <!-- Main app -->
-    <div id="app" class="hidden">
-      <header class="topbar">
-        <div class="brand">THE LIST <span class="tm">™</span></div>
-        <div class="user-info">
-          <span id="user-name"></span>
-          <button id="back-to-top" class="btn ghost hidden" type="button">Back to top</button>
-          <button id="sign-out" class="btn secondary">Sign out</button>
-        </div>
-      </header>
+        <section class="section action-section">
+          <div class="action-grid">
+            <article id="add-media" class="action-card add-card">
+              <div class="action-card-header">
+                <div class="action-card-copy">
+                  <p class="eyebrow">Add New Items</p>
+                  <p class="action-card-text">Easily add movies, shows, anime, or books without leaving your library.</p>
+                </div>
+                <button id="open-add-modal" type="button" class="btn primary">Add Item</button>
+              </div>
 
-      <main class="main">
-        <section id="add-media" class="section">
-          <h2>Add New Items</h2>
-          <div class="add-modal-launch">
-            <p>Easily add movies, shows, anime, or books without leaving your library.</p>
-            <button id="open-add-modal" type="button" class="btn primary">Add Item</button>
-          </div>
+              <div id="add-form-templates" class="sr-only" aria-hidden="true">
+                <template id="add-form-template-movies" data-list="movies">
+                  <article class="add-panel">
+                    <h3>Movies</h3>
+                    <form class="add-form" data-list="movies">
+                      <div class="input-suggest">
+                        <input name="title" placeholder="Title" autocomplete="off" required />
+                        <div class="suggestions" data-role="title-suggestions"></div>
+                      </div>
+                      <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                      <input name="director" placeholder="Director (optional)" />
+                      <input name="seriesName" placeholder="Series name (optional)" />
+                      <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
+                      <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                      <button type="submit" class="btn primary">Add Movie</button>
+                    </form>
+                  </article>
+                </template>
 
-          <div id="add-form-templates" class="sr-only" aria-hidden="true">
-            <template id="add-form-template-movies" data-list="movies">
-              <article class="add-panel">
-                <h3>Movies</h3>
-                <form class="add-form" data-list="movies">
-                  <div class="input-suggest">
-                    <input name="title" placeholder="Title" autocomplete="off" required />
-                    <div class="suggestions" data-role="title-suggestions"></div>
+                <template id="add-form-template-tvShows" data-list="tvShows">
+                  <article class="add-panel">
+                    <h3>TV Shows</h3>
+                    <form class="add-form" data-list="tvShows">
+                      <div class="input-suggest">
+                        <input name="title" placeholder="Title" autocomplete="off" required />
+                        <div class="suggestions" data-role="title-suggestions"></div>
+                      </div>
+                      <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                      <input name="director" placeholder="Director / Showrunner (optional)" />
+                      <input name="seriesName" placeholder="Series name (optional)" />
+                      <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
+                      <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                      <button type="submit" class="btn primary">Add TV Show</button>
+                    </form>
+                  </article>
+                </template>
+
+                <template id="add-form-template-anime" data-list="anime">
+                  <article class="add-panel">
+                    <h3>Anime</h3>
+                    <form class="add-form" data-list="anime">
+                      <div class="input-suggest">
+                        <input name="title" placeholder="Title" autocomplete="off" required />
+                        <div class="suggestions" data-role="title-suggestions"></div>
+                      </div>
+                      <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                      <input name="director" placeholder="Director / Studio (optional)" />
+                      <input name="seriesName" placeholder="Series name (optional)" />
+                      <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
+                      <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                      <button type="submit" class="btn primary">Add Anime</button>
+                    </form>
+                  </article>
+                </template>
+
+                <template id="add-form-template-books" data-list="books">
+                  <article class="add-panel">
+                    <h3>Books</h3>
+                    <form class="add-form" data-list="books">
+                      <div class="input-suggest">
+                        <input name="title" placeholder="Title" autocomplete="off" required />
+                        <div class="suggestions" data-role="title-suggestions"></div>
+                      </div>
+                      <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                      <input name="author" placeholder="Author (optional)" />
+                      <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                      <button type="submit" class="btn primary">Add Book</button>
+                    </form>
+                  </article>
+                </template>
+              </div>
+
+              <div class="sr-only" aria-hidden="true">
+                <div id="movies-list"></div>
+                <div id="tvShows-list"></div>
+                <div id="anime-list"></div>
+                <div id="books-list"></div>
+              </div>
+            </article>
+
+            <article id="wheel" class="action-card wheel-card">
+              <div class="action-card-header">
+                <div class="action-card-copy">
+                  <p class="eyebrow">Wheel Spinner</p>
+                  <p class="action-card-text">Let the wheel pick what you watch or read next.</p>
+                </div>
+                <button id="open-wheel-modal" type="button" class="btn primary">Open Wheel Spinner</button>
+              </div>
+
+              <template id="wheel-modal-template">
+                <div class="wheel-modal-content">
+                  <div class="wheel-modal-header">
+                    <h3>Wheel Spinner</h3>
+                    <button type="button" class="btn ghost" data-wheel-close>Close</button>
                   </div>
-                  <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-                  <input name="director" placeholder="Director (optional)" />
-                  <input name="seriesName" placeholder="Series name (optional)" />
-                  <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
-                  <textarea name="notes" placeholder="Notes (optional)"></textarea>
-                  <button type="submit" class="btn primary">Add Movie</button>
-                </form>
-              </article>
-            </template>
-
-            <template id="add-form-template-tvShows" data-list="tvShows">
-              <article class="add-panel">
-                <h3>TV Shows</h3>
-                <form class="add-form" data-list="tvShows">
-                  <div class="input-suggest">
-                    <input name="title" placeholder="Title" autocomplete="off" required />
-                    <div class="suggestions" data-role="title-suggestions"></div>
+                  <p class="small">Choose a list, then spin to get a random pick.</p>
+                  <div class="spinner-controls">
+                    <select data-wheel-source>
+                      <option value="movies">Movies</option>
+                      <option value="tvShows">TV Shows</option>
+                      <option value="anime">Anime</option>
+                      <option value="books">Books</option>
+                    </select>
+                    <button class="btn primary" data-wheel-spin>Spin the Wheel</button>
                   </div>
-                  <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-                  <input name="director" placeholder="Director / Showrunner (optional)" />
-                  <input name="seriesName" placeholder="Series name (optional)" />
-                  <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
-                  <textarea name="notes" placeholder="Notes (optional)"></textarea>
-                  <button type="submit" class="btn primary">Add TV Show</button>
-                </form>
-              </article>
-            </template>
-
-            <template id="add-form-template-anime" data-list="anime">
-              <article class="add-panel">
-                <h3>Anime</h3>
-                <form class="add-form" data-list="anime">
-                  <div class="input-suggest">
-                    <input name="title" placeholder="Title" autocomplete="off" required />
-                    <div class="suggestions" data-role="title-suggestions"></div>
+                  <div class="wheel-area">
+                    <div class="wheel-spinner hidden" data-wheel-spinner></div>
+                    <div class="wheel-result" data-wheel-result></div>
                   </div>
-                  <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-                  <input name="director" placeholder="Director / Studio (optional)" />
-                  <input name="seriesName" placeholder="Series name (optional)" />
-                  <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
-                  <textarea name="notes" placeholder="Notes (optional)"></textarea>
-                  <button type="submit" class="btn primary">Add Anime</button>
-                </form>
-              </article>
-            </template>
-
-            <template id="add-form-template-books" data-list="books">
-              <article class="add-panel">
-                <h3>Books</h3>
-                <form class="add-form" data-list="books">
-                  <div class="input-suggest">
-                    <input name="title" placeholder="Title" autocomplete="off" required />
-                    <div class="suggestions" data-role="title-suggestions"></div>
-                  </div>
-                  <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-                  <input name="author" placeholder="Author (optional)" />
-                  <textarea name="notes" placeholder="Notes (optional)"></textarea>
-                  <button type="submit" class="btn primary">Add Book</button>
-                </form>
-              </article>
-            </template>
-          </div>
-
-          <div class="sr-only" aria-hidden="true">
-            <div id="movies-list"></div>
-            <div id="tvShows-list"></div>
-            <div id="anime-list"></div>
-            <div id="books-list"></div>
+                </div>
+              </template>
+            </article>
           </div>
         </section>
-          <section id="wheel" class="section">
-            <h2>Wheel Spinner</h2>
-            <div class="wheel-launch">
-              <p>Let the wheel pick what you watch or read next.</p>
-              <button id="open-wheel-modal" type="button" class="btn primary">Open Wheel Spinner</button>
-            </div>
-
-            <template id="wheel-modal-template">
-              <div class="wheel-modal-content">
-                <div class="wheel-modal-header">
-                  <h3>Wheel Spinner</h3>
-                  <button type="button" class="btn ghost" data-wheel-close>Close</button>
-                </div>
-                <p class="small">Choose a list, then spin to get a random pick.</p>
-                <div class="spinner-controls">
-                  <select data-wheel-source>
-                    <option value="movies">Movies</option>
-                    <option value="tvShows">TV Shows</option>
-                    <option value="anime">Anime</option>
-                    <option value="books">Books</option>
                   </select>
                   <button class="btn primary" data-wheel-spin>Spin the Wheel</button>
                 </div>
