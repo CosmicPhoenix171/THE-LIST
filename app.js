@@ -3695,6 +3695,25 @@ function updateItem(listType, itemId, changes) {
   return update(itemRef, changes);
 }
 
+async function moveItemBetweenLists(sourceListType, targetListType, itemId, itemData) {
+  if (!currentUser) {
+    alert('Not signed in');
+    throw new Error('Not signed in');
+  }
+  const cleaned = { ...itemData };
+  delete cleaned.__id;
+  delete cleaned.__type;
+  delete cleaned.__source;
+  cleaned.updatedAt = Date.now();
+  if (!cleaned.createdAt) {
+    cleaned.createdAt = Date.now();
+  }
+  const targetRef = ref(db, `users/${currentUser.uid}/${targetListType}/${itemId}`);
+  await set(targetRef, cleaned);
+  const sourceRef = ref(db, `users/${currentUser.uid}/${sourceListType}/${itemId}`);
+  await remove(sourceRef);
+}
+
 // Delete an item
 function deleteItem(listType, itemId) {
   if (!currentUser) {
@@ -3725,6 +3744,15 @@ function openEditModal(listType, itemId, item) {
   modal.className = 'modal';
 
   const form = document.createElement('form');
+  const typeSelect = document.createElement('select');
+  typeSelect.name = 'listType';
+  PRIMARY_LIST_TYPES.forEach(type => {
+    const option = document.createElement('option');
+    option.value = type;
+    option.textContent = MEDIA_TYPE_LABELS[type] || type;
+    if (type === listType) option.selected = true;
+    typeSelect.appendChild(option);
+  });
   const titleInput = document.createElement('input');
   titleInput.name = 'title';
   titleInput.value = item.title || '';
@@ -3737,8 +3765,7 @@ function openEditModal(listType, itemId, item) {
   yearInput.maxLength = 4;
   yearInput.value = item.year || '';
   const creatorInput = document.createElement('input');
-  const creatorFieldName = listType === 'books' ? 'author' : 'director';
-  creatorInput.name = creatorFieldName;
+  creatorInput.name = 'creator';
   const creatorPlaceholderMap = {
     movies: 'Director',
     tvShows: 'Director / Showrunner',
@@ -3747,21 +3774,16 @@ function openEditModal(listType, itemId, item) {
   };
   creatorInput.placeholder = creatorPlaceholderMap[listType] || 'Creator';
   creatorInput.value = listType === 'books' ? (item.author || '') : (item.director || '');
-  let seriesNameInput = null;
-  let seriesOrderInput = null;
-  if (listType !== 'books') {
-    seriesNameInput = document.createElement('input');
-    seriesNameInput.name = 'seriesName';
-    seriesNameInput.placeholder = 'Series name (optional)';
-    seriesNameInput.value = item.seriesName || '';
-
-    seriesOrderInput = document.createElement('input');
-    seriesOrderInput.name = 'seriesOrder';
-    seriesOrderInput.placeholder = 'Series order';
-    seriesOrderInput.inputMode = 'numeric';
-    seriesOrderInput.pattern = '[0-9]{1,3}';
-    seriesOrderInput.value = item.seriesOrder !== undefined && item.seriesOrder !== null ? item.seriesOrder : '';
-  }
+  const seriesNameInput = document.createElement('input');
+  seriesNameInput.name = 'seriesName';
+  seriesNameInput.placeholder = 'Series name (optional)';
+  seriesNameInput.value = item.seriesName || '';
+  const seriesOrderInput = document.createElement('input');
+  seriesOrderInput.name = 'seriesOrder';
+  seriesOrderInput.placeholder = 'Series order';
+  seriesOrderInput.inputMode = 'numeric';
+  seriesOrderInput.pattern = '[0-9]{1,3}';
+  seriesOrderInput.value = item.seriesOrder !== undefined && item.seriesOrder !== null ? item.seriesOrder : '';
   const notesInput = document.createElement('textarea');
   notesInput.name = 'notes';
   notesInput.value = item.notes || '';
@@ -3771,41 +3793,93 @@ function openEditModal(listType, itemId, item) {
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'btn secondary';
   cancelBtn.textContent = 'Cancel';
+  const refreshBtn = document.createElement('button');
+  refreshBtn.className = 'btn ghost';
+  refreshBtn.type = 'button';
+  refreshBtn.textContent = 'Refresh Metadata';
 
+  form.appendChild(typeSelect);
   form.appendChild(titleInput);
   form.appendChild(yearInput);
   form.appendChild(creatorInput);
-  if (seriesNameInput) form.appendChild(seriesNameInput);
-  if (seriesOrderInput) form.appendChild(seriesOrderInput);
+  form.appendChild(seriesNameInput);
+  form.appendChild(seriesOrderInput);
   form.appendChild(notesInput);
   const controls = document.createElement('div');
   controls.style.display = 'flex'; controls.style.gap = '.5rem'; controls.style.justifyContent = 'flex-end';
-  controls.appendChild(cancelBtn); controls.appendChild(saveBtn);
+  controls.appendChild(refreshBtn);
+  controls.appendChild(cancelBtn);
+  controls.appendChild(saveBtn);
   form.appendChild(controls);
 
-  form.addEventListener('submit', (ev) => {
+  function applyTypeUiState(selectedType) {
+    const placeholder = creatorPlaceholderMap[selectedType] || 'Creator';
+    creatorInput.placeholder = placeholder;
+    const isBook = selectedType === 'books';
+    seriesNameInput.hidden = isBook;
+    seriesOrderInput.hidden = isBook;
+  }
+
+  applyTypeUiState(listType);
+  typeSelect.addEventListener('change', () => {
+    applyTypeUiState(typeSelect.value);
+  });
+
+  refreshBtn.addEventListener('click', () => {
+    const lookupTitle = (titleInput.value || '').trim();
+    const lookupYear = sanitizeYear((yearInput.value || '').trim());
+    refreshItemMetadata(listType, itemId, item, {
+      title: lookupTitle,
+      year: lookupYear,
+      button: refreshBtn,
+    });
+  });
+
+  form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const newTitle = (titleInput.value || '').trim();
     if (!newTitle) return alert('Title is required');
     const updatedYear = sanitizeYear((yearInput.value || '').trim());
     const creatorVal = (creatorInput.value || '').trim();
+    const targetListType = typeSelect.value;
+    const isBooksTarget = targetListType === 'books';
     const payload = {
       title: newTitle,
       notes: (notesInput.value || '').trim() || null,
       year: updatedYear || null,
     };
-    if (listType === 'books') {
+    if (isBooksTarget) {
       payload.author = creatorVal || null;
+      payload.director = null;
+      payload.seriesName = null;
+      payload.seriesOrder = null;
     } else {
       payload.director = creatorVal || null;
-      const seriesNameVal = (seriesNameInput && seriesNameInput.value ? seriesNameInput.value.trim() : '') || '';
-      const seriesOrderValRaw = seriesOrderInput && seriesOrderInput.value ? seriesOrderInput.value.trim() : '';
-      const normalizedSeriesOrder = seriesOrderInput ? sanitizeSeriesOrder(seriesOrderValRaw) : null;
+      payload.author = null;
+      const seriesNameVal = seriesNameInput.value ? seriesNameInput.value.trim() : '';
+      const seriesOrderValRaw = seriesOrderInput.value ? seriesOrderInput.value.trim() : '';
+      const normalizedSeriesOrder = sanitizeSeriesOrder(seriesOrderValRaw);
       payload.seriesName = seriesNameVal || null;
       payload.seriesOrder = normalizedSeriesOrder !== null ? normalizedSeriesOrder : null;
     }
-    updateItem(listType, itemId, payload);
-    closeModal();
+
+    setButtonBusy(saveBtn, true);
+    saveBtn.textContent = 'Saving...';
+    try {
+      if (targetListType === listType) {
+        await updateItem(listType, itemId, payload);
+      } else {
+        const transferData = { ...item, ...payload };
+        transferData.createdAt = transferData.createdAt || Date.now();
+        await moveItemBetweenLists(listType, targetListType, itemId, transferData);
+      }
+      closeModal();
+    } catch (err) {
+      console.error('Edit save failed', err);
+      alert('Unable to save changes right now. Please try again.');
+    } finally {
+      setButtonBusy(saveBtn, false);
+    }
   });
 
   cancelBtn.addEventListener('click', (ev) => { ev.preventDefault(); closeModal(); });
@@ -3815,6 +3889,90 @@ function openEditModal(listType, itemId, item) {
   modalRoot.appendChild(backdrop);
 
   function closeModal() { modalRoot.innerHTML = ''; }
+}
+
+async function refreshItemMetadata(listType, itemId, item, options = {}) {
+  const supported = new Set(['movies', 'tvShows', 'anime', 'books']);
+  if (!supported.has(listType)) {
+    alert('Metadata refresh is only available for movies, TV, anime, or books.');
+    return;
+  }
+  const { title = '', year = '', button = null } = options;
+  const lookupTitle = title || item.title || '';
+  const lookupYear = year || item.year || '';
+
+  const setButtonState = (isBusy) => {
+    if (!button) return;
+    if (isBusy) {
+      if (!button.dataset.originalText) {
+        button.dataset.originalText = button.textContent || '';
+      }
+      button.disabled = true;
+      button.textContent = 'Refreshing...';
+    } else {
+      button.disabled = false;
+      if (button.dataset.originalText) {
+        button.textContent = button.dataset.originalText;
+        delete button.dataset.originalText;
+      }
+    }
+  };
+
+  setButtonState(true);
+  try {
+    let metadata = null;
+    if (listType === 'anime') {
+      metadata = await fetchAniListMetadata({
+        aniListId: getAniListIdFromItem(item),
+        title: lookupTitle,
+        year: lookupYear,
+      });
+    } else if (listType === 'books') {
+      metadata = await fetchGoogleBooksMetadata({
+        volumeId: item.googleBooksId || '',
+        title: lookupTitle,
+        author: item.author || '',
+        isbn: item.isbn || '',
+      });
+    } else {
+      if (!TMDB_API_KEY) {
+        maybeWarnAboutTmdbKey();
+        alert('TMDb metadata refresh requires an API key.');
+        return;
+      }
+      metadata = await fetchTmdbMetadata(listType, {
+        title: lookupTitle,
+        year: lookupYear,
+        imdbId: item.imdbId || item.imdbID || '',
+        tmdbId: item.tmdbId || item.tmdbID || '',
+      });
+    }
+
+    if (!metadata) {
+      alert('No metadata found for this title.');
+      return;
+    }
+
+    const updates = deriveMetadataAssignments(metadata, item, {
+      overwrite: true,
+      fallbackTitle: lookupTitle,
+      fallbackYear: lookupYear,
+    });
+
+    if (!updates || Object.keys(updates).length === 0) {
+      alert('Metadata already looks up to date.');
+      return;
+    }
+
+    await updateItem(listType, itemId, updates);
+    Object.assign(item, updates);
+    alert('Metadata refreshed!');
+  } catch (err) {
+    console.error('Manual metadata refresh failed', err);
+    alert('Unable to refresh metadata right now. Please try again.');
+  } finally {
+    setButtonState(false);
+  }
 }
 
 function buildSpinnerDataScope(listType, rawData) {
