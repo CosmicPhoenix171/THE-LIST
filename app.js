@@ -91,12 +91,6 @@ const listCaches = {};
 const metadataRefreshInflight = new Set();
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
 const PRIMARY_LIST_TYPES = ['movies', 'tvShows', 'anime', 'books'];
-const LIST_TYPE_LABELS = {
-  movies: 'Movie',
-  tvShows: 'TV Show',
-  anime: 'Anime',
-  books: 'Book',
-};
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
 const seriesGroups = {};
@@ -1097,28 +1091,22 @@ function renderUnifiedLibrary() {
     combinedListEl.innerHTML = '<div class="small">Loading your library...</div>';
     return;
   }
-  const items = [];
-  PRIMARY_LIST_TYPES.forEach(listType => {
-    const cache = listCaches[listType] || {};
-    Object.entries(cache).forEach(([id, item]) => {
-      if (item) items.push({ listType, id, item });
-    });
-  });
 
+  const unifiedEntries = collectUnifiedEntries();
   const activeTypes = unifiedFilters.types;
-  let filtered = items.filter(entry => activeTypes.has(entry.listType));
+  let filtered = unifiedEntries.filter(entry => activeTypes.has(entry.listType));
   const query = unifiedFilters.search;
   if (query) {
-    filtered = filtered.filter(({ item }) => matchesUnifiedSearch(item, query));
+    filtered = filtered.filter(entry => matchesUnifiedSearch(entry.displayItem, query));
   }
 
   filtered.sort((a, b) => {
-    const ta = titleSortKey(a.item?.title || '');
-    const tb = titleSortKey(b.item?.title || '');
+    const ta = titleSortKey(a.displayItem?.title || '');
+    const tb = titleSortKey(b.displayItem?.title || '');
     if (ta < tb) return -1;
     if (ta > tb) return 1;
-    const ya = Number(a.item?.year) || 9999;
-    const yb = Number(b.item?.year) || 9999;
+    const ya = Number(a.displayItem?.year) || 9999;
+    const yb = Number(b.displayItem?.year) || 9999;
     if (ya !== yb) return ya - yb;
     const idxA = Math.max(PRIMARY_LIST_TYPES.indexOf(a.listType), 0);
     const idxB = Math.max(PRIMARY_LIST_TYPES.indexOf(b.listType), 0);
@@ -1131,9 +1119,46 @@ function renderUnifiedLibrary() {
     return;
   }
 
-  const fragment = document.createDocumentFragment();
-  filtered.forEach(entry => fragment.appendChild(buildUnifiedCard(entry)));
-  combinedListEl.appendChild(fragment);
+  const grid = createEl('div', 'movies-grid unified-grid');
+  filtered.forEach(entry => {
+    const card = buildUnifiedCard(entry);
+    if (card) grid.appendChild(card);
+  });
+  combinedListEl.appendChild(grid);
+}
+
+function collectUnifiedEntries() {
+  const allEntries = [];
+  PRIMARY_LIST_TYPES.forEach(listType => {
+    const cacheEntries = Object.entries(listCaches[listType] || {});
+    if (!cacheEntries.length) return;
+    if (isCollapsibleList(listType)) {
+      const { displayRecords } = prepareCollapsibleRecords(listType, cacheEntries);
+      displayRecords.forEach(record => {
+        allEntries.push({
+          listType,
+          id: record.id,
+          item: record.item,
+          displayItem: record.displayItem,
+          displayEntryId: record.displayEntryId,
+          positionIndex: record.index,
+        });
+      });
+    } else {
+      cacheEntries.forEach(([id, item], index) => {
+        if (!item) return;
+        allEntries.push({
+          listType,
+          id,
+          item,
+          displayItem: item,
+          displayEntryId: id,
+          positionIndex: index,
+        });
+      });
+    }
+  });
+  return allEntries;
 }
 
 function matchesUnifiedSearch(item, query) {
@@ -1153,106 +1178,13 @@ function matchesUnifiedSearch(item, query) {
 }
 
 function buildUnifiedCard(entry) {
-  const { listType, id, item } = entry;
-  const card = createEl('article', 'card unified-card');
-  card.dataset.listType = listType;
-  card.dataset.id = id;
-
-  const header = createEl('div', 'unified-card-header');
-  const titleRow = createEl('div', 'unified-card-title-row');
-  titleRow.appendChild(createTypeChip(listType));
-  titleRow.appendChild(createEl('div', 'title', { text: item?.title || '(Untitled)' }));
-  header.appendChild(titleRow);
-
-  const meta = buildUnifiedMeta(listType, item);
-  if (meta) {
-    header.appendChild(createEl('div', 'meta', { text: meta }));
+  const { listType, id, displayItem, displayEntryId, positionIndex } = entry;
+  if (isCollapsibleList(listType)) {
+    return buildCollapsibleMovieCard(listType, id, displayItem, positionIndex, {
+      displayEntryId,
+    });
   }
-  card.appendChild(header);
-
-  const body = createEl('div', 'unified-card-body');
-  let hasBody = false;
-  const seriesLine = buildSeriesLine(item);
-  if (seriesLine) {
-    body.appendChild(seriesLine);
-    hasBody = true;
-  }
-  if (listType !== 'books') {
-    const castLine = buildMovieCastLine(item);
-    if (castLine) {
-      body.appendChild(castLine);
-      hasBody = true;
-    }
-  }
-  const description = buildUnifiedDescription(item);
-  if (description) {
-    body.appendChild(createEl('div', 'notes', { text: description }));
-    hasBody = true;
-  }
-  if (listType === 'anime' && Array.isArray(item?.animeGenres) && item.animeGenres.length) {
-    body.appendChild(createEl('div', 'anime-genres', { text: `Genres: ${item.animeGenres.join(', ')}` }));
-    hasBody = true;
-  }
-  if (hasBody) {
-    card.appendChild(body);
-  }
-
-  const actions = createEl('div', 'actions unified-card-actions');
-  const editBtn = createEl('button', 'btn secondary', { text: 'Edit' });
-  editBtn.type = 'button';
-  editBtn.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    openEditModal(listType, id, item);
-  });
-  actions.appendChild(editBtn);
-
-  const deleteBtn = createEl('button', 'btn ghost', { text: 'Delete' });
-  deleteBtn.type = 'button';
-  deleteBtn.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    deleteItem(listType, id);
-  });
-  actions.appendChild(deleteBtn);
-  card.appendChild(actions);
-  return card;
-}
-
-function createTypeChip(listType) {
-  const label = formatListTypeLabel(listType);
-  return createEl('span', `type-chip ${listType}`, { text: label });
-}
-
-function formatListTypeLabel(listType) {
-  return LIST_TYPE_LABELS[listType] || listType;
-}
-
-function buildUnifiedMeta(listType, item = {}) {
-  const parts = [];
-  if (item.year) parts.push(item.year);
-  if (listType === 'books' && item.author) {
-    parts.push(item.author);
-  } else if (item.director) {
-    parts.push(item.director);
-  } else if (item.author) {
-    parts.push(item.author);
-  }
-  if (listType === 'anime' && item.animeEpisodes) {
-    parts.push(`${item.animeEpisodes} ep${item.animeEpisodes === 1 ? '' : 's'}`);
-  }
-  if (listType === 'movies' && item.runtime) {
-    parts.push(item.runtime);
-  }
-  if (item.imdbRating) {
-    parts.push(`IMDb ${item.imdbRating}`);
-  }
-  return parts.join(' • ');
-}
-
-function buildUnifiedDescription(item = {}) {
-  if (item.notes) return item.notes;
-  if (item.plot) return item.plot;
-  if (item.summary) return item.summary;
-  return '';
+  return buildStandardCard(listType, id, displayItem);
 }
 
 function isCollapsibleList(listType) {
@@ -1281,10 +1213,8 @@ function matchesActorFilter(listType, item, filterValue = null) {
   return fallback.includes(activeFilter);
 }
 
-function renderCollapsibleMediaGrid(listType, container, entries) {
-  const grid = createEl('div', 'movies-grid');
-  const visibleIds = new Set();
-  const seriesBuckets = new Map(); // seriesKey -> { entries: [] }
+function prepareCollapsibleRecords(listType, entries) {
+  const seriesBuckets = new Map();
   const records = [];
 
   entries.forEach(([id, item], index) => {
@@ -1317,8 +1247,9 @@ function renderCollapsibleMediaGrid(listType, container, entries) {
       leaderMembersByCardId.set(leader.id, compactEntries);
     }
   });
-  seriesGroups[listType] = leaderMembersByCardId;
 
+  const visibleIds = new Set();
+  const displayRecords = [];
   records.forEach(record => {
     const { id, item, index, seriesKey } = record;
     const bucket = seriesKey ? seriesBuckets.get(seriesKey) : null;
@@ -1333,9 +1264,29 @@ function renderCollapsibleMediaGrid(listType, container, entries) {
         displayEntryId = active.id;
       }
     }
-    visibleIds.add(id);
+    if (!hideCard) {
+      visibleIds.add(id);
+      displayRecords.push({
+        id,
+        item,
+        displayItem,
+        displayEntryId,
+        index,
+      });
+    }
+  });
+
+  return { displayRecords, leaderMembersByCardId, visibleIds };
+}
+
+function renderCollapsibleMediaGrid(listType, container, entries) {
+  const grid = createEl('div', 'movies-grid');
+  const { displayRecords, leaderMembersByCardId, visibleIds } = prepareCollapsibleRecords(listType, entries);
+  seriesGroups[listType] = leaderMembersByCardId;
+
+  displayRecords.forEach(record => {
+    const { id, displayItem, displayEntryId, index } = record;
     grid.appendChild(buildCollapsibleMovieCard(listType, id, displayItem, index, {
-      hideCard,
       displayEntryId,
     }));
   });
@@ -1373,6 +1324,7 @@ function buildCollapsibleMovieCard(listType, id, item, positionIndex = 0, option
   card.dataset.id = id;
   card.dataset.index = String(positionIndex);
   card.dataset.entryId = displayEntryId;
+  card.dataset.listType = listType;
   if (hideCard) {
     card.classList.add('series-hidden');
   }
@@ -1673,12 +1625,12 @@ function cycleSeriesCard(listType, cardId, delta) {
   const entry = entries[state.index];
   if (!entry) return;
   state.entryId = entry.id;
-  const listEl = document.getElementById(`${listType}-list`);
-  if (!listEl) return;
-  const card = listEl.querySelector(`.card.collapsible.movie-card[data-id="${cardId}"]`);
-  if (!card) return;
-  renderMovieCardContent(card, listType, cardId, entry.item, entry.id);
-  card.classList.add('expanded');
+  const cards = document.querySelectorAll(`.card.collapsible.movie-card[data-list-type="${listType}"][data-id="${cardId}"]`);
+  if (!cards.length) return;
+  cards.forEach(card => {
+    renderMovieCardContent(card, listType, cardId, entry.item, entry.id);
+    card.classList.add('expanded');
+  });
   const expandedSet = ensureExpandedSet(listType);
   expandedSet.add(cardId);
   updateCollapsibleCardStates(listType);
@@ -1692,11 +1644,8 @@ function resetSeriesCardToFirstEntry(listType, cardId) {
   const state = getSeriesCarouselState(listType, cardId, entries.length);
   state.index = 0;
   state.entryId = first.id;
-  const listEl = document.getElementById(`${listType}-list`);
-  if (!listEl) return;
-  const card = listEl.querySelector(`.card.collapsible.movie-card[data-id="${cardId}"]`);
-  if (!card) return;
-  renderMovieCardContent(card, listType, cardId, first.item, first.id);
+  const cards = document.querySelectorAll(`.card.collapsible.movie-card[data-list-type="${listType}"][data-id="${cardId}"]`);
+  cards.forEach(card => renderMovieCardContent(card, listType, cardId, first.item, first.id));
 }
 
 function buildMovieMetaText(item) {
@@ -1808,6 +1757,8 @@ function buildMovieCardActions(listType, id, item) {
 
 function buildStandardCard(listType, id, item) {
   const card = createEl('div', 'card');
+  card.dataset.listType = listType;
+  card.dataset.id = id;
 
   if (item.poster) {
     const artwork = createEl('div', 'artwork');
@@ -1926,10 +1877,8 @@ function toggleCardExpansion(listType, cardId) {
 
 
 function updateCollapsibleCardStates(listType) {
-  const listEl = document.getElementById(`${listType}-list`);
-  if (!listEl) return;
   const expandedSet = expandedCards[listType];
-  listEl.querySelectorAll('.card.collapsible').forEach(card => {
+  document.querySelectorAll(`.card.collapsible.movie-card[data-list-type="${listType}"]`).forEach(card => {
     const isMatch = expandedSet instanceof Set
       ? expandedSet.has(card.dataset.id)
       : expandedSet === card.dataset.id;

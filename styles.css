@@ -125,20 +125,6 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .suggestions .empty{padding:.6rem .7rem;color:var(--text-500);font-size:.85rem}
 
 .list{display:grid;gap:.8rem}
-#combined-list{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-.unified-card{display:flex;flex-direction:column;gap:.65rem}
-.unified-card-title-row{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center}
-.unified-card-header{display:flex;flex-direction:column;gap:.35rem}
-.unified-card-header .title{font-size:1.1rem}
-.unified-card-body{display:flex;flex-direction:column;gap:.4rem}
-.unified-card-body .notes{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);padding:.55rem .65rem;border-radius:10px;font-size:.9rem;color:var(--text-300)}
-.unified-card-actions{flex-direction:row;gap:.5rem;justify-content:flex-end}
-.type-chip{display:inline-flex;align-items:center;gap:.25rem;padding:.2rem .6rem;border-radius:999px;font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
-.type-chip.movies{background:rgba(125,242,201,0.18);color:#7df2c9}
-.type-chip.tvShows{background:rgba(101,183,247,0.18);color:#65b7f7}
-.type-chip.anime{background:rgba(245,197,104,0.18);color:#f5c568}
-.type-chip.books{background:rgba(255,154,229,0.18);color:#ff9ae5}
-.type-chip+.meta{color:var(--text-500)}
 .movies-grid{
   --movie-card-min-width:220px;
   --movie-card-gap:1rem;
@@ -147,6 +133,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   gap:var(--movie-card-gap);
   align-items:stretch;
 }
+.unified-grid{margin-top:.5rem}
 .card{background:linear-gradient(180deg,rgba(30,43,54,0.88),rgba(24,35,45,0.88));padding:.95rem;border-radius:14px;border:1px solid var(--border);display:grid;grid-template-columns:auto 1fr auto;gap:1rem;align-items:stretch;box-shadow:0 12px 26px rgba(0,0,0,0.2);transition:transform .12s ease,box-shadow .24s ease,border-color .2s ease}
 .card:hover{transform:translateY(-2px);box-shadow:0 18px 36px rgba(0,0,0,0.28);border-color:#233546}
 .card .artwork{width:72px;height:110px;flex-shrink:0;border-radius:10px;overflow:hidden;background:rgba(255,255,255,0.02);box-shadow:0 8px 20px rgba(0,0,0,0.35);border:1px solid rgba(36,54,68,0.8)}
