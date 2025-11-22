@@ -29,24 +29,6 @@
       </header>
 
       <main class="main">
-        <section id="library" class="section">
-          <h2>Your Library</h2>
-          <div class="section-content">
-            <div class="library-filter-bar">
-              <input type="search" id="library-search" placeholder="Search everything..." aria-label="Search across all saved items" />
-              <div class="type-filter-group" role="group" aria-label="Filter by media type">
-                <button type="button" class="type-filter active" data-type-toggle="movies" aria-pressed="true">Movies</button>
-                <button type="button" class="type-filter active" data-type-toggle="tvShows" aria-pressed="true">TV Shows</button>
-                <button type="button" class="type-filter active" data-type-toggle="anime" aria-pressed="true">Anime</button>
-                <button type="button" class="type-filter active" data-type-toggle="books" aria-pressed="true">Books</button>
-              </div>
-            </div>
-            <div class="list" id="combined-list">
-              <div class="small">Loading your library...</div>
-            </div>
-          </div>
-        </section>
-
         <section id="add-media" class="section">
           <h2>Add New Items</h2>
           <div class="add-modal-launch">
@@ -131,6 +113,24 @@
             <div id="tvShows-list"></div>
             <div id="anime-list"></div>
             <div id="books-list"></div>
+          </div>
+        </section>
+
+        <section id="library" class="section">
+          <h2>Your Library</h2>
+          <div class="section-content">
+            <div class="library-filter-bar">
+              <input type="search" id="library-search" placeholder="Search everything..." aria-label="Search across all saved items" />
+              <div class="type-filter-group" role="group" aria-label="Filter by media type">
+                <button type="button" class="type-filter active" data-type-toggle="movies" aria-pressed="true">Movies</button>
+                <button type="button" class="type-filter active" data-type-toggle="tvShows" aria-pressed="true">TV Shows</button>
+                <button type="button" class="type-filter active" data-type-toggle="anime" aria-pressed="true">Anime</button>
+                <button type="button" class="type-filter active" data-type-toggle="books" aria-pressed="true">Books</button>
+              </div>
+            </div>
+            <div class="list" id="combined-list">
+              <div class="small">Loading your library...</div>
+            </div>
           </div>
         </section>
 
