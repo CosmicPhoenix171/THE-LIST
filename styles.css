@@ -97,6 +97,15 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .add-forms-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.2rem}
 .add-panel{background:linear-gradient(180deg,rgba(30,43,54,0.78),rgba(21,30,38,0.9));border:1px solid var(--border);border-radius:14px;padding:1rem;box-shadow:0 16px 30px rgba(4,9,15,0.26);display:flex;flex-direction:column;gap:.85rem}
 .add-panel h3{margin:0;font-size:1.1rem}
+.add-modal-launch{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:linear-gradient(180deg,rgba(30,43,54,0.78),rgba(21,30,38,0.9));border:1px solid var(--border);border-radius:14px;padding:1.1rem 1.4rem;box-shadow:0 16px 30px rgba(4,9,15,0.26);flex-wrap:wrap}
+.add-modal-launch p{margin:0;color:var(--text-300);font-size:.95rem}
+.add-item-modal{width:min(780px,calc(100vw - 2rem));max-height:90vh;overflow:hidden;display:flex;flex-direction:column;gap:.4rem}
+.add-modal-header{display:flex;align-items:center;justify-content:space-between;gap:.8rem;margin-bottom:.25rem}
+.add-type-tabs{display:flex;flex-wrap:wrap;gap:.5rem}
+.add-type-tab{border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:var(--text-300);border-radius:999px;padding:.4rem .95rem;font-weight:600;font-size:.85rem;cursor:pointer;transition:all .18s ease}
+.add-type-tab.active{background:linear-gradient(135deg,var(--accent-300),#50c9ff);color:#08131b;border-color:transparent;box-shadow:0 8px 20px rgba(80,201,255,0.25)}
+.add-modal-form{margin-top:.35rem;overflow-y:auto;padding-right:.35rem;max-height:100%}
+.add-modal-form .add-panel{box-shadow:none}
 .add-form input,.add-form select,.add-form textarea{
   background:var(--surface-600);
   border:1px solid var(--border);
@@ -321,7 +330,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 /* modal styles */
 .modal-backdrop{position:fixed;inset:0;background:rgba(8,13,20,0.75);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
 .modal{background:var(--surface-700);padding:1.2rem;border-radius:12px;min-width:320px;border:1px solid var(--border);box-shadow:0 22px 44px rgba(0,0,0,0.38)}
-.modal form{display:grid;gap:.6rem}
+.modal form:not(.add-form){display:grid;gap:.6rem}
 
 /* responsive */
 @media (max-width:900px){

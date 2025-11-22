@@ -102,6 +102,12 @@ const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES),
 };
+const MEDIA_TYPE_LABELS = {
+  movies: 'Movies',
+  tvShows: 'TV Shows',
+  anime: 'Anime',
+  books: 'Books',
+};
 
 // DOM references
 const loginScreen = document.getElementById('login-screen');
@@ -117,6 +123,18 @@ const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
 const wheelSpinnerEl = document.getElementById('wheel-spinner');
 const wheelResultEl = document.getElementById('wheel-result');
 const notificationCenter = document.getElementById('notification-center');
+const addModalTrigger = document.getElementById('open-add-modal');
+const addFormTemplatesContainer = document.getElementById('add-form-templates');
+const addFormTemplateMap = {};
+if (addFormTemplatesContainer) {
+  addFormTemplatesContainer.querySelectorAll('template[data-list]').forEach(template => {
+    const type = template && template.dataset ? template.dataset.list : '';
+    if (type) {
+      addFormTemplateMap[type] = template;
+    }
+  });
+}
+let activeAddModal = null;
 
 let animeFranchiseScanTimer = null;
 let animeFranchiseScanInflight = false;
@@ -399,16 +417,7 @@ function initFirebase() {
   googleSigninBtn.addEventListener('click', () => signInWithGoogle());
   signOutBtn.addEventListener('click', () => signOut());
 
-  // Tab switching
-  // Add form handlers
-  document.querySelectorAll('.add-form').forEach(form => {
-    const listType = form.dataset.list;
-    setupFormAutocomplete(form, listType);
-    form.addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      await addItemFromForm(listType, form);
-    });
-  });
+  setupAddModal();
 
   document.querySelectorAll('[data-role="actor-filter"]').forEach(input => {
     const listType = input.dataset.list;
@@ -446,6 +455,147 @@ function initFirebase() {
   }
 }
 
+function setupAddModal() {
+  if (!addModalTrigger || !modalRoot) return;
+  addModalTrigger.addEventListener('click', () => openAddModal());
+}
+
+function openAddModal(initialType = PRIMARY_LIST_TYPES[0]) {
+  if (!modalRoot) return;
+  const defaultType = PRIMARY_LIST_TYPES.includes(initialType) ? initialType : PRIMARY_LIST_TYPES[0];
+  closeAddModal();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop add-item-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal add-item-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Add new item');
+
+  const header = document.createElement('div');
+  header.className = 'add-modal-header';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Add New Item';
+  header.appendChild(heading);
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'btn ghost close-add-modal';
+  closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', () => closeAddModal());
+  header.appendChild(closeBtn);
+
+  const blurb = document.createElement('p');
+  blurb.className = 'small';
+  blurb.textContent = 'Pick a media type to fill out its details.';
+
+  const tabs = document.createElement('div');
+  tabs.className = 'add-type-tabs';
+  const tabButtons = new Map();
+  PRIMARY_LIST_TYPES.forEach(type => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'add-type-tab';
+    button.dataset.type = type;
+    button.textContent = MEDIA_TYPE_LABELS[type] || type;
+    button.setAttribute('aria-pressed', 'false');
+    button.addEventListener('click', () => setActiveAddModalType(type));
+    tabs.appendChild(button);
+    tabButtons.set(type, button);
+  });
+
+  const formHost = document.createElement('div');
+  formHost.className = 'add-modal-form';
+
+  modal.appendChild(header);
+  modal.appendChild(blurb);
+  modal.appendChild(tabs);
+  modal.appendChild(formHost);
+  backdrop.appendChild(modal);
+  modalRoot.innerHTML = '';
+  modalRoot.appendChild(backdrop);
+
+  const keyHandler = (event) => {
+    if (event.key === 'Escape') {
+      closeAddModal();
+    }
+  };
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) {
+      closeAddModal();
+    }
+  });
+  document.addEventListener('keydown', keyHandler);
+
+  activeAddModal = {
+    backdrop,
+    modal,
+    formHost,
+    tabButtons,
+    keyHandler,
+    currentForm: null,
+    activeType: null,
+  };
+
+  setActiveAddModalType(defaultType);
+}
+
+function closeAddModal() {
+  if (!activeAddModal) {
+    if (modalRoot) {
+      modalRoot.innerHTML = '';
+    }
+    return;
+  }
+  destroyActiveAddModalForm();
+  if (activeAddModal.keyHandler) {
+    document.removeEventListener('keydown', activeAddModal.keyHandler);
+  }
+  if (modalRoot) {
+    modalRoot.innerHTML = '';
+  }
+  activeAddModal = null;
+}
+
+function destroyActiveAddModalForm() {
+  if (!activeAddModal || !activeAddModal.currentForm) return;
+  teardownFormAutocomplete(activeAddModal.currentForm);
+  activeAddModal.currentForm = null;
+}
+
+function setActiveAddModalType(listType) {
+  if (!activeAddModal) return;
+  const targetType = PRIMARY_LIST_TYPES.includes(listType) ? listType : PRIMARY_LIST_TYPES[0];
+  const template = addFormTemplateMap[targetType];
+  if (!template) return;
+
+  destroyActiveAddModalForm();
+  activeAddModal.formHost.innerHTML = '';
+  const fragment = template.content.cloneNode(true);
+  activeAddModal.formHost.appendChild(fragment);
+  const form = activeAddModal.formHost.querySelector('form');
+  if (form) {
+    setupFormAutocomplete(form, targetType);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await addItemFromForm(targetType, form);
+    });
+    activeAddModal.currentForm = form;
+  }
+  activeAddModal.activeType = targetType;
+
+  activeAddModal.tabButtons.forEach((button, type) => {
+    if (!button) return;
+    if (type === targetType) {
+      button.classList.add('active');
+      button.setAttribute('aria-pressed', 'true');
+    } else {
+      button.classList.remove('active');
+      button.setAttribute('aria-pressed', 'false');
+    }
+  });
+}
+
 // Prompt user to add missing collection parts
 function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
   if (!collInfo || !Array.isArray(collInfo.parts)) return;
@@ -454,8 +604,8 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
   existingKeys.add(normalizeTitleKey(currentItem.title));
   const missing = collInfo.parts.filter(p => !existingKeys.has(normalizeTitleKey(p.title)));
   if (!missing.length) return;
-
-  const modalRoot = document.getElementById('modal-root');
+  if (!modalRoot) return;
+  closeAddModal();
   modalRoot.innerHTML = '';
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -564,6 +714,7 @@ function promptAnimeFranchiseSelection(plan, { rootAniListId, title } = {}) {
   if (!modalRoot) {
     return Promise.resolve(selectable.map(entry => entry.aniListId));
   }
+  closeAddModal();
   return new Promise(resolve => {
     modalRoot.innerHTML = '';
     const backdrop = document.createElement('div');
@@ -3122,6 +3273,12 @@ function setupFormAutocomplete(form, listType) {
   });
 }
 
+function teardownFormAutocomplete(form) {
+  if (!form) return;
+  hideTitleSuggestions(form);
+  suggestionForms.delete(form);
+}
+
 async function fetchTmdbMetadata(listType, { title, year, imdbId, tmdbId }) {
   if (!TMDB_API_KEY) return null;
   const mediaType = listType === 'movies' ? 'movie' : 'tv';
@@ -3454,6 +3611,8 @@ function deleteItem(listType, itemId) {
 
 // Open a small modal to edit
 function openEditModal(listType, itemId, item) {
+  if (!modalRoot) return;
+  closeAddModal();
   modalRoot.innerHTML = '';
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -3619,7 +3778,8 @@ function renderWheelResult(item, listType) {
 // --- Sequel / Prequel Lookup Logic (TMDb only) ---
 
 function buildRelatedModal(currentItem, related) {
-  const modalRoot = document.getElementById('modal-root');
+  if (!modalRoot) return;
+  closeAddModal();
   modalRoot.innerHTML = '';
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
