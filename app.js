@@ -919,7 +919,10 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywor
       }
 
       if (keywordSelections.length && keywordInfo) {
-        await autoAddTmdbKeywordEntries(franchiseLabel || keywordInfo.name || '', keywordInfo, keywordSelections);
+        await autoAddTmdbKeywordEntries(franchiseLabel || keywordInfo.name || '', keywordInfo, keywordSelections, {
+          sourceItem: currentItem,
+          sourceListType: listType,
+        });
       }
 
       cleanup();
@@ -5618,22 +5621,61 @@ function filterKeywordEntriesAgainstLibrary(entries, sourceItem, sourceListType)
   });
 }
 
-async function autoAddTmdbKeywordEntries(franchiseLabel, keywordInfo, entries) {
+async function autoAddTmdbKeywordEntries(franchiseLabel, keywordInfo, entries, options = {}) {
   if (!Array.isArray(entries) || !entries.length) return;
+  const { sourceItem = null, sourceListType = null } = options;
   const keywordId = keywordInfo?.id || null;
   const keywordName = keywordInfo?.name || franchiseLabel;
+  const sharedSeriesName = (sourceItem && sourceItem.seriesName) ? sourceItem.seriesName : (franchiseLabel || keywordName || '');
+  const normalizedSeriesKey = sharedSeriesName ? normalizeTitleKey(sharedSeriesName) : '';
+  const additionsPlannedByList = new Map();
+  entries.forEach(entry => {
+    if (!entry || !entry.mediaType) return;
+    const key = entry.mediaType === 'tv' ? 'tvShows' : 'movies';
+    additionsPlannedByList.set(key, (additionsPlannedByList.get(key) || 0) + 1);
+  });
+
+  const seriesTrackers = new Map();
+  function ensureSeriesTracker(targetList) {
+    if (!normalizedSeriesKey) return null;
+    const trackerKey = `${targetList}:${normalizedSeriesKey}`;
+    if (!seriesTrackers.has(trackerKey)) {
+      const existingEntries = Object.values(listCaches[targetList] || {}).filter(item => normalizeTitleKey(item.seriesName || '') === normalizedSeriesKey);
+      const maxOrder = existingEntries.reduce((max, item) => {
+        const numericOrder = numericSeriesOrder(item.seriesOrder);
+        if (numericOrder === null || !Number.isFinite(numericOrder)) return max;
+        return Math.max(max, numericOrder);
+      }, 0);
+      seriesTrackers.set(trackerKey, {
+        nextOrder: maxOrder + 1,
+        baseCount: existingEntries.length,
+        totalAdds: additionsPlannedByList.get(targetList) || 0,
+      });
+    }
+    return seriesTrackers.get(trackerKey);
+  }
+
   for (const entry of entries) {
     if (!entry || !entry.id || !entry.title) continue;
     const targetList = entry.mediaType === 'tv' ? 'tvShows' : 'movies';
+    const tracker = ensureSeriesTracker(targetList);
     const payload = {
       title: entry.title,
       createdAt: Date.now(),
       year: entry.year || '',
-      seriesName: franchiseLabel || keywordName || '',
+      seriesName: sharedSeriesName || franchiseLabel || keywordName || '',
       franchiseKeywordId: keywordId,
       franchiseKeywordName: keywordName || franchiseLabel || '',
       tmdbId: entry.id,
     };
+    if (tracker) {
+      payload.seriesOrder = tracker.nextOrder;
+      tracker.nextOrder += 1;
+      const projectedSize = tracker.baseCount + tracker.totalAdds;
+      if (projectedSize > 0) {
+        payload.seriesSize = projectedSize;
+      }
+    }
     if (isDuplicateCandidate(targetList, payload)) continue;
     const baseTrailerUrl = buildTrailerUrl(entry.title, entry.year);
     if (baseTrailerUrl) payload.trailerUrl = baseTrailerUrl;
