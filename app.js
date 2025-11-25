@@ -700,7 +700,7 @@ function closeWheelModal() {
 
 // Prompt user to add missing collection parts
 function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
-  if (!collInfo || !Array.isArray(collInfo.parts)) return;
+  if (!collInfo || !Array.isArray(collInfo.parts) || !collInfo.parts.length) return;
   const existing = listCaches[listType] ? Object.values(listCaches[listType]) : [];
   const existingKeys = new Set(existing.map(e => normalizeTitleKey(e.title)));
   existingKeys.add(normalizeTitleKey(currentItem.title));
@@ -737,9 +737,12 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
     cb.dataset.title = m.title;
     cb.dataset.year = m.year || '';
     cb.dataset.order = m.order || '';
+    cb.dataset.tmdbId = m.tmdbId || m.id || '';
+    cb.dataset.imdbId = m.imdbId || '';
     row.appendChild(cb);
     const text = document.createElement('span');
-    text.textContent = `${m.order}. ${m.title}${m.year ? ' ('+m.year+')' : ''}`;
+    const orderLabel = m.order ? `${m.order}. ` : '';
+    text.textContent = `${orderLabel}${m.title}${m.year ? ` (${m.year})` : ''}`;
     row.appendChild(text);
     list.appendChild(row);
     checkboxes.push(cb);
@@ -757,15 +760,48 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
     const toAdd = checkboxes.filter(cb => cb.checked).map(cb => ({
       title: cb.dataset.title,
       year: sanitizeYear(cb.dataset.year),
-      seriesName: collInfo.collectionName,
       seriesOrder: cb.dataset.order ? Number(cb.dataset.order) : null,
+      tmdbId: Number(cb.dataset.tmdbId) || null,
+      imdbId: cb.dataset.imdbId || '',
     }));
+    if (!toAdd.length) {
+      modalRoot.innerHTML = '';
+      return;
+    }
+    addBtn.disabled = true;
+    addBtn.textContent = 'Adding...';
+    const totalParts = collInfo.parts.length || null;
     for (const part of toAdd) {
       try {
-        if (isDuplicateCandidate(listType, part)) continue;
+        const payload = {
+          title: part.title,
+          year: part.year || '',
+          seriesName: collInfo.collectionName || '',
+          seriesOrder: part.seriesOrder,
+          seriesSize: totalParts,
+        };
+        if (isDuplicateCandidate(listType, payload)) continue;
         const baseTrailerUrl = buildTrailerUrl(part.title, part.year);
-        if (baseTrailerUrl) part.trailerUrl = baseTrailerUrl;
-        await addItem(listType, part);
+        if (baseTrailerUrl) payload.trailerUrl = baseTrailerUrl;
+        let metadata = null;
+        if (TMDB_API_KEY) {
+          metadata = await fetchTmdbMetadata('movies', {
+            title: part.title,
+            year: part.year,
+            tmdbId: part.tmdbId,
+            imdbId: part.imdbId,
+          });
+        }
+        if (metadata) {
+          const updates = deriveMetadataAssignments(metadata, payload, {
+            overwrite: true,
+            fallbackTitle: part.title,
+            fallbackYear: part.year,
+          });
+          Object.assign(payload, updates);
+        }
+        await addItem(listType, payload);
+        existingKeys.add(normalizeTitleKey(part.title));
       } catch (e) {
         console.warn('Failed to auto-add part', part.title, e);
       }
@@ -2262,6 +2298,7 @@ async function addItemFromForm(listType, form) {
     let animeFranchisePlan = null;
     let animeFranchiseSelectionIds = null;
     let aniListTargetId = useAniList ? (selectedAniListId || '') : '';
+    let movieCollectionInfo = null;
     if (!metadata && supportsMetadata) {
       if (useAniList) {
         metadata = await fetchAniListMetadata({ aniListId: selectedAniListId, title, year });
@@ -2350,15 +2387,15 @@ async function addItemFromForm(listType, form) {
     }
 
     // Auto franchise enrichment (TMDb) for movies if user didn't supply seriesName
-    if (listType === 'movies' && TMDB_API_KEY && !item.seriesName && item.title) {
+    if (listType === 'movies' && TMDB_API_KEY && item.title) {
       try {
         const collInfo = await getTmdbCollectionInfo(item.title, item.year, item.imdbId);
         if (collInfo && collInfo.collectionName && Array.isArray(collInfo.parts) && collInfo.parts.length > 1) {
+          movieCollectionInfo = collInfo;
           const idx = collInfo.parts.findIndex(p => p.matchesCurrent);
-          if (idx >= 0) {
+          if (idx >= 0 && !item.seriesName) {
             item.seriesName = collInfo.collectionName;
             item.seriesOrder = idx + 1; // 1-based order
-            // Optionally store total size
             item.seriesSize = collInfo.parts.length;
             if (idx + 1 < collInfo.parts.length) {
               item.nextSequel = collInfo.parts[idx + 1].title;
@@ -2366,8 +2403,8 @@ async function addItemFromForm(listType, form) {
             if (idx > 0) {
               item.previousPrequel = collInfo.parts[idx - 1].title;
             }
-            item._tmdbCollectionInfo = collInfo; // stash for post-add prompt
           }
+          item._tmdbCollectionInfo = collInfo; // stash for follow-up prompts
         }
       } catch (e) {
         console.warn('TMDb enrichment failed', e);
@@ -2392,8 +2429,8 @@ async function addItemFromForm(listType, form) {
     }
 
     // After adding, if we have collection info, offer to auto-add missing parts
-    if (listType === 'movies' && item._tmdbCollectionInfo) {
-      promptAddMissingCollectionParts(listType, item._tmdbCollectionInfo, item);
+    if (listType === 'movies' && movieCollectionInfo) {
+      promptAddMissingCollectionParts(listType, movieCollectionInfo, item);
     }
     form.reset();
     form.__selectedMetadata = null;
@@ -2457,6 +2494,7 @@ async function getTmdbCollectionInfo(title, year, imdbId) {
   if (!collData || !Array.isArray(collData.parts) || collData.parts.length < 2) return null;
   const parts = collData.parts.slice().map(p => ({
     id: p.id,
+    tmdbId: p.id,
     title: p.title || p.original_title || '',
     year: p.release_date ? p.release_date.slice(0,4) : '',
     imdbId: p.imdb_id || '',
