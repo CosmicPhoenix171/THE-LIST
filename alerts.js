@@ -121,25 +121,13 @@ function handleNotificationListClick(event) {
 }
 
 function dismissNotificationById(id) {
-  const record = notificationRecords.get(id);
-  if (!record) return;
-  if (typeof record.dismiss === 'function') {
-    record.dismiss();
-  } else {
-    finalizeNotificationRemoval(id);
-  }
+  removeNotificationRecord(id);
 }
 
 function clearAllNotifications() {
   if (!notificationRecords.size) return;
-  const records = Array.from(notificationRecords.values());
-  records.forEach(record => {
-    if (typeof record.dismiss === 'function') {
-      record.dismiss();
-    } else {
-      finalizeNotificationRemoval(record.id);
-    }
-  });
+  const ids = Array.from(notificationRecords.keys());
+  ids.forEach(removeNotificationRecord);
 }
 
 function upsertNotificationListItem(record) {
@@ -175,9 +163,12 @@ function upsertNotificationListItem(record) {
   updateNotificationIndicators();
 }
 
-function finalizeNotificationRemoval(id) {
+function removeNotificationRecord(id) {
   const record = notificationRecords.get(id);
   if (!record) return;
+  if (typeof record.dismissToast === 'function') {
+    record.dismissToast();
+  }
   notificationRecords.delete(id);
   if (record.listItem && record.listItem.parentNode) {
     record.listItem.parentNode.removeChild(record.listItem);
@@ -357,7 +348,9 @@ export function pushNotification({ title, message, duration = 9000 } = {}) {
     title: title || '',
     message: message || '',
     listItem: null,
-    dismiss: null,
+    toastEl: null,
+    timerId: null,
+    dismissToast: null,
   };
   notificationRecords.set(id, record);
   upsertNotificationListItem(record);
@@ -386,47 +379,59 @@ export function pushNotification({ title, message, duration = 9000 } = {}) {
   card.appendChild(footer);
 
   center.appendChild(card);
+  record.toastEl = card;
   if (typeof requestAnimationFrame === 'function') {
     requestAnimationFrame(() => card.classList.add('visible'));
   } else {
     card.classList.add('visible');
   }
 
-  let dismissed = false;
-  let timerId = null;
-
-  const dismiss = () => {
-    if (dismissed) return;
-    dismissed = true;
-    if (timerId) {
-      clearTimeout(timerId);
-      timerId = null;
+  const clearToastTimer = () => {
+    if (record.timerId) {
+      clearTimeout(record.timerId);
+      record.timerId = null;
     }
-    finalizeNotificationRemoval(id);
-    card.classList.remove('visible');
+  };
+
+  const removeToastElement = () => {
+    if (!record.toastEl) return;
+    const el = record.toastEl;
+    record.toastEl = null;
+    el.classList.remove('visible');
     setTimeout(() => {
-      if (card.parentNode) {
-        card.parentNode.removeChild(card);
+      if (el.parentNode) {
+        el.parentNode.removeChild(el);
       }
     }, 240);
   };
 
-  record.dismiss = dismiss;
+  const dismissToastOnly = () => {
+    clearToastTimer();
+    removeToastElement();
+  };
 
-  timerId = setTimeout(dismiss, Math.max(4000, duration));
+  record.dismissToast = dismissToastOnly;
+
+  const scheduleAutoDismiss = (delay) => {
+    clearToastTimer();
+    record.timerId = setTimeout(() => {
+      record.timerId = null;
+      dismissToastOnly();
+    }, delay);
+  };
+
+  scheduleAutoDismiss(Math.max(4000, duration));
 
   card.addEventListener('mouseenter', () => {
-    if (!timerId) return;
-    clearTimeout(timerId);
-    timerId = null;
+    clearToastTimer();
   });
 
   card.addEventListener('mouseleave', () => {
-    if (dismissed || timerId) return;
-    timerId = setTimeout(dismiss, 2500);
+    if (!record.toastEl) return;
+    scheduleAutoDismiss(2500);
   });
 
-  closeBtn.addEventListener('click', dismiss);
+  closeBtn.addEventListener('click', dismissToastOnly);
 }
 
 requestNotificationMenuInit();
