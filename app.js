@@ -2347,6 +2347,9 @@ function sortSeriesRecords(records) {
     const safeA = orderA === null || orderA === undefined ? Number.POSITIVE_INFINITY : orderA;
     const safeB = orderB === null || orderB === undefined ? Number.POSITIVE_INFINITY : orderB;
     if (safeA !== safeB) return safeA - safeB;
+    const yearA = parseInt((a.item && a.item.year) ? sanitizeYear(a.item.year) : '', 10) || 9999;
+    const yearB = parseInt((b.item && b.item.year) ? sanitizeYear(b.item.year) : '', 10) || 9999;
+    if (yearA !== yearB) return yearA - yearB;
     const titleA = titleSortKey(a.item?.title || '');
     const titleB = titleSortKey(b.item?.title || '');
     if (titleA < titleB) return -1;
