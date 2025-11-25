@@ -707,7 +707,8 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywor
   const hasCollectionParts = collInfo && Array.isArray(collInfo.parts) && collInfo.parts.length;
   const keywordEntries = Array.isArray(keywordContext?.entries) ? keywordContext.entries : [];
   const keywordInfo = keywordContext?.keywordInfo || null;
-  const franchiseLabel = keywordContext?.franchiseLabel || keywordInfo?.name || '';
+  const resolvedSeriesName = keywordContext?.seriesName || '';
+  const franchiseLabel = resolvedSeriesName || keywordContext?.franchiseLabel || keywordInfo?.name || '';
 
   let missing = [];
   let existingKeys = null;
@@ -2574,6 +2575,7 @@ async function addItemFromForm(listType, form) {
           entries: filtered.slice(0, TMDB_KEYWORD_DISCOVER_MAX_RESULTS),
           keywordInfo: franchiseKeywordInfo,
           franchiseLabel: userFranchiseInput,
+          seriesName: item.seriesName || userFranchiseInput || franchiseKeywordInfo.name || '',
         };
       }
     }
