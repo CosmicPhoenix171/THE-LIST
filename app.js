@@ -101,6 +101,7 @@ let globalSuggestionClickBound = false;
 const seriesGroups = {};
 const seriesCarouselState = { movies: new Map(), tvShows: new Map(), anime: new Map() };
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
+const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
 const unifiedFilters = {
@@ -2147,6 +2148,11 @@ function buildMovieCardActions(listType, id, item) {
       label: 'Edit',
       handler: () => openEditModal(listType, id, item)
     },
+    ...(SERIES_BULK_DELETE_LISTS.has(listType) && item?.seriesName ? [{
+      className: 'btn danger',
+      label: 'Delete Series',
+      handler: () => deleteSeriesEntries(listType, item.seriesName)
+    }] : []),
     {
       className: 'btn ghost',
       label: 'Delete',
@@ -2264,6 +2270,12 @@ function buildStandardCardActions(listType, id, item) {
   const editBtn = createEl('button', 'btn secondary', { text: 'Edit' });
   editBtn.addEventListener('click', () => openEditModal(listType, id, item));
   actions.appendChild(editBtn);
+
+  if (SERIES_BULK_DELETE_LISTS.has(listType) && item?.seriesName) {
+    const deleteSeriesBtn = createEl('button', 'btn danger', { text: 'Delete Series' });
+    deleteSeriesBtn.addEventListener('click', () => deleteSeriesEntries(listType, item.seriesName));
+    actions.appendChild(deleteSeriesBtn);
+  }
 
   const deleteBtn = createEl('button', 'btn ghost', { text: 'Delete' });
   deleteBtn.addEventListener('click', () => deleteItem(listType, id));
@@ -4183,6 +4195,43 @@ function deleteItem(listType, itemId) {
   }
   const itemRef = ref(db, `users/${currentUser.uid}/${listType}/${itemId}`);
   remove(itemRef).catch(err => console.error('Delete failed', err));
+}
+
+async function deleteSeriesEntries(listType, seriesName) {
+  if (!SERIES_BULK_DELETE_LISTS.has(listType)) return;
+  if (!currentUser) {
+    alert('Not signed in');
+    return;
+  }
+  if (!seriesName) {
+    alert('Series name missing for bulk delete.');
+    return;
+  }
+  const normalized = normalizeTitleKey(seriesName);
+  if (!normalized) {
+    alert('Unable to determine which series to delete.');
+    return;
+  }
+  const entries = Object.entries(listCaches[listType] || {}).filter(([, item]) => normalizeTitleKey(item?.seriesName || '') === normalized);
+  if (!entries.length) {
+    alert(`No entries found for "${seriesName}".`);
+    return;
+  }
+  const confirmed = confirm(`Delete all ${entries.length} entries in the "${seriesName}" series? This cannot be undone.`);
+  if (!confirmed) return;
+  const removals = entries.map(([id]) => {
+    const itemRef = ref(db, `users/${currentUser.uid}/${listType}/${id}`);
+    return remove(itemRef).catch(err => {
+      console.error('Series delete failed', listType, id, err);
+      throw err;
+    });
+  });
+  try {
+    await Promise.all(removals);
+    alert(`Deleted ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} from "${seriesName}".`);
+  } catch (err) {
+    alert('Some entries could not be deleted. Please try again.');
+  }
 }
 
 // Open a small modal to edit
