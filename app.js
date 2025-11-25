@@ -39,6 +39,8 @@ const firebaseConfig = {
 const TMDB_API_KEY = '46dcf1eaa2ce4284037a00fdefca9bb8';
 const TMDB_API_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+const TMDB_KEYWORD_DISCOVER_PAGE_LIMIT = 3;
+const TMDB_KEYWORD_DISCOVER_MAX_RESULTS = 40;
 const GOOGLE_BOOKS_API_KEY = '';
 const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
 const JIKAN_API_BASE_URL = 'https://api.jikan.moe/v4';
@@ -702,127 +704,140 @@ function closeWheelModal() {
 
 // Prompt user to add missing collection parts
 function promptAddMissingCollectionParts(listType, collInfo, currentItem) {
-  if (!collInfo || !Array.isArray(collInfo.parts) || !collInfo.parts.length) return;
+  if (!collInfo || !Array.isArray(collInfo.parts) || !collInfo.parts.length) {
+    return Promise.resolve();
+  }
   const existing = listCaches[listType] ? Object.values(listCaches[listType]) : [];
   const existingKeys = new Set(existing.map(e => normalizeTitleKey(e.title)));
   existingKeys.add(normalizeTitleKey(currentItem.title));
   const missing = collInfo.parts.filter(p => !existingKeys.has(normalizeTitleKey(p.title)));
-  if (!missing.length) return;
-  if (!modalRoot) return;
+  if (!missing.length) {
+    return Promise.resolve();
+  }
+  if (!modalRoot) return Promise.resolve();
   closeAddModal();
   closeWheelModal();
   modalRoot.innerHTML = '';
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-  const h = document.createElement('h3');
-  h.textContent = `Add missing entries for "${collInfo.collectionName}"?`;
-  modal.appendChild(h);
-  const sub = document.createElement('p');
-  sub.textContent = `Detected ${missing.length} not yet in your list.`;
-  modal.appendChild(sub);
 
-  const list = document.createElement('div');
-  list.style.display = 'flex';
-  list.style.flexDirection = 'column';
-  list.style.gap = '.5rem';
-  const checkboxes = [];
-  missing.forEach(m => {
-    const row = document.createElement('label');
-    row.style.display = 'flex';
-    row.style.alignItems = 'center';
-    row.style.gap = '.5rem';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = true;
-    cb.dataset.title = m.title;
-    cb.dataset.year = m.year || '';
-    cb.dataset.order = m.order || '';
-    cb.dataset.tmdbId = m.tmdbId || m.id || '';
-    cb.dataset.imdbId = m.imdbId || '';
-    row.appendChild(cb);
-    const text = document.createElement('span');
-    const orderLabel = m.order ? `${m.order}. ` : '';
-    text.textContent = `${orderLabel}${m.title}${m.year ? ` (${m.year})` : ''}`;
-    row.appendChild(text);
-    list.appendChild(row);
-    checkboxes.push(cb);
-  });
-  modal.appendChild(list);
+  return new Promise(resolve => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    const h = document.createElement('h3');
+    h.textContent = `Add missing entries for "${collInfo.collectionName}"?`;
+    modal.appendChild(h);
+    const sub = document.createElement('p');
+    sub.textContent = `Detected ${missing.length} not yet in your list.`;
+    modal.appendChild(sub);
 
-  const actions = document.createElement('div');
-  actions.style.display = 'flex';
-  actions.style.gap = '.5rem';
-  actions.style.marginTop = '1rem';
-  const addBtn = document.createElement('button');
-  addBtn.className = 'btn primary';
-  addBtn.textContent = 'Add Selected';
-  addBtn.addEventListener('click', async () => {
-    const toAdd = checkboxes.filter(cb => cb.checked).map(cb => ({
-      title: cb.dataset.title,
-      year: sanitizeYear(cb.dataset.year),
-      seriesOrder: cb.dataset.order ? Number(cb.dataset.order) : null,
-      tmdbId: Number(cb.dataset.tmdbId) || null,
-      imdbId: cb.dataset.imdbId || '',
-    }));
-    if (!toAdd.length) {
+    const list = document.createElement('div');
+    list.style.display = 'flex';
+    list.style.flexDirection = 'column';
+    list.style.gap = '.5rem';
+    const checkboxes = [];
+    missing.forEach(m => {
+      const row = document.createElement('label');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '.5rem';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.dataset.title = m.title;
+      cb.dataset.year = m.year || '';
+      cb.dataset.order = m.order || '';
+      cb.dataset.tmdbId = m.tmdbId || m.id || '';
+      cb.dataset.imdbId = m.imdbId || '';
+      row.appendChild(cb);
+      const text = document.createElement('span');
+      const orderLabel = m.order ? `${m.order}. ` : '';
+      text.textContent = `${orderLabel}${m.title}${m.year ? ` (${m.year})` : ''}`;
+      row.appendChild(text);
+      list.appendChild(row);
+      checkboxes.push(cb);
+    });
+    modal.appendChild(list);
+
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '.5rem';
+    actions.style.marginTop = '1rem';
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn primary';
+    addBtn.textContent = 'Add Selected';
+
+    const cleanup = () => {
       modalRoot.innerHTML = '';
-      return;
-    }
-    addBtn.disabled = true;
-    addBtn.textContent = 'Adding...';
-    const totalParts = collInfo.parts.length || null;
-    for (const part of toAdd) {
-      try {
-        const payload = {
-          title: part.title,
-          year: part.year || '',
-          seriesName: collInfo.collectionName || '',
-          seriesOrder: part.seriesOrder,
-          seriesSize: totalParts,
-        };
-        if (isDuplicateCandidate(listType, payload)) continue;
-        const baseTrailerUrl = buildTrailerUrl(part.title, part.year);
-        if (baseTrailerUrl) payload.trailerUrl = baseTrailerUrl;
-        let metadata = null;
-        if (TMDB_API_KEY) {
-          metadata = await fetchTmdbMetadata('movies', {
-            title: part.title,
-            year: part.year,
-            tmdbId: part.tmdbId,
-            imdbId: part.imdbId,
-          });
-        }
-        if (metadata) {
-          const updates = deriveMetadataAssignments(metadata, payload, {
-            overwrite: true,
-            fallbackTitle: part.title,
-            fallbackYear: part.year,
-          });
-          Object.assign(payload, updates);
-        }
-        await addItem(listType, payload);
-        existingKeys.add(normalizeTitleKey(part.title));
-      } catch (e) {
-        console.warn('Failed to auto-add part', part.title, e);
+      resolve();
+    };
+
+    addBtn.addEventListener('click', async () => {
+      const toAdd = checkboxes.filter(cb => cb.checked).map(cb => ({
+        title: cb.dataset.title,
+        year: sanitizeYear(cb.dataset.year),
+        seriesOrder: cb.dataset.order ? Number(cb.dataset.order) : null,
+        tmdbId: Number(cb.dataset.tmdbId) || null,
+        imdbId: cb.dataset.imdbId || '',
+      }));
+      if (!toAdd.length) {
+        cleanup();
+        return;
       }
-    }
-    modalRoot.innerHTML = '';
-  });
+      addBtn.disabled = true;
+      addBtn.textContent = 'Adding...';
+      const totalParts = collInfo.parts.length || null;
+      for (const part of toAdd) {
+        try {
+          const payload = {
+            title: part.title,
+            year: part.year || '',
+            seriesName: collInfo.collectionName || '',
+            seriesOrder: part.seriesOrder,
+            seriesSize: totalParts,
+          };
+          if (isDuplicateCandidate(listType, payload)) continue;
+          const baseTrailerUrl = buildTrailerUrl(part.title, part.year);
+          if (baseTrailerUrl) payload.trailerUrl = baseTrailerUrl;
+          let metadata = null;
+          if (TMDB_API_KEY) {
+            metadata = await fetchTmdbMetadata('movies', {
+              title: part.title,
+              year: part.year,
+              tmdbId: part.tmdbId,
+              imdbId: part.imdbId,
+            });
+          }
+          if (metadata) {
+            const updates = deriveMetadataAssignments(metadata, payload, {
+              overwrite: true,
+              fallbackTitle: part.title,
+              fallbackYear: part.year,
+            });
+            Object.assign(payload, updates);
+          }
+          await addItem(listType, payload);
+          existingKeys.add(normalizeTitleKey(part.title));
+        } catch (e) {
+          console.warn('Failed to auto-add part', part.title, e);
+        }
+      }
+      cleanup();
+    });
 
-  const cancelBtn = document.createElement('button');
-  cancelBtn.className = 'btn secondary';
-  cancelBtn.textContent = 'Skip';
-  cancelBtn.addEventListener('click', () => {
-    modalRoot.innerHTML = '';
-  });
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn secondary';
+    cancelBtn.textContent = 'Skip';
+    cancelBtn.addEventListener('click', () => {
+      cleanup();
+    });
 
-  actions.appendChild(addBtn);
-  actions.appendChild(cancelBtn);
-  modal.appendChild(actions);
-  backdrop.appendChild(modal);
-  modalRoot.appendChild(backdrop);
+    actions.appendChild(addBtn);
+    actions.appendChild(cancelBtn);
+    modal.appendChild(actions);
+    backdrop.appendChild(modal);
+    modalRoot.appendChild(backdrop);
+  });
 }
 
 function formatAnimeFranchiseEntryLabel(entry) {
@@ -2348,6 +2363,21 @@ async function addItemFromForm(listType, form) {
     const baseTrailerUrl = buildTrailerUrl(title, year);
     if (baseTrailerUrl) item.trailerUrl = baseTrailerUrl;
 
+    const userFranchiseInput = seriesNameValue;
+    const shouldLookupKeyword = TMDB_API_KEY && userFranchiseInput && userFranchiseInput.length >= 3 && (listType === 'movies' || listType === 'tvShows');
+    let franchiseKeywordInfo = null;
+    if (shouldLookupKeyword) {
+      try {
+        franchiseKeywordInfo = await searchTmdbKeyword(userFranchiseInput);
+        if (franchiseKeywordInfo) {
+          item.franchiseKeywordId = franchiseKeywordInfo.id;
+          item.franchiseKeywordName = franchiseKeywordInfo.name;
+        }
+      } catch (err) {
+        console.warn('Franchise keyword lookup failed', err);
+      }
+    }
+
     if (listType === 'books') {
       if (creatorValue) item.author = creatorValue;
     } else {
@@ -2432,7 +2462,16 @@ async function addItemFromForm(listType, form) {
 
     // After adding, if we have collection info, offer to auto-add missing parts
     if (listType === 'movies' && movieCollectionInfo) {
-      promptAddMissingCollectionParts(listType, movieCollectionInfo, item);
+      await promptAddMissingCollectionParts(listType, movieCollectionInfo, item);
+    }
+
+    if (franchiseKeywordInfo) {
+      await maybePromptTmdbKeywordFranchiseAdditions({
+        listType,
+        keywordInfo: franchiseKeywordInfo,
+        franchiseLabel: userFranchiseInput,
+        sourceItem: item,
+      });
     }
     form.reset();
     form.__selectedMetadata = null;
@@ -5355,4 +5394,280 @@ async function fetchGoogleBooksMetadata(lookup = {}) {
   }
   if (!volume) return null;
   return mapGoogleVolumeToMetadata(volume);
+}
+
+async function searchTmdbKeyword(query) {
+  if (!query || !query.trim()) return null;
+  try {
+    const payload = await tmdbFetch('/search/keyword', { query: query.trim(), page: 1 });
+    const results = Array.isArray(payload?.results) ? payload.results : [];
+    if (!results.length) return null;
+    const normalizedQuery = normalizeTitleKey(query);
+    const best = results.reduce((winner, keyword) => {
+      if (!keyword || !keyword.id || !keyword.name) return winner;
+      const normalizedName = normalizeTitleKey(keyword.name);
+      const popularity = Number(keyword.popularity) || 0;
+      const exact = normalizedName === normalizedQuery;
+      const score = (exact ? 1000 : 0) + popularity;
+      if (!winner || score > winner.score) {
+        return { id: keyword.id, name: keyword.name, score };
+      }
+      return winner;
+    }, null);
+    return best ? { id: best.id, name: best.name } : null;
+  } catch (err) {
+    console.warn('TMDb keyword search failed', err);
+    return null;
+  }
+}
+
+async function discoverTmdbKeywordEntries(keywordId, mediaType, pageLimit = TMDB_KEYWORD_DISCOVER_PAGE_LIMIT) {
+  if (!keywordId) return [];
+  const entries = [];
+  for (let page = 1; page <= pageLimit; page++) {
+    try {
+      const payload = await tmdbFetch(`/discover/${mediaType}`, {
+        with_keywords: keywordId,
+        include_adult: 'false',
+        language: 'en-US',
+        sort_by: 'popularity.desc',
+        page,
+      });
+      if (Array.isArray(payload?.results)) {
+        payload.results.forEach(result => {
+          const entry = formatTmdbFranchiseEntry(result, mediaType);
+          if (entry) entries.push(entry);
+        });
+      }
+      if (!payload || page >= payload.total_pages || entries.length >= TMDB_KEYWORD_DISCOVER_MAX_RESULTS) {
+        break;
+      }
+    } catch (err) {
+      console.warn('TMDb keyword discover failed', mediaType, keywordId, err);
+      break;
+    }
+  }
+  return entries;
+}
+
+async function fetchTmdbKeywordFranchiseEntries(keywordId) {
+  if (!keywordId) return [];
+  const [movies, tvShows] = await Promise.all([
+    discoverTmdbKeywordEntries(keywordId, 'movie'),
+    discoverTmdbKeywordEntries(keywordId, 'tv'),
+  ]);
+  const combined = [...movies, ...tvShows];
+  const map = new Map();
+  combined.forEach(entry => {
+    if (!entry || !entry.id || !entry.mediaType) return;
+    const key = `${entry.mediaType}:${entry.id}`;
+    if (map.has(key)) return;
+    map.set(key, entry);
+  });
+  return Array.from(map.values()).slice(0, TMDB_KEYWORD_DISCOVER_MAX_RESULTS);
+}
+
+function buildFranchiseEntryKey(mediaType, source) {
+  if (!source) return '';
+  const tmdbId = source.tmdbId || source.tmdbID || source.TmdbID || source.id || null;
+  if (tmdbId) return `${mediaType}:${tmdbId}`;
+  const title = normalizeTitleKey(source.title || source.name || '');
+  if (!title) return '';
+  const yearValue = sanitizeYear(source.year || source.releaseDate || source.firstAirDate || source.Year || '');
+  return `${mediaType}:${title}:${yearValue}`;
+}
+
+function filterKeywordEntriesAgainstLibrary(entries, sourceItem, sourceListType) {
+  const movieSet = new Set();
+  const tvSet = new Set();
+  Object.values(listCaches.movies || {}).forEach(item => {
+    const key = buildFranchiseEntryKey('movie', item);
+    if (key) movieSet.add(key);
+  });
+  Object.values(listCaches.tvShows || {}).forEach(item => {
+    const key = buildFranchiseEntryKey('tv', item);
+    if (key) tvSet.add(key);
+  });
+  if (sourceItem && sourceListType === 'movies') {
+    const key = buildFranchiseEntryKey('movie', sourceItem);
+    if (key) movieSet.add(key);
+  } else if (sourceItem && sourceListType === 'tvShows') {
+    const key = buildFranchiseEntryKey('tv', sourceItem);
+    if (key) tvSet.add(key);
+  }
+  return entries.filter(entry => {
+    if (!entry || !entry.mediaType) return false;
+    const targetSet = entry.mediaType === 'tv' ? tvSet : movieSet;
+    const key = buildFranchiseEntryKey(entry.mediaType, entry);
+    if (!key) return true;
+    if (targetSet.has(key)) return false;
+    targetSet.add(key);
+    return true;
+  });
+}
+
+function promptAddTmdbKeywordEntries(franchiseLabel, entries) {
+  if (!Array.isArray(entries) || !entries.length) return Promise.resolve([]);
+  if (!modalRoot) return Promise.resolve([]);
+  closeAddModal();
+  closeWheelModal();
+  modalRoot.innerHTML = '';
+
+  return new Promise(resolve => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+
+    const title = document.createElement('h3');
+    title.textContent = `Add entries from ${franchiseLabel}?`;
+    modal.appendChild(title);
+    const sub = document.createElement('p');
+    sub.textContent = 'Select the movies and shows you want to bring in from TMDb.';
+    modal.appendChild(sub);
+
+    const list = document.createElement('div');
+    list.style.display = 'flex';
+    list.style.flexDirection = 'column';
+    list.style.gap = '.5rem';
+    const checkboxes = [];
+    entries.forEach(entry => {
+      const row = document.createElement('label');
+      row.style.display = 'flex';
+      row.style.alignItems = 'flex-start';
+      row.style.gap = '.5rem';
+      row.style.border = '1px solid var(--border, #333)';
+      row.style.borderRadius = '10px';
+      row.style.padding = '.5rem .65rem';
+      row.style.background = 'rgba(255,255,255,0.03)';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.dataset.title = entry.title || '';
+      cb.dataset.year = entry.year || '';
+      cb.dataset.tmdbId = entry.id || '';
+      cb.dataset.mediaType = entry.mediaType || 'movie';
+      row.appendChild(cb);
+      const info = document.createElement('div');
+      info.style.display = 'flex';
+      info.style.flexDirection = 'column';
+      info.style.gap = '.15rem';
+      const heading = document.createElement('strong');
+      heading.textContent = `${entry.title}${entry.year ? ` (${entry.year})` : ''}`;
+      info.appendChild(heading);
+      const meta = document.createElement('span');
+      meta.className = 'small';
+      const relation = entry.mediaType === 'tv' ? 'TV' : 'Movie';
+      const summaryBits = [relation];
+      if (entry.relation) summaryBits.push(entry.relation === 'similar' ? 'Similar' : 'Recommended');
+      if (entry.collectionName) summaryBits.push(entry.collectionName);
+      meta.textContent = summaryBits.join(' • ');
+      info.appendChild(meta);
+      if (entry.overview) {
+        const overview = document.createElement('span');
+        overview.className = 'small';
+        overview.style.opacity = '0.85';
+        overview.textContent = entry.overview.length > 220
+          ? `${entry.overview.slice(0, 217)}…`
+          : entry.overview;
+        info.appendChild(overview);
+      }
+      row.appendChild(info);
+      list.appendChild(row);
+      checkboxes.push(cb);
+    });
+    modal.appendChild(list);
+
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '.5rem';
+    actions.style.marginTop = '1rem';
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn primary';
+    addBtn.textContent = 'Add Selected';
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'btn secondary';
+    skipBtn.textContent = 'Skip';
+
+    const cleanup = (result) => {
+      modalRoot.innerHTML = '';
+      resolve(result || []);
+    };
+
+    addBtn.addEventListener('click', () => {
+      const chosen = checkboxes
+        .filter(cb => cb.checked)
+        .map(cb => ({
+          mediaType: cb.dataset.mediaType === 'tv' ? 'tv' : 'movie',
+          title: cb.dataset.title,
+          year: sanitizeYear(cb.dataset.year),
+          id: Number(cb.dataset.tmdbId) || null,
+        }))
+        .filter(entry => entry.id && entry.title);
+      cleanup(chosen);
+    });
+    skipBtn.addEventListener('click', () => cleanup([]));
+
+    actions.appendChild(addBtn);
+    actions.appendChild(skipBtn);
+    modal.appendChild(actions);
+    backdrop.appendChild(modal);
+    modalRoot.appendChild(backdrop);
+  });
+}
+
+async function autoAddTmdbKeywordEntries(franchiseLabel, keywordInfo, entries) {
+  if (!Array.isArray(entries) || !entries.length) return;
+  const keywordId = keywordInfo?.id || null;
+  const keywordName = keywordInfo?.name || franchiseLabel;
+  for (const entry of entries) {
+    if (!entry || !entry.id || !entry.title) continue;
+    const targetList = entry.mediaType === 'tv' ? 'tvShows' : 'movies';
+    const payload = {
+      title: entry.title,
+      createdAt: Date.now(),
+      year: entry.year || '',
+      seriesName: franchiseLabel || keywordName || '',
+      franchiseKeywordId: keywordId,
+      franchiseKeywordName: keywordName || franchiseLabel || '',
+      tmdbId: entry.id,
+    };
+    if (isDuplicateCandidate(targetList, payload)) continue;
+    const baseTrailerUrl = buildTrailerUrl(entry.title, entry.year);
+    if (baseTrailerUrl) payload.trailerUrl = baseTrailerUrl;
+    try {
+      const metadata = await fetchTmdbMetadata(targetList, {
+        title: entry.title,
+        year: entry.year,
+        tmdbId: entry.id,
+      });
+      if (metadata) {
+        const updates = deriveMetadataAssignments(metadata, payload, {
+          overwrite: true,
+          fallbackTitle: entry.title,
+          fallbackYear: entry.year,
+        });
+        Object.assign(payload, updates);
+      }
+      await addItem(targetList, payload);
+    } catch (err) {
+      console.warn('Auto-add keyword franchise entry failed', entry.title, err);
+    }
+  }
+}
+
+async function maybePromptTmdbKeywordFranchiseAdditions({ listType, keywordInfo, franchiseLabel, sourceItem }) {
+  if (!keywordInfo || !keywordInfo.id) return;
+  try {
+    const entries = await fetchTmdbKeywordFranchiseEntries(keywordInfo.id);
+    if (!entries.length) return;
+    const filtered = filterKeywordEntriesAgainstLibrary(entries, sourceItem, listType);
+    if (!filtered.length) return;
+    const trimmed = filtered.slice(0, TMDB_KEYWORD_DISCOVER_MAX_RESULTS);
+    const selections = await promptAddTmdbKeywordEntries(keywordInfo.name || franchiseLabel || 'this franchise', trimmed);
+    if (!Array.isArray(selections) || !selections.length) return;
+    await autoAddTmdbKeywordEntries(franchiseLabel || keywordInfo.name || '', keywordInfo, selections);
+  } catch (err) {
+    console.warn('Keyword franchise addition flow failed', err);
+  }
 }
