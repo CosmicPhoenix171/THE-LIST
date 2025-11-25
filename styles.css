@@ -356,8 +356,8 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 }
 
 /* modal styles */
-.modal-backdrop{position:fixed;inset:0;background:rgba(8,13,20,0.75);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
-.modal{background:var(--surface-700);padding:1.2rem;border-radius:12px;min-width:320px;border:1px solid var(--border);box-shadow:0 22px 44px rgba(0,0,0,0.38)}
+.modal-backdrop{position:fixed;inset:0;background:rgba(8,13,20,0.75);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:1rem}
+.modal{background:var(--surface-700);padding:1.2rem;border-radius:12px;min-width:320px;border:1px solid var(--border);box-shadow:0 22px 44px rgba(0,0,0,0.38);max-height:90vh;overflow:auto}
 .modal form:not(.add-form){display:grid;gap:.6rem}
 
 /* responsive */
