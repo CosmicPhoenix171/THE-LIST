@@ -101,7 +101,6 @@ const seriesCarouselState = { movies: new Map(), tvShows: new Map(), anime: new 
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
-let franchiseSearchToken = 0;
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES),
@@ -127,10 +126,6 @@ const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
 const notificationCenter = document.getElementById('notification-center');
 const wheelModalTrigger = document.getElementById('open-wheel-modal');
 const wheelModalTemplate = document.getElementById('wheel-modal-template');
-const franchiseSearchForm = document.getElementById('franchise-search-form');
-const franchiseSearchInput = document.getElementById('franchise-search');
-const franchiseStatusEl = document.getElementById('franchise-status');
-const franchiseResultsEl = document.getElementById('franchise-results');
 let wheelSourceSelect = null;
 let wheelSpinnerEl = null;
 let wheelResultEl = null;
@@ -431,7 +426,6 @@ function initFirebase() {
 
   setupAddModal();
   setupWheelModal();
-  setupFranchiseExplorer();
 
   document.querySelectorAll('[data-role="actor-filter"]').forEach(input => {
     const listType = input.dataset.list;
@@ -704,220 +698,6 @@ function closeWheelModal() {
   wheelSourceSelect = null;
   wheelSpinnerEl = null;
   wheelResultEl = null;
-}
-
-function setupFranchiseExplorer() {
-  if (!franchiseSearchForm || !franchiseSearchInput || !franchiseStatusEl || !franchiseResultsEl) return;
-  const submitBtn = franchiseSearchForm.querySelector('button[type="submit"]');
-  if (!TMDB_API_KEY) {
-    franchiseSearchInput.disabled = true;
-    if (submitBtn) submitBtn.disabled = true;
-    setFranchiseStatus('Add your TMDb API key in app.js to use the franchise explorer.', 'error');
-    return;
-  }
-
-  setFranchiseStatus('Search TMDb to see the connected universe.', 'idle');
-
-  franchiseSearchForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const query = franchiseSearchInput.value.trim();
-    if (!query) {
-      setFranchiseStatus('Enter a title to search.', 'error');
-      return;
-    }
-    const token = ++franchiseSearchToken;
-    setFranchiseStatus('Building franchise map…', 'loading');
-    franchiseResultsEl.innerHTML = '';
-    franchiseSearchForm.classList.add('loading');
-    franchiseSearchInput.setAttribute('aria-busy', 'true');
-    if (submitBtn) submitBtn.disabled = true;
-    try {
-      const payload = await fetchTmdbFranchise(query);
-      if (token !== franchiseSearchToken) return;
-      if (!hasFranchisePayloadData(payload)) {
-        setFranchiseStatus(`No franchise data found for "${query}".`, 'error');
-        franchiseResultsEl.innerHTML = '<p class="small">TMDb did not return any connected entries for that search.</p>';
-        return;
-      }
-      renderFranchiseResults(payload);
-      setFranchiseStatus(`Showing TMDb connections for "${payload.query}"`, 'ready');
-    } catch (err) {
-      if (token !== franchiseSearchToken) return;
-      console.warn('Franchise search failed', err);
-      setFranchiseStatus('Unable to load franchise data. Please try again.', 'error');
-    } finally {
-      if (token === franchiseSearchToken) {
-        franchiseSearchForm.classList.remove('loading');
-        franchiseSearchInput.removeAttribute('aria-busy');
-        if (submitBtn) submitBtn.disabled = false;
-      }
-    }
-  });
-
-  franchiseSearchInput.addEventListener('input', () => {
-    if (franchiseSearchInput.value.trim()) return;
-    franchiseResultsEl.innerHTML = '';
-    setFranchiseStatus('Search TMDb to see the connected universe.', 'idle');
-  });
-}
-
-function setFranchiseStatus(message, state = 'idle') {
-  if (!franchiseStatusEl) return;
-  franchiseStatusEl.textContent = message;
-  franchiseStatusEl.dataset.state = state;
-}
-
-function hasFranchisePayloadData(payload) {
-  if (!payload) return false;
-  return Boolean(
-    payload.mainMovie ||
-    payload.mainTV ||
-    (Array.isArray(payload.collectionMovies) && payload.collectionMovies.length) ||
-    (Array.isArray(payload.tvSeasons) && payload.tvSeasons.length) ||
-    (Array.isArray(payload.connectedUniverse) && payload.connectedUniverse.length)
-  );
-}
-
-function renderFranchiseResults(franchise) {
-  if (!franchiseResultsEl) return;
-  franchiseResultsEl.innerHTML = '';
-  if (!hasFranchisePayloadData(franchise)) {
-    franchiseResultsEl.innerHTML = '<p class="small">No connected entries were found.</p>';
-    return;
-  }
-
-  const summary = buildFranchiseSummary(franchise);
-  if (summary) franchiseResultsEl.appendChild(summary);
-
-  if (franchise.mainMovie) {
-    franchiseResultsEl.appendChild(buildFranchiseAnchorSection('Anchor Film', franchise.mainMovie));
-  }
-  if (Array.isArray(franchise.collectionMovies) && franchise.collectionMovies.length) {
-    franchiseResultsEl.appendChild(buildFranchiseListSection('Collection Films', franchise.collectionMovies, { limit: 8 }));
-  }
-  if (franchise.mainTV) {
-    franchiseResultsEl.appendChild(buildFranchiseAnchorSection('Anchor Series', franchise.mainTV));
-  }
-  if (Array.isArray(franchise.tvSeasons) && franchise.tvSeasons.length) {
-    franchiseResultsEl.appendChild(buildFranchiseListSection('TV Seasons', franchise.tvSeasons, { limit: 6 }));
-  }
-  if (Array.isArray(franchise.connectedUniverse) && franchise.connectedUniverse.length) {
-    franchiseResultsEl.appendChild(buildFranchiseListSection('Connected Universe Picks', franchise.connectedUniverse, { limit: 10 }));
-  }
-}
-
-function buildFranchiseSummary(franchise) {
-  const summary = createEl('div', 'franchise-summary-cards');
-  const stats = [
-    { label: 'Anchor Films', value: franchise.mainMovie ? 1 : 0 },
-    { label: 'Anchor Series', value: franchise.mainTV ? 1 : 0 },
-    { label: 'Collection Films', value: franchise.collectionMovies?.length || 0 },
-    { label: 'TV Seasons', value: franchise.tvSeasons?.length || 0 },
-    { label: 'Connected Picks', value: franchise.connectedUniverse?.length || 0 },
-    { label: 'All Entries', value: franchise.allEntriesFlat?.length || 0 },
-  ];
-  stats.forEach(stat => {
-    const card = createEl('div', 'franchise-summary-card');
-    card.appendChild(createEl('div', 'franchise-summary-value', { text: String(stat.value) }));
-    card.appendChild(createEl('div', 'franchise-summary-label', { text: stat.label }));
-    summary.appendChild(card);
-  });
-  return summary;
-}
-
-function buildFranchiseAnchorSection(label, entry) {
-  const section = createEl('section', 'franchise-section');
-  section.appendChild(createEl('p', 'franchise-section-label small', { text: label }));
-  const card = createEl('article', 'franchise-anchor-card');
-  card.appendChild(createFranchisePoster(entry.poster, entry.title));
-  const body = createEl('div', 'franchise-anchor-body');
-  const title = `${entry.title}${entry.year ? ` (${entry.year})` : ''}`;
-  body.appendChild(createEl('h4', 'franchise-anchor-title', { text: title }));
-  const metaBits = [];
-  if (entry.mediaType === 'movie') {
-    if (entry.runtime) metaBits.push(`${entry.runtime} min`);
-    if (entry.releaseDate) metaBits.push(entry.releaseDate);
-    if (entry.collectionName) metaBits.push(entry.collectionName);
-  } else if (entry.mediaType === 'tv') {
-    if (entry.seasonsCount) metaBits.push(`${entry.seasonsCount} season${entry.seasonsCount === 1 ? '' : 's'}`);
-    if (entry.firstAirDate) metaBits.push(`First aired ${entry.firstAirDate}`);
-    if (entry.lastAirDate && entry.lastAirDate !== entry.firstAirDate) metaBits.push(`Last aired ${entry.lastAirDate}`);
-  }
-  if (metaBits.length) {
-    body.appendChild(createEl('p', 'franchise-anchor-meta', { text: metaBits.join(' • ') }));
-  }
-  if (entry.overview) {
-    body.appendChild(createEl('p', 'franchise-anchor-overview', { text: truncateFranchiseText(entry.overview) }));
-  }
-  card.appendChild(body);
-  section.appendChild(card);
-  return section;
-}
-
-function buildFranchiseListSection(label, entries, { limit = entries.length } = {}) {
-  const section = createEl('section', 'franchise-section');
-  const heading = createEl('div', 'franchise-section-heading');
-  heading.appendChild(createEl('p', 'franchise-section-label small', { text: label }));
-  if (entries.length > limit) {
-    heading.appendChild(createEl('span', 'franchise-section-detail small', { text: `Showing ${limit} of ${entries.length}` }));
-  }
-  section.appendChild(heading);
-  const grid = createEl('div', 'franchise-entry-grid');
-  entries.slice(0, limit).forEach(entry => {
-    grid.appendChild(buildFranchiseEntryCard(entry));
-  });
-  section.appendChild(grid);
-  if (entries.length > limit) {
-    section.appendChild(createEl('p', 'franchise-note small', { text: `+${entries.length - limit} more hidden to keep the layout tidy.` }));
-  }
-  return section;
-}
-
-function buildFranchiseEntryCard(entry) {
-  const card = createEl('article', 'franchise-entry-card');
-  card.appendChild(createFranchisePoster(entry.poster, entry.title));
-  const body = createEl('div', 'franchise-entry-body');
-  const title = `${entry.title}${entry.year ? ` (${entry.year})` : ''}`;
-  body.appendChild(createEl('h5', 'franchise-entry-title', { text: title }));
-  const metaBits = [];
-  if (entry.mediaType === 'tvSeason') {
-    if (typeof entry.seasonNumber === 'number') metaBits.push(`Season ${entry.seasonNumber}`);
-    if (entry.episodes) metaBits.push(`${entry.episodes} episodes`);
-    if (entry.year) metaBits.push(entry.year);
-  } else {
-    if (entry.releaseDate) metaBits.push(entry.releaseDate);
-    if (entry.relation) metaBits.push(entry.relation === 'similar' ? 'Similar' : 'Recommended');
-    if (entry.collectionName) metaBits.push(entry.collectionName);
-    if (entry.collectionOrder) metaBits.push(`#${entry.collectionOrder}`);
-  }
-  if (metaBits.length) {
-    body.appendChild(createEl('p', 'franchise-entry-meta', { text: metaBits.join(' • ') }));
-  }
-  if (entry.overview) {
-    body.appendChild(createEl('p', 'franchise-entry-overview', { text: truncateFranchiseText(entry.overview, 220) }));
-  }
-  card.appendChild(body);
-  return card;
-}
-
-function createFranchisePoster(url, title) {
-  const wrapper = createEl('div', 'franchise-entry-poster');
-  if (url) {
-    const img = document.createElement('img');
-    img.src = url;
-    img.alt = title ? `${title} poster art` : 'Poster art';
-    wrapper.appendChild(img);
-  } else {
-    wrapper.classList.add('placeholder');
-    wrapper.textContent = 'No art';
-  }
-  return wrapper;
-}
-
-function truncateFranchiseText(text, limit = 260) {
-  if (!text) return '';
-  if (text.length <= limit) return text.trim();
-  return `${text.slice(0, limit - 1).trim()}…`;
 }
 
 // Prompt user to add missing collection parts
