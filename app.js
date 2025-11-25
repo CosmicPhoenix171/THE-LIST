@@ -25,6 +25,7 @@ import {
 import { createAddModalManager } from './add-modal.js';
 import { createWheelModalManager } from './wheel-modal.js';
 import { createListRenderer } from './list-renderer.js';
+import { showAlert, pushNotification } from './alerts.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCWJpMYjSdV9awGRwJ3zyZ_9sDjUrnTu2I',
@@ -129,7 +130,6 @@ const modalRoot = document.getElementById('modal-root');
 const combinedListEl = document.getElementById('combined-list');
 const unifiedSearchInput = document.getElementById('library-search');
 const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
-const notificationCenter = document.getElementById('notification-center');
 const wheelModalTrigger = document.getElementById('open-wheel-modal');
 const wheelModalTemplate = document.getElementById('wheel-modal-template');
 const addModalTrigger = document.getElementById('open-add-modal');
@@ -849,68 +849,6 @@ function promptAnimeFranchiseSelection(plan, { rootAniListId, title } = {}) {
   });
 }
 
-function pushNotification({ title, message, duration = 9000 } = {}) {
-  if (!title && !message) return;
-  if (!notificationCenter) {
-    const fallbackText = [title, message].filter(Boolean).join('\n');
-    if (fallbackText) alert(fallbackText);
-    return;
-  }
-  const card = document.createElement('div');
-  card.className = 'notification-card';
-  if (title) {
-    const titleEl = document.createElement('div');
-    titleEl.className = 'notification-title';
-    titleEl.textContent = title;
-    card.appendChild(titleEl);
-  }
-  if (message) {
-    const bodyEl = document.createElement('div');
-    bodyEl.className = 'notification-body';
-    bodyEl.textContent = message;
-    card.appendChild(bodyEl);
-  }
-  const footer = document.createElement('div');
-  footer.className = 'notification-footer';
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'notification-close';
-  closeBtn.textContent = 'Dismiss';
-  footer.appendChild(closeBtn);
-  card.appendChild(footer);
-
-  notificationCenter.appendChild(card);
-  requestAnimationFrame(() => card.classList.add('visible'));
-
-  let dismissed = false;
-  let timerId = null;
-
-  const dismiss = () => {
-    if (dismissed) return;
-    dismissed = true;
-    card.classList.remove('visible');
-    setTimeout(() => {
-      if (card.parentNode) card.parentNode.removeChild(card);
-    }, 240);
-  };
-
-  timerId = setTimeout(dismiss, Math.max(4000, duration));
-
-  card.addEventListener('mouseenter', () => {
-    if (timerId) {
-      clearTimeout(timerId);
-      timerId = null;
-    }
-  });
-  card.addEventListener('mouseleave', () => {
-    if (!dismissed && !timerId) {
-      timerId = setTimeout(dismiss, 2500);
-    }
-  });
-
-  closeBtn.addEventListener('click', dismiss);
-}
-
 function showAnimeFranchiseNotification(seriesName, missingEntries) {
   if (!Array.isArray(missingEntries) || missingEntries.length === 0) return;
   const sampleTitles = missingEntries
@@ -986,7 +924,7 @@ function shouldFallbackToRedirect(err) {
 async function signInWithGoogle() {
   if (!auth) {
     console.warn('Tried to sign in before Firebase was initialized.');
-    alert('App is still loading. Please try again.');
+    showAlert('App is still loading. Please try again.');
     return;
   }
   try {
@@ -999,12 +937,12 @@ async function signInWithGoogle() {
         return;
       } catch (redirectErr) {
         console.error('Redirect fallback failed', redirectErr);
-        alert('Google sign-in redirect failed. Please try again.');
+        showAlert('Google sign-in redirect failed. Please try again.');
         return;
       }
     }
     console.error('Google sign-in failed', err);
-    alert('Google sign-in failed. Please try again.');
+    showAlert('Google sign-in failed. Please try again.');
   }
 }
 
@@ -1034,7 +972,7 @@ async function handleSignInRedirectResult() {
     if (err && err.code === 'auth/no-auth-event') return;
     if (err && err.code === 'auth/redirect-cancelled-by-user') return;
     console.error('Google redirect sign-in failed', err);
-    alert('Google sign-in failed after redirect. Please try again.');
+    showAlert('Google sign-in failed after redirect. Please try again.');
   }
 }
 
@@ -2039,7 +1977,7 @@ async function addItemFromForm(listType, form) {
   const seriesOrder = listType === 'books' ? null : sanitizeSeriesOrder(seriesOrderRaw);
 
   if (!title) {
-    alert('Title is required');
+    showAlert('Title is required');
     return;
   }
 
@@ -2166,7 +2104,7 @@ async function addItemFromForm(listType, form) {
     }
 
     if (isDuplicateCandidate(listType, item)) {
-      alert("Hey dumbass! It's already in the damn list!");
+      showAlert("Hey dumbass! It's already in the damn list!");
       return;
     }
 
@@ -2243,7 +2181,7 @@ async function addItemFromForm(listType, form) {
     const message = err && err.message === 'Not signed in'
       ? 'Please sign in to add items.'
       : 'Unable to add item right now. Please try again.';
-    alert(message);
+    showAlert(message);
   } finally {
     setButtonBusy(submitBtn, false);
   }
@@ -2915,7 +2853,7 @@ function maybeWarnAboutTmdbKey() {
   tmdbWarningShown = true;
   const message = 'TMDb API key missing. Metadata lookups, autocomplete, and collection helpers are disabled. Set TMDB_API_KEY in app.js to re-enable them.';
   console.warn(message);
-  alert(message);
+  showAlert(message);
 }
 
 function hideTitleSuggestions(form) {
@@ -3783,7 +3721,7 @@ function addItem(listType, item) {
 // Update an existing item
 function updateItem(listType, itemId, changes) {
   if (!currentUser) {
-    alert('Not signed in');
+    showAlert('Not signed in');
     return Promise.reject(new Error('Not signed in'));
   }
   const itemRef = ref(db, `users/${currentUser.uid}/${listType}/${itemId}`);
@@ -3792,7 +3730,7 @@ function updateItem(listType, itemId, changes) {
 
 async function moveItemBetweenLists(sourceListType, targetListType, itemId, itemData) {
   if (!currentUser) {
-    alert('Not signed in');
+    showAlert('Not signed in');
     throw new Error('Not signed in');
   }
   const cleaned = { ...itemData };
@@ -3812,7 +3750,7 @@ async function moveItemBetweenLists(sourceListType, targetListType, itemId, item
 // Delete an item
 function deleteItem(listType, itemId) {
   if (!currentUser) {
-    alert('Not signed in');
+    showAlert('Not signed in');
     return Promise.reject(new Error('Not signed in'));
   }
   if (!confirm('Delete this item?')) return;
@@ -3830,21 +3768,21 @@ function deleteItem(listType, itemId) {
 async function deleteSeriesEntries(listType, seriesName) {
   if (!SERIES_BULK_DELETE_LISTS.has(listType)) return;
   if (!currentUser) {
-    alert('Not signed in');
+    showAlert('Not signed in');
     return;
   }
   if (!seriesName) {
-    alert('Series name missing for bulk delete.');
+    showAlert('Series name missing for bulk delete.');
     return;
   }
   const normalized = normalizeTitleKey(seriesName);
   if (!normalized) {
-    alert('Unable to determine which series to delete.');
+    showAlert('Unable to determine which series to delete.');
     return;
   }
   const entries = Object.entries(listCaches[listType] || {}).filter(([, item]) => normalizeTitleKey(item?.seriesName || '') === normalized);
   if (!entries.length) {
-    alert(`No entries found for "${seriesName}".`);
+    showAlert(`No entries found for "${seriesName}".`);
     return;
   }
   const confirmed = confirm(`Delete all ${entries.length} entries in the "${seriesName}" series? This cannot be undone.`);
@@ -3858,9 +3796,9 @@ async function deleteSeriesEntries(listType, seriesName) {
   });
   try {
     await Promise.all(removals);
-    alert(`Deleted ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} from "${seriesName}".`);
+    showAlert(`Deleted ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} from "${seriesName}".`);
   } catch (err) {
-    alert('Some entries could not be deleted. Please try again.');
+    showAlert('Some entries could not be deleted. Please try again.');
   }
 }
 
@@ -3970,7 +3908,10 @@ function openEditModal(listType, itemId, item) {
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const newTitle = (titleInput.value || '').trim();
-    if (!newTitle) return alert('Title is required');
+    if (!newTitle) {
+      showAlert('Title is required');
+      return;
+    }
     const updatedYear = sanitizeYear((yearInput.value || '').trim());
     const creatorVal = (creatorInput.value || '').trim();
     const targetListType = typeSelect.value;
@@ -4008,7 +3949,7 @@ function openEditModal(listType, itemId, item) {
       closeModal();
     } catch (err) {
       console.error('Edit save failed', err);
-      alert('Unable to save changes right now. Please try again.');
+      showAlert('Unable to save changes right now. Please try again.');
     } finally {
       setButtonBusy(saveBtn, false);
     }
@@ -4026,7 +3967,7 @@ function openEditModal(listType, itemId, item) {
 async function refreshItemMetadata(listType, itemId, item, options = {}) {
   const supported = new Set(['movies', 'tvShows', 'anime', 'books']);
   if (!supported.has(listType)) {
-    alert('Metadata refresh is only available for movies, TV, anime, or books.');
+    showAlert('Metadata refresh is only available for movies, TV, anime, or books.');
     return;
   }
   const { title = '', year = '', button = null } = options;
@@ -4069,7 +4010,7 @@ async function refreshItemMetadata(listType, itemId, item, options = {}) {
     } else {
       if (!TMDB_API_KEY) {
         maybeWarnAboutTmdbKey();
-        alert('TMDb metadata refresh requires an API key.');
+        showAlert('TMDb metadata refresh requires an API key.');
         return;
       }
       metadata = await fetchTmdbMetadata(listType, {
@@ -4081,7 +4022,7 @@ async function refreshItemMetadata(listType, itemId, item, options = {}) {
     }
 
     if (!metadata) {
-      alert('No metadata found for this title.');
+      showAlert('No metadata found for this title.');
       return;
     }
 
@@ -4092,16 +4033,16 @@ async function refreshItemMetadata(listType, itemId, item, options = {}) {
     });
 
     if (!updates || Object.keys(updates).length === 0) {
-      alert('Metadata already looks up to date.');
+      showAlert('Metadata already looks up to date.');
       return;
     }
 
     await updateItem(listType, itemId, updates);
     Object.assign(item, updates);
-    alert('Metadata refreshed!');
+    showAlert('Metadata refreshed!');
   } catch (err) {
     console.error('Manual metadata refresh failed', err);
-    alert('Unable to refresh metadata right now. Please try again.');
+    showAlert('Unable to refresh metadata right now. Please try again.');
   } finally {
     setButtonState(false);
   }
@@ -4306,7 +4247,7 @@ async function lookupRelatedTitles(item) {
     buildRelatedModal(item, tmdbList);
     return;
   }
-  alert('No related titles found on TMDb.');
+  showAlert('No related titles found on TMDb.');
 }
 
 function resolveSeriesRedirect(listType, item, rawData) {
@@ -4414,7 +4355,7 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverri
 // Wheel spinner logic
 function spinWheel(listType) {
   if (!currentUser) {
-    alert('Not signed in');
+    showAlert('Not signed in');
     return;
   }
   const { spinnerEl, resultEl } = wheelUIState;
