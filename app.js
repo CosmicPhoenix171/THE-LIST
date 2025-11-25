@@ -22,6 +22,9 @@ import {
   orderByChild,
   get
 } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
+import { createAddModalManager } from './add-modal.js';
+import { createWheelModalManager } from './wheel-modal.js';
+import { createListRenderer } from './list-renderer.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCWJpMYjSdV9awGRwJ3zyZ_9sDjUrnTu2I',
@@ -129,10 +132,6 @@ const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
 const notificationCenter = document.getElementById('notification-center');
 const wheelModalTrigger = document.getElementById('open-wheel-modal');
 const wheelModalTemplate = document.getElementById('wheel-modal-template');
-let wheelSourceSelect = null;
-let wheelSpinnerEl = null;
-let wheelResultEl = null;
-let wheelModalState = null;
 const addModalTrigger = document.getElementById('open-add-modal');
 const addFormTemplatesContainer = document.getElementById('add-form-templates');
 const addFormTemplateMap = {};
@@ -144,7 +143,55 @@ if (addFormTemplatesContainer) {
     }
   });
 }
-let activeAddModal = null;
+
+const wheelUIState = { sourceSelect: null, spinnerEl: null, resultEl: null };
+let closeWheelModalRef = () => {};
+
+const { setupAddModal, openAddModal, closeAddModal } = createAddModalManager({
+  trigger: addModalTrigger,
+  modalRoot,
+  primaryListTypes: PRIMARY_LIST_TYPES,
+  mediaTypeLabels: MEDIA_TYPE_LABELS,
+  addFormTemplateMap,
+  setupFormAutocomplete,
+  teardownFormAutocomplete,
+  addItemFromForm,
+  closeWheelModal: () => closeWheelModalRef(),
+});
+
+const { setupWheelModal, openWheelModal, closeWheelModal } = createWheelModalManager({
+  trigger: wheelModalTrigger,
+  modalRoot,
+  template: wheelModalTemplate,
+  spinWheel,
+  clearWheelAnimation,
+  closeAddModal,
+  uiState: wheelUIState,
+});
+
+closeWheelModalRef = closeWheelModal;
+
+const { renderList, renderUnifiedLibrary } = createListRenderer({
+  listCaches,
+  sortModes,
+  unifiedFilters,
+  primaryListTypes: PRIMARY_LIST_TYPES,
+  combinedListEl,
+  expandedCards,
+  listSupportsActorFilter,
+  getActorFilterValue,
+  matchesActorFilter,
+  updateListStats,
+  isCollapsibleList,
+  renderCollapsibleMediaGrid,
+  renderStandardList,
+  updateCollapsibleCardStates,
+  prepareCollapsibleRecords,
+  buildCollapsibleMovieCard,
+  buildStandardCard,
+  titleSortKey,
+  parseSeriesOrder,
+});
 
 let animeFranchiseScanTimer = null;
 let animeFranchiseScanInflight = false;
@@ -460,248 +507,6 @@ function initFirebase() {
   }
 }
 
-function setupAddModal() {
-  if (!addModalTrigger || !modalRoot) return;
-  addModalTrigger.addEventListener('click', () => openAddModal());
-}
-
-function openAddModal(initialType = PRIMARY_LIST_TYPES[0]) {
-  if (!modalRoot) return;
-  const defaultType = PRIMARY_LIST_TYPES.includes(initialType) ? initialType : PRIMARY_LIST_TYPES[0];
-  closeAddModal();
-  closeWheelModal();
-
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop add-item-backdrop';
-  const modal = document.createElement('div');
-  modal.className = 'modal add-item-modal';
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-label', 'Add new item');
-
-  const header = document.createElement('div');
-  header.className = 'add-modal-header';
-  const heading = document.createElement('h3');
-  heading.textContent = 'Add New Item';
-  header.appendChild(heading);
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'btn ghost close-add-modal';
-  closeBtn.textContent = 'Close';
-  closeBtn.addEventListener('click', () => closeAddModal());
-  header.appendChild(closeBtn);
-
-  const blurb = document.createElement('p');
-  blurb.className = 'small';
-  blurb.textContent = 'Pick a media type to fill out its details.';
-
-  const tabs = document.createElement('div');
-  tabs.className = 'add-type-tabs';
-  const tabButtons = new Map();
-  PRIMARY_LIST_TYPES.forEach(type => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'add-type-tab';
-    button.dataset.type = type;
-    button.textContent = MEDIA_TYPE_LABELS[type] || type;
-    button.setAttribute('aria-pressed', 'false');
-    button.addEventListener('click', () => setActiveAddModalType(type));
-    tabs.appendChild(button);
-    tabButtons.set(type, button);
-  });
-
-  const formHost = document.createElement('div');
-  formHost.className = 'add-modal-form';
-
-  modal.appendChild(header);
-  modal.appendChild(blurb);
-  modal.appendChild(tabs);
-  modal.appendChild(formHost);
-  backdrop.appendChild(modal);
-  modalRoot.innerHTML = '';
-  modalRoot.appendChild(backdrop);
-
-  const keyHandler = (event) => {
-    if (event.key === 'Escape') {
-      closeAddModal();
-    }
-  };
-  backdrop.addEventListener('click', (event) => {
-    if (event.target === backdrop) {
-      closeAddModal();
-    }
-  });
-  document.addEventListener('keydown', keyHandler);
-
-  activeAddModal = {
-    backdrop,
-    modal,
-    formHost,
-    tabButtons,
-    keyHandler,
-    currentForm: null,
-    activeType: null,
-  };
-
-  setActiveAddModalType(defaultType);
-}
-
-function closeAddModal() {
-  if (!activeAddModal) {
-    if (modalRoot) {
-      modalRoot.innerHTML = '';
-    }
-    return;
-  }
-  destroyActiveAddModalForm();
-  if (activeAddModal.keyHandler) {
-    document.removeEventListener('keydown', activeAddModal.keyHandler);
-  }
-  if (modalRoot) {
-    modalRoot.innerHTML = '';
-  }
-  activeAddModal = null;
-}
-
-function destroyActiveAddModalForm() {
-  if (!activeAddModal || !activeAddModal.currentForm) return;
-  teardownFormAutocomplete(activeAddModal.currentForm);
-  activeAddModal.currentForm = null;
-}
-
-function setActiveAddModalType(listType) {
-  if (!activeAddModal) return;
-  const targetType = PRIMARY_LIST_TYPES.includes(listType) ? listType : PRIMARY_LIST_TYPES[0];
-  const template = addFormTemplateMap[targetType];
-  if (!template) return;
-
-  destroyActiveAddModalForm();
-  activeAddModal.formHost.innerHTML = '';
-  const fragment = template.content.cloneNode(true);
-  activeAddModal.formHost.appendChild(fragment);
-  const form = activeAddModal.formHost.querySelector('form');
-  if (form) {
-    setupFormAutocomplete(form, targetType);
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      await addItemFromForm(targetType, form);
-    });
-    activeAddModal.currentForm = form;
-  }
-  activeAddModal.activeType = targetType;
-
-  activeAddModal.tabButtons.forEach((button, type) => {
-    if (!button) return;
-    if (type === targetType) {
-      button.classList.add('active');
-      button.setAttribute('aria-pressed', 'true');
-    } else {
-      button.classList.remove('active');
-      button.setAttribute('aria-pressed', 'false');
-    }
-  });
-}
-
-function setupWheelModal() {
-  if (!wheelModalTrigger || !wheelModalTemplate || !modalRoot) return;
-  wheelModalTrigger.addEventListener('click', () => openWheelModal());
-}
-
-function openWheelModal() {
-  if (!wheelModalTemplate || !modalRoot) return;
-  closeAddModal();
-  closeWheelModal();
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop wheel-modal-backdrop';
-  const modal = document.createElement('div');
-  modal.className = 'modal wheel-modal';
-  const fragment = wheelModalTemplate.content.cloneNode(true);
-  modal.appendChild(fragment);
-  backdrop.appendChild(modal);
-  modalRoot.innerHTML = '';
-  modalRoot.appendChild(backdrop);
-
-  const sourceSelect = modal.querySelector('[data-wheel-source]');
-  const spinButton = modal.querySelector('[data-wheel-spin]');
-  const spinnerEl = modal.querySelector('[data-wheel-spinner]');
-  const resultEl = modal.querySelector('[data-wheel-result]');
-  const closeBtn = modal.querySelector('[data-wheel-close]');
-
-  wheelSourceSelect = sourceSelect || null;
-  wheelSpinnerEl = spinnerEl || null;
-  wheelResultEl = resultEl || null;
-  if (wheelSpinnerEl) {
-    wheelSpinnerEl.classList.add('hidden');
-    wheelSpinnerEl.classList.remove('spinning');
-    wheelSpinnerEl.innerHTML = '';
-  }
-  if (wheelResultEl) {
-    wheelResultEl.innerHTML = '';
-  }
-
-  const spinHandler = () => {
-    if (!wheelSourceSelect) return;
-    spinWheel(wheelSourceSelect.value);
-  };
-  if (spinButton) {
-    spinButton.addEventListener('click', spinHandler);
-  }
-
-  const closeHandler = () => closeWheelModal();
-  if (closeBtn) {
-    closeBtn.addEventListener('click', closeHandler);
-  }
-
-  const backdropHandler = (event) => {
-    if (event.target === backdrop) {
-      closeWheelModal();
-    }
-  };
-  backdrop.addEventListener('click', backdropHandler);
-
-  const keyHandler = (event) => {
-    if (event.key === 'Escape') {
-      closeWheelModal();
-    }
-  };
-  document.addEventListener('keydown', keyHandler);
-
-  wheelModalState = {
-    backdrop,
-    modal,
-    spinButton,
-    spinHandler,
-    closeBtn,
-    closeHandler,
-    backdropHandler,
-    keyHandler,
-  };
-}
-
-function closeWheelModal() {
-  if (wheelModalState) {
-    if (wheelModalState.spinButton && wheelModalState.spinHandler) {
-      wheelModalState.spinButton.removeEventListener('click', wheelModalState.spinHandler);
-    }
-    if (wheelModalState.closeBtn && wheelModalState.closeHandler) {
-      wheelModalState.closeBtn.removeEventListener('click', wheelModalState.closeHandler);
-    }
-    if (wheelModalState.backdrop && wheelModalState.backdropHandler) {
-      wheelModalState.backdrop.removeEventListener('click', wheelModalState.backdropHandler);
-    }
-    if (wheelModalState.keyHandler) {
-      document.removeEventListener('keydown', wheelModalState.keyHandler);
-    }
-    if (wheelModalState.backdrop && wheelModalState.backdrop.parentNode) {
-      wheelModalState.backdrop.parentNode.removeChild(wheelModalState.backdrop);
-    }
-  }
-  clearWheelAnimation();
-  wheelModalState = null;
-  wheelSourceSelect = null;
-  wheelSpinnerEl = null;
-  wheelResultEl = null;
-}
 
 // Prompt user to add missing collection parts
 function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywordContext = null) {
@@ -1420,184 +1225,6 @@ function createEl(tag, classNames = '', options = {}) {
   return node;
 }
 
-// Render list items
-function renderList(listType, data) {
-  listCaches[listType] = data;
-  const container = document.getElementById(`${listType}-list`);
-  if (container) {
-    container.innerHTML = '';
-  }
-
-  const entries = Object.entries(data || {});
-  const supportsActorFilter = listSupportsActorFilter(listType);
-  const filterValue = supportsActorFilter ? getActorFilterValue(listType) : '';
-
-  let filtered = entries;
-  if (filterValue && supportsActorFilter) {
-    filtered = entries.filter(([, item]) => matchesActorFilter(listType, item, filterValue));
-  }
-
-  if (filtered.length === 0) {
-    const message = supportsActorFilter && filterValue
-      ? 'No items match this actor filter yet.'
-      : 'No items yet. Add something!';
-    if (container) {
-      container.innerHTML = '<div class="small">' + message + '</div>';
-    }
-    updateListStats(listType, filtered);
-    renderUnifiedLibrary();
-    return;
-  }
-
-  updateListStats(listType, filtered);
-
-  const mode = sortModes[listType] || 'title';
-  filtered.sort(([, a], [, b]) => {
-    const ta = titleSortKey(a && a.title ? a.title : '');
-    const tb = titleSortKey(b && b.title ? b.title : '');
-    if (mode === 'title') {
-      if (ta < tb) return -1; if (ta > tb) return 1; return 0;
-    }
-    if (mode === 'yearAsc' || mode === 'yearDesc') {
-      const ya = a && a.year ? parseInt(a.year, 10) : 9999;
-      const yb = b && b.year ? parseInt(b.year, 10) : 9999;
-      if (ya !== yb) return mode === 'yearAsc' ? ya - yb : yb - ya;
-      if (ta < tb) return -1; if (ta > tb) return 1; return 0;
-    }
-    if (mode === 'director') {
-      const da = (a && (a.director || a.author || '')).toLowerCase();
-      const db = (b && (b.director || b.author || '')).toLowerCase();
-      if (da && db && da !== db) return da < db ? -1 : 1;
-      if (ta < tb) return -1; if (ta > tb) return 1; return 0;
-    }
-    if (mode === 'series') {
-      const sa = (a && a.seriesName ? a.seriesName : '').toLowerCase();
-      const sb = (b && b.seriesName ? b.seriesName : '').toLowerCase();
-      if (sa && sb && sa !== sb) return sa < sb ? -1 : 1;
-      const oa = parseSeriesOrder(a && a.seriesOrder);
-      const ob = parseSeriesOrder(b && b.seriesOrder);
-      if (oa !== ob) return oa - ob;
-      if (ta < tb) return -1; if (ta > tb) return 1; return 0;
-    }
-    // fallback title
-    if (ta < tb) return -1; if (ta > tb) return 1; return 0;
-  });
-
-  if (isCollapsibleList(listType) && container) {
-    renderCollapsibleMediaGrid(listType, container, filtered);
-  } else if (container) {
-    renderStandardList(container, listType, filtered);
-  }
-
-  if (listType in expandedCards) {
-    updateCollapsibleCardStates(listType);
-  }
-
-  renderUnifiedLibrary();
-}
-
-function renderUnifiedLibrary() {
-  if (!combinedListEl) return;
-  const hasLoadedAny = PRIMARY_LIST_TYPES.some(type => listCaches[type] !== undefined);
-  if (!hasLoadedAny) {
-    combinedListEl.innerHTML = '<div class="small">Loading your library...</div>';
-    return;
-  }
-
-  const unifiedEntries = collectUnifiedEntries();
-  const activeTypes = unifiedFilters.types;
-  let filtered = unifiedEntries.filter(entry => activeTypes.has(entry.listType));
-  const query = unifiedFilters.search;
-  if (query) {
-    filtered = filtered.filter(entry => matchesUnifiedSearch(entry.displayItem, query));
-  }
-
-  filtered.sort((a, b) => {
-    const ta = titleSortKey(a.displayItem?.title || '');
-    const tb = titleSortKey(b.displayItem?.title || '');
-    if (ta < tb) return -1;
-    if (ta > tb) return 1;
-    const ya = Number(a.displayItem?.year) || 9999;
-    const yb = Number(b.displayItem?.year) || 9999;
-    if (ya !== yb) return ya - yb;
-    const idxA = Math.max(PRIMARY_LIST_TYPES.indexOf(a.listType), 0);
-    const idxB = Math.max(PRIMARY_LIST_TYPES.indexOf(b.listType), 0);
-    return idxA - idxB;
-  });
-
-  combinedListEl.innerHTML = '';
-  if (!filtered.length) {
-    combinedListEl.innerHTML = '<div class="small">No entries match the current filters yet.</div>';
-    return;
-  }
-
-  const grid = createEl('div', 'movies-grid unified-grid');
-  filtered.forEach(entry => {
-    const card = buildUnifiedCard(entry);
-    if (card) grid.appendChild(card);
-  });
-  combinedListEl.appendChild(grid);
-}
-
-function collectUnifiedEntries() {
-  const allEntries = [];
-  PRIMARY_LIST_TYPES.forEach(listType => {
-    const cacheEntries = Object.entries(listCaches[listType] || {});
-    if (!cacheEntries.length) return;
-    if (isCollapsibleList(listType)) {
-      const { displayRecords } = prepareCollapsibleRecords(listType, cacheEntries);
-      displayRecords.forEach(record => {
-        allEntries.push({
-          listType,
-          id: record.id,
-          item: record.item,
-          displayItem: record.displayItem,
-          displayEntryId: record.displayEntryId,
-          positionIndex: record.index,
-        });
-      });
-    } else {
-      cacheEntries.forEach(([id, item], index) => {
-        if (!item) return;
-        allEntries.push({
-          listType,
-          id,
-          item,
-          displayItem: item,
-          displayEntryId: id,
-          positionIndex: index,
-        });
-      });
-    }
-  });
-  return allEntries;
-}
-
-function matchesUnifiedSearch(item, query) {
-  if (!query) return true;
-  if (!item) return false;
-  const fields = [
-    item.title,
-    item.notes,
-    item.plot,
-    item.seriesName,
-    item.director,
-    item.author,
-    Array.isArray(item.actors) ? item.actors.join(' ') : item.actors,
-    Array.isArray(item.animeGenres) ? item.animeGenres.join(' ') : item.animeGenres,
-  ];
-  return fields.some(field => field && String(field).toLowerCase().includes(query));
-}
-
-function buildUnifiedCard(entry) {
-  const { listType, id, displayItem, displayEntryId, positionIndex } = entry;
-  if (isCollapsibleList(listType)) {
-    return buildCollapsibleMovieCard(listType, id, displayItem, positionIndex, {
-      displayEntryId,
-    });
-  }
-  return buildStandardCard(listType, id, displayItem);
-}
 
 function isCollapsibleList(listType) {
   return COLLAPSIBLE_LISTS.has(listType);
@@ -4506,25 +4133,27 @@ function loadSpinnerSourceData(listType) {
 function clearWheelAnimation() {
   spinTimeouts.forEach(id => clearTimeout(id));
   spinTimeouts = [];
-  if (!wheelSpinnerEl) return;
-  wheelSpinnerEl.classList.remove('spinning');
-  wheelSpinnerEl.innerHTML = '';
+  const { spinnerEl } = wheelUIState;
+  if (!spinnerEl) return;
+  spinnerEl.classList.remove('spinning');
+  spinnerEl.innerHTML = '';
 }
 
 function renderWheelResult(item, listType) {
-  if (!wheelResultEl) return;
+  const { resultEl } = wheelUIState;
+  if (!resultEl) return;
   if (!item) {
-    wheelResultEl.textContent = '';
+    resultEl.textContent = '';
     return;
   }
 
   const actionVerb = listType === 'books' ? 'read' : 'watch';
-  wheelResultEl.innerHTML = '';
+  resultEl.innerHTML = '';
 
   const heading = document.createElement('div');
   heading.className = 'wheel-result-heading';
   heading.textContent = `You should ${actionVerb} next:`;
-  wheelResultEl.appendChild(heading);
+  resultEl.appendChild(heading);
 
   const entryId = item.__id || item.id || '';
   const cardId = entryId || `wheel-${Date.now()}`;
@@ -4542,7 +4171,7 @@ function renderWheelResult(item, listType) {
   }
 
   cardNode.classList.add('wheel-result-card');
-  wheelResultEl.appendChild(cardNode);
+  resultEl.appendChild(cardNode);
 }
 
 // --- Sequel / Prequel Lookup Logic (TMDb only) ---
@@ -4723,7 +4352,8 @@ function resolveSeriesRedirect(listType, item, rawData) {
 
 function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverride) {
   const len = candidates.length;
-  if (len === 0 || !wheelSpinnerEl) return;
+  const { spinnerEl } = wheelUIState;
+  if (len === 0 || !spinnerEl) return;
 
   const chosenItem = candidates[chosenIndex];
   const finalDisplayItem = finalItemOverride || chosenItem;
@@ -4763,16 +4393,16 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverri
 
   sequence.forEach((item, idx) => {
     const timeout = setTimeout(() => {
-      if (!wheelSpinnerEl) return;
+      if (!wheelUIState.spinnerEl) return;
       const isFinal = idx === sequence.length - 1;
-      wheelSpinnerEl.innerHTML = '';
+      wheelUIState.spinnerEl.innerHTML = '';
       const span = document.createElement('span');
       span.className = `spin-text${isFinal ? ' final' : ''}`;
       span.textContent = item.title || '(no title)';
-      wheelSpinnerEl.appendChild(span);
+      wheelUIState.spinnerEl.appendChild(span);
       try { console.log(`[Wheel] step ${idx + 1}/${sequence.length}: ${item.title || '(no title)'}${isFinal ? ' [FINAL]' : ''}`); } catch (_) {}
       if (isFinal) {
-        wheelSpinnerEl.classList.remove('spinning');
+        wheelUIState.spinnerEl.classList.remove('spinning');
         renderWheelResult(item, listType);
         spinTimeouts = [];
       }
@@ -4787,21 +4417,22 @@ function spinWheel(listType) {
     alert('Not signed in');
     return;
   }
-  if (!wheelSpinnerEl || !wheelResultEl) {
+  const { spinnerEl, resultEl } = wheelUIState;
+  if (!spinnerEl || !resultEl) {
     console.warn('Wheel spinner UI is not mounted. Open the wheel modal first.');
     return;
   }
   clearWheelAnimation();
-  wheelResultEl.innerHTML = '';
-  wheelSpinnerEl.classList.remove('hidden');
-  wheelSpinnerEl.classList.add('spinning');
+  resultEl.innerHTML = '';
+  spinnerEl.classList.remove('hidden');
+  spinnerEl.classList.add('spinning');
   const placeholder = document.createElement('span');
   placeholder.className = 'spin-text';
   placeholder.textContent = 'Spinning…';
-  wheelSpinnerEl.appendChild(placeholder);
+  spinnerEl.appendChild(placeholder);
 
   loadSpinnerSourceData(listType).then(({ data, source }) => {
-    if (!wheelSpinnerEl || !wheelResultEl) {
+    if (!wheelUIState.spinnerEl || !wheelUIState.resultEl) {
       clearWheelAnimation();
       return;
     }
@@ -4816,13 +4447,13 @@ function spinWheel(listType) {
       });
     } catch (_) {}
     if (candidates.length === 0) {
-      if (!wheelSpinnerEl || !wheelResultEl) return;
+      if (!wheelUIState.spinnerEl || !wheelUIState.resultEl) return;
       clearWheelAnimation();
       const emptyState = document.createElement('span');
       emptyState.className = 'spin-text';
       emptyState.textContent = 'No eligible items to spin.';
-      wheelSpinnerEl.appendChild(emptyState);
-      wheelResultEl.textContent = 'No eligible items right now. Add something new or reset some items back to Planned/Watching.';
+      wheelUIState.spinnerEl.appendChild(emptyState);
+      wheelUIState.resultEl.textContent = 'No eligible items right now. Add something new or reset some items back to Planned/Watching.';
       return;
     }
     const chosenIndex = Math.floor(Math.random() * candidates.length);
@@ -4832,7 +4463,7 @@ function spinWheel(listType) {
     animateWheelSequence(candidates, chosenIndex, listType, resolvedCandidate);
   }).catch(err => {
     console.error('Wheel load failed', err);
-    if (!wheelSpinnerEl || !wheelResultEl) {
+    if (!wheelUIState.spinnerEl || !wheelUIState.resultEl) {
       clearWheelAnimation();
       return;
     }
@@ -4840,8 +4471,8 @@ function spinWheel(listType) {
     const errorState = document.createElement('span');
     errorState.className = 'spin-text';
     errorState.textContent = 'Unable to load items.';
-    wheelSpinnerEl.appendChild(errorState);
-    wheelResultEl.textContent = 'Unable to load items.';
+    wheelUIState.spinnerEl.appendChild(errorState);
+    wheelUIState.resultEl.textContent = 'Unable to load items.';
   });
 }
 
