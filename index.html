@@ -150,6 +150,22 @@
                 </div>
               </template>
             </article>
+
+            <article id="franchise-explorer" class="action-card franchise-card">
+              <div class="action-card-header">
+                <div class="action-card-copy">
+                  <p class="eyebrow">Franchise Explorer</p>
+                  <p class="action-card-text">Find every connected movie or show in a TMDb universe from a single search.</p>
+                </div>
+              </div>
+              <form id="franchise-search-form" class="franchise-search-form">
+                <label class="sr-only" for="franchise-search">Search connected franchises</label>
+                <input id="franchise-search" name="query" type="search" placeholder="Search for a movie or show..." autocomplete="off" />
+                <button type="submit" class="btn secondary">Fetch Franchise</button>
+              </form>
+              <div id="franchise-status" class="franchise-status small" role="status" aria-live="polite"></div>
+              <div id="franchise-results" class="franchise-results"></div>
+            </article>
           </div>
         </section>
 
