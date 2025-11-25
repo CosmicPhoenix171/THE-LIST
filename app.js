@@ -48,6 +48,11 @@ const TMDB_KEYWORD_DISCOVER_MAX_RESULTS = 40;
 const GOOGLE_BOOKS_API_KEY = '';
 const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
 const JIKAN_API_BASE_URL = 'https://api.jikan.moe/v4';
+const JIKAN_REQUEST_MIN_INTERVAL_MS = 450;
+const JIKAN_MAX_RETRIES = 2;
+const JIKAN_RATE_LIMIT_BACKOFF_MS = 1200;
+const JIKAN_RATE_LIMIT_NOTICE_INTERVAL_MS = 60000;
+const JIKAN_NETWORK_NOTICE_INTERVAL_MS = 60000;
 const MYANIMELIST_ANIME_URL = 'https://myanimelist.net/anime';
 const METADATA_SCHEMA_VERSION = 3;
 const APP_VERSION = 'test-pages-2025.11.15';
@@ -101,6 +106,11 @@ const sortModes = { movies: 'title', tvShows: 'title', anime: 'title', books: 't
 const listCaches = {};
 const metadataRefreshInflight = new Set();
 const notificationActionsInflight = new Set();
+let jikanRequestChain = Promise.resolve();
+let lastJikanRequestTime = 0;
+let lastJikanRateLimitToastTime = 0;
+let lastJikanNetworkToastTime = 0;
+const jikanNotFoundAnimeIds = new Set();
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
 const PRIMARY_LIST_TYPES = ['movies', 'tvShows', 'anime', 'books'];
 const suggestionForms = new Set();
@@ -175,6 +185,52 @@ const { setupWheelModal, openWheelModal, closeWheelModal } = createWheelModalMan
 closeWheelModalRef = closeWheelModal;
 
 document.addEventListener(NOTIFICATION_ACTION_EVENT, handleNotificationActionEvent);
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function withJikanRateLimit(task) {
+  const execPromise = jikanRequestChain.then(async () => {
+    const now = Date.now();
+    const wait = Math.max(0, JIKAN_REQUEST_MIN_INTERVAL_MS - (now - lastJikanRequestTime));
+    if (wait) {
+      await delay(wait);
+    }
+    lastJikanRequestTime = Date.now();
+    return task();
+  });
+  jikanRequestChain = execPromise.catch(() => {});
+  return execPromise;
+}
+
+function notifyJikanRateLimit() {
+  const now = Date.now();
+  if (now - lastJikanRateLimitToastTime < JIKAN_RATE_LIMIT_NOTICE_INTERVAL_MS) {
+    return;
+  }
+  lastJikanRateLimitToastTime = now;
+  pushNotification({
+    title: 'Anime service is busy',
+    message: 'Jikan is rate-limiting us. Retrying in a moment.',
+    duration: 6500,
+    persist: false,
+  });
+}
+
+function notifyJikanNetworkIssue(message) {
+  const now = Date.now();
+  if (now - lastJikanNetworkToastTime < JIKAN_NETWORK_NOTICE_INTERVAL_MS) {
+    return;
+  }
+  lastJikanNetworkToastTime = now;
+  pushNotification({
+    title: 'Anime metadata offline',
+    message: message || 'Cannot reach Jikan right now. We will keep retrying quietly.',
+    duration: 6500,
+    persist: false,
+  });
+}
 
 const { renderList, renderUnifiedLibrary } = createListRenderer({
   listCaches,
@@ -4678,6 +4734,30 @@ function extractAnimeDurationMinutes(media) {
 }
 
 async function fetchJikanJson(path, params = {}) {
+  let attempt = 0;
+  while (attempt <= JIKAN_MAX_RETRIES) {
+    const result = await withJikanRateLimit(() => performJikanFetch(path, params));
+    if (result && result.ok) {
+      return result;
+    }
+    if (result && result.status === 429 && attempt < JIKAN_MAX_RETRIES) {
+      notifyJikanRateLimit();
+      await delay(JIKAN_RATE_LIMIT_BACKOFF_MS * (attempt + 1));
+      attempt++;
+      continue;
+    }
+    if ((!result || result.status === 0) && attempt < JIKAN_MAX_RETRIES) {
+      notifyJikanNetworkIssue(result?.message);
+      await delay(400 * (attempt + 1));
+      attempt++;
+      continue;
+    }
+    return result;
+  }
+  return { ok: false, status: 0, data: null, message: 'Max retries reached' };
+}
+
+async function performJikanFetch(path, params = {}) {
   try {
     const url = new URL(`${JIKAN_API_BASE_URL}${path}`);
     Object.entries(params || {}).forEach(([key, value]) => {
@@ -4687,36 +4767,80 @@ async function fetchJikanJson(path, params = {}) {
     const resp = await fetch(url.toString(), {
       headers: { 'Accept': 'application/json' },
     });
-    if (!resp.ok) {
-      const text = await resp.text();
-      console.warn('Jikan request failed', resp.status, path, text);
-      return null;
+    const contentType = resp.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
+    let payload = null;
+    try {
+      payload = isJson ? await resp.json() : await resp.text();
+    } catch (_) {
+      payload = null;
     }
-    return await resp.json();
+    if (!resp.ok) {
+      if (resp.status === 404) {
+        console.info('Jikan request not found', path);
+      } else {
+        console.warn('Jikan request failed', resp.status, path, payload);
+      }
+      return {
+        ok: false,
+        status: resp.status,
+        data: payload,
+        message: extractJikanErrorMessage(payload),
+      };
+    }
+    return {
+      ok: true,
+      status: resp.status,
+      data: payload,
+    };
   } catch (err) {
     console.warn('Jikan request error', err);
-    return null;
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      message: err?.message || 'Network error',
+    };
   }
+}
+
+function extractJikanErrorMessage(payload) {
+  if (!payload) return '';
+  if (typeof payload === 'string') return payload;
+  if (typeof payload.message === 'string') return payload.message;
+  if (typeof payload.error === 'string') return payload.error;
+  return '';
 }
 
 async function fetchJikanAnimeDetails(id) {
   const numericId = Number(id);
   if (!Number.isFinite(numericId) || numericId <= 0) return null;
-  const json = await fetchJikanJson(`/anime/${numericId}/full`);
-  return json && json.data ? json.data : null;
+  if (jikanNotFoundAnimeIds.has(numericId)) {
+    return null;
+  }
+  const response = await fetchJikanJson(`/anime/${numericId}/full`);
+  if (!response || !response.ok || !response.data) {
+    if (response && response.status === 404) {
+      jikanNotFoundAnimeIds.add(numericId);
+    }
+    return null;
+  }
+  const payload = response.data;
+  return payload && payload.data ? payload.data : null;
 }
 
 async function fetchJikanAnimeSearch(query, limit = 10) {
   if (!query || query.length < 2) return [];
-  const json = await fetchJikanJson('/anime', {
+  const response = await fetchJikanJson('/anime', {
     q: query,
     limit: String(limit),
     order_by: 'score',
     sort: 'desc',
     sfw: 'true',
   });
-  if (!json || !Array.isArray(json.data)) return [];
-  return json.data;
+  const data = response && response.ok ? response.data : null;
+  if (!data || !Array.isArray(data.data)) return [];
+  return data.data;
 }
 
 async function fetchAniListSuggestions(query) {
@@ -4754,9 +4878,10 @@ async function fetchAniListMetadata(lookup = {}) {
         params.end_date = `${year}-12-31`;
       }
     }
-    const json = await fetchJikanJson('/anime', params);
-    if (json && Array.isArray(json.data) && json.data.length) {
-      anime = await fetchJikanAnimeDetails(json.data[0].mal_id);
+    const response = await fetchJikanJson('/anime', params);
+    const payload = response && response.ok ? response.data : null;
+    if (payload && Array.isArray(payload.data) && payload.data.length) {
+      anime = await fetchJikanAnimeDetails(payload.data[0].mal_id);
     }
   }
   if (!anime) return null;
