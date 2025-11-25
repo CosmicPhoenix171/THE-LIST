@@ -17,6 +17,153 @@ let notificationEmptyStateEl = null;
 let notificationMenuInitialized = false;
 let notificationDropdownOpen = false;
 const notificationRecords = new Map();
+const notificationRecordKeyIndex = new Map();
+const NOTIFICATION_STORAGE_KEY = 'appNotificationRecords';
+let notificationRecordsHydrated = false;
+let storageAvailableFlag = null;
+
+function canUseLocalStorage() {
+  if (storageAvailableFlag !== null) {
+    return storageAvailableFlag;
+  }
+  try {
+    if (typeof globalThis === 'undefined' || !globalThis.localStorage) {
+      storageAvailableFlag = false;
+      return false;
+    }
+    const testKey = '__notif_test__';
+    globalThis.localStorage.setItem(testKey, '1');
+    globalThis.localStorage.removeItem(testKey);
+    storageAvailableFlag = true;
+    return true;
+  } catch (_) {
+    storageAvailableFlag = false;
+    return false;
+  }
+}
+
+function buildNotificationKey(title = '', message = '') {
+  const normalizedTitle = typeof title === 'string' ? title.trim().toLowerCase() : '';
+  const normalizedMessage = typeof message === 'string' ? message.trim().toLowerCase() : '';
+  return JSON.stringify([normalizedTitle, normalizedMessage]);
+}
+
+function persistNotificationState() {
+  if (!canUseLocalStorage()) {
+    return;
+  }
+  try {
+    const payload = Array.from(notificationRecords.values()).map(({ id, title, message, createdAt }) => ({
+      id,
+      title,
+      message,
+      createdAt,
+    }));
+    globalThis.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.warn('[notifications] Failed to persist state', error);
+  }
+}
+
+function loadStoredNotificationData() {
+  if (!canUseLocalStorage()) {
+    return [];
+  }
+  try {
+    const raw = globalThis.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn('[notifications] Failed to read stored state', error);
+    return [];
+  }
+}
+
+function hydrateNotificationRecords() {
+  if (notificationRecordsHydrated) {
+    return;
+  }
+  notificationRecordsHydrated = true;
+  const storedRecords = loadStoredNotificationData();
+  storedRecords.forEach((item) => {
+    if (!item || typeof item !== 'object' || !item.id) {
+      return;
+    }
+    if (notificationRecords.has(item.id)) {
+      return;
+    }
+    const sanitizedTitle = typeof item.title === 'string' ? item.title : '';
+    const sanitizedMessage = typeof item.message === 'string' ? item.message : '';
+    const key = buildNotificationKey(sanitizedTitle, sanitizedMessage);
+    if (notificationRecordKeyIndex.has(key)) {
+      return;
+    }
+    const record = {
+      id: item.id,
+      title: sanitizedTitle,
+      message: sanitizedMessage,
+      createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+      key,
+      listItem: null,
+      toastEl: null,
+      timerId: null,
+      dismissToast: null,
+    };
+    notificationRecords.set(record.id, record);
+    notificationRecordKeyIndex.set(key, record.id);
+  });
+}
+
+function createNotificationListItem(record) {
+  const item = document.createElement('div');
+  item.className = 'notification-dropdown-item';
+  item.dataset.notificationId = record.id;
+  const body = document.createElement('div');
+  body.className = 'notification-item-body';
+  const titleEl = document.createElement('p');
+  titleEl.className = 'notification-item-title';
+  titleEl.textContent = record.title || 'Notification';
+  body.appendChild(titleEl);
+  if (record.message) {
+    const msgEl = document.createElement('p');
+    msgEl.className = 'notification-item-message';
+    msgEl.textContent = record.message;
+    body.appendChild(msgEl);
+  }
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'notification-delete-btn';
+  deleteBtn.setAttribute('data-notification-delete', record.id);
+  deleteBtn.textContent = 'Delete';
+  item.appendChild(body);
+  item.appendChild(deleteBtn);
+  return item;
+}
+
+function rebuildNotificationListFromRecords() {
+  if (!notificationListEl) {
+    return;
+  }
+  notificationRecords.forEach((record) => {
+    if (record.listItem && record.listItem.parentNode) {
+      record.listItem.parentNode.removeChild(record.listItem);
+    }
+    record.listItem = null;
+  });
+  const fragment = document.createDocumentFragment();
+  const sortedRecords = Array.from(notificationRecords.values()).sort((a, b) => b.createdAt - a.createdAt);
+  sortedRecords.forEach((record) => {
+    const item = createNotificationListItem(record);
+    record.listItem = item;
+    fragment.appendChild(item);
+  });
+  const referenceNode = notificationEmptyStateEl && notificationListEl.contains(notificationEmptyStateEl)
+    ? notificationEmptyStateEl
+    : null;
+  notificationListEl.insertBefore(fragment, referenceNode);
+  updateNotificationIndicators();
+}
 
 function getNotificationCenter() {
   if (typeof document === 'undefined') {
@@ -56,6 +203,7 @@ function initNotificationMenu() {
   }
 
   notificationMenuInitialized = true;
+  hydrateNotificationRecords();
   notificationBellButton.addEventListener('click', () => toggleNotificationDropdown());
   document.addEventListener('click', handleGlobalNotificationClick);
   document.addEventListener('keydown', handleNotificationMenuKeydown);
@@ -68,7 +216,7 @@ function initNotificationMenu() {
   if (notificationClearBtn) {
     notificationClearBtn.addEventListener('click', clearAllNotifications);
   }
-  updateNotificationIndicators();
+  rebuildNotificationListFromRecords();
 }
 
 function toggleNotificationDropdown(forceState) {
@@ -132,34 +280,19 @@ function clearAllNotifications() {
 
 function upsertNotificationListItem(record) {
   if (!notificationListEl) return;
-  const item = document.createElement('div');
-  item.className = 'notification-dropdown-item';
-  item.dataset.notificationId = record.id;
-  const body = document.createElement('div');
-  body.className = 'notification-item-body';
-  const titleEl = document.createElement('p');
-  titleEl.className = 'notification-item-title';
-  titleEl.textContent = record.title || 'Notification';
-  body.appendChild(titleEl);
-  if (record.message) {
-    const msgEl = document.createElement('p');
-    msgEl.className = 'notification-item-message';
-    msgEl.textContent = record.message;
-    body.appendChild(msgEl);
+  if (record.listItem && record.listItem.parentNode) {
+    record.listItem.parentNode.removeChild(record.listItem);
   }
-  const deleteBtn = document.createElement('button');
-  deleteBtn.type = 'button';
-  deleteBtn.className = 'notification-delete-btn';
-  deleteBtn.setAttribute('data-notification-delete', record.id);
-  deleteBtn.textContent = 'Delete';
-  item.appendChild(body);
-  item.appendChild(deleteBtn);
-  if (notificationListEl.firstChild) {
-    notificationListEl.insertBefore(item, notificationListEl.firstChild);
+  const item = createNotificationListItem(record);
+  record.listItem = item;
+  const existingItem = notificationListEl.querySelector('.notification-dropdown-item');
+  if (existingItem) {
+    notificationListEl.insertBefore(item, existingItem);
+  } else if (notificationEmptyStateEl && notificationListEl.contains(notificationEmptyStateEl)) {
+    notificationListEl.insertBefore(item, notificationEmptyStateEl);
   } else {
     notificationListEl.appendChild(item);
   }
-  record.listItem = item;
   updateNotificationIndicators();
 }
 
@@ -170,10 +303,15 @@ function removeNotificationRecord(id) {
     record.dismissToast();
   }
   notificationRecords.delete(id);
+  const recordKey = record.key || buildNotificationKey(record.title, record.message);
+  if (recordKey) {
+    notificationRecordKeyIndex.delete(recordKey);
+  }
   if (record.listItem && record.listItem.parentNode) {
     record.listItem.parentNode.removeChild(record.listItem);
   }
   updateNotificationIndicators();
+  persistNotificationState();
 }
 
 function updateNotificationIndicators() {
@@ -331,8 +469,15 @@ export function showAlert(message, options = {}) {
 }
 
 export function pushNotification({ title, message, duration = 9000 } = {}) {
-  const hasContent = Boolean(title) || Boolean(message);
+  const recordTitle = title === null || title === undefined ? '' : String(title);
+  const recordMessage = message === null || message === undefined ? '' : String(message);
+  const hasContent = Boolean(recordTitle) || Boolean(recordMessage);
   if (!hasContent) return;
+  hydrateNotificationRecords();
+  const dedupeKey = buildNotificationKey(recordTitle, recordMessage);
+  if (notificationRecordKeyIndex.has(dedupeKey)) {
+    return;
+  }
   const center = getNotificationCenter();
   if (!center) {
     const fallbackText = [title, message].filter(Boolean).join('\n');
@@ -345,15 +490,19 @@ export function pushNotification({ title, message, duration = 9000 } = {}) {
   const id = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const record = {
     id,
-    title: title || '',
-    message: message || '',
+    title: recordTitle,
+    message: recordMessage,
+    createdAt: Date.now(),
+    key: dedupeKey,
     listItem: null,
     toastEl: null,
     timerId: null,
     dismissToast: null,
   };
   notificationRecords.set(id, record);
+  notificationRecordKeyIndex.set(dedupeKey, id);
   upsertNotificationListItem(record);
+  persistNotificationState();
 
   const card = document.createElement('div');
   card.className = 'notification-card';
