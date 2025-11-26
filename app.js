@@ -4687,7 +4687,7 @@ function resolveSeriesRedirect(listType, item, rawData) {
   return needsRedirect ? earliestUnwatched : item;
 }
 
-function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverride) {
+function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverride, options = {}) {
   const len = candidates.length;
   const { spinnerEl } = wheelUIState;
   if (len === 0 || !spinnerEl) return;
@@ -4718,7 +4718,9 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverri
   }
 
   if (len > 100) {
-    scheduleWheelAccelerationAudio(schedule);
+    if (options.shouldTriggerAudio) {
+      scheduleWheelAccelerationAudio(schedule);
+    }
   }
 
   try {
@@ -4829,7 +4831,9 @@ function spinWheel(listType) {
     const chosenCandidate = candidates[chosenIndex];
     const resolvedCandidate = resolveSeriesRedirect(requestedType, chosenCandidate, data) || chosenCandidate;
     try { console.log('[Wheel] pick', { chosenIndex, chosen: chosenCandidate?.title, resolved: resolvedCandidate?.title }); } catch (_) {}
-    animateWheelSequence(candidates, chosenIndex, requestedType, resolvedCandidate);
+    const rawEntryCount = Object.keys(data || {}).length;
+    const shouldTriggerAudio = rawEntryCount > 100;
+    animateWheelSequence(candidates, chosenIndex, requestedType, resolvedCandidate, { shouldTriggerAudio });
   };
 
   const handleSpinAll = (payloads) => {
@@ -4837,6 +4841,7 @@ function spinWheel(listType) {
       clearWheelAnimation();
       return;
     }
+    let totalRawEntries = 0;
     const candidatePool = [];
     const rawDataByType = {};
     const logBreakdown = [];
@@ -4844,6 +4849,7 @@ function spinWheel(listType) {
       if (!entry) return;
       const type = entry.listType;
       rawDataByType[type] = entry.data;
+      totalRawEntries += Object.keys(entry.data || {}).length;
       const scoped = buildSpinnerDataScope(type, entry.data);
       const candidates = buildSpinnerCandidates(type, scoped, { annotateListType: true });
       if (candidates.length) {
@@ -4869,7 +4875,8 @@ function spinWheel(listType) {
       : PRIMARY_LIST_TYPES[0];
     const resolvedCandidate = resolveSeriesRedirect(candidateType, chosenCandidate, rawDataByType[candidateType]) || chosenCandidate;
     try { console.log('[Wheel] pick', { mode: WHEEL_SPIN_ALL_OPTION, chosenIndex, chosenType: candidateType, chosen: chosenCandidate?.title, resolved: resolvedCandidate?.title }); } catch (_) {}
-    animateWheelSequence(candidatePool, chosenIndex, candidateType, resolvedCandidate);
+    const shouldTriggerAudio = totalRawEntries > 100;
+    animateWheelSequence(candidatePool, chosenIndex, candidateType, resolvedCandidate, { shouldTriggerAudio });
   };
 
   const loadPromise = isSpinAll
