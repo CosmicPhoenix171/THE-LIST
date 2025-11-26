@@ -3,6 +3,7 @@ import { createModalElements, bindModalDismissHandlers, removeModalDismissHandle
 import { showAlert } from './alerts.js';
 
 const WHEEL_ACCEL_AUDIO_URL = './spin-boost.mp3';
+const WHEEL_SPIN_DURATION_MS = 15000;
 const WHEEL_SPIN_ALL_OPTION = 'all';
 
 const wheelUIState = { sourceSelect: null, spinnerEl: null, resultEl: null };
@@ -571,7 +572,7 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverri
   }
   sequence.push(finalDisplayItem);
 
-  const totalDuration = 7000;
+  const totalDuration = WHEEL_SPIN_DURATION_MS;
   const stepCount = sequence.length;
   const lastIndex = stepCount - 1;
   const schedule = [];
