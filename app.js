@@ -1532,6 +1532,7 @@ function loadList(listType) {
       scheduleAnimeFranchiseScan(data);
     }
     listInitialLoadState.set(listType, true);
+    renderGlobalLibrarySummary();
     refreshUnifiedLoadingIndicator();
   }, (err) => {
     console.error('DB read error', err);
@@ -1539,6 +1540,7 @@ function loadList(listType) {
       listContainer.innerHTML = '<div class="small">Unable to load items.</div>';
     }
     listInitialLoadState.set(listType, true);
+    renderGlobalLibrarySummary();
     refreshUnifiedLoadingIndicator();
   });
 
