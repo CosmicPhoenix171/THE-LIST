@@ -128,6 +128,19 @@ const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES)
 };
+const GLOBAL_LOADING_PRIORITY = ['franchiseAutoAdd', 'jikanCooldown', 'unifiedLoad'];
+const GLOBAL_LOADING_MESSAGES = {
+  franchiseAutoAdd: 'Adding related anime entries...',
+  jikanCooldown: 'Cooling down MyAnimeList requests...',
+  unifiedLoad: 'Loading your library...'
+};
+const listInitialLoadState = new Map();
+const globalLoadingReasons = new Map();
+let globalLoadingOverlayEl = null;
+let globalLoadingMessageEl = null;
+let globalLoadingOverlayInitPending = false;
+let jikanCooldownTimerId = null;
+let franchiseAutoAddInflight = 0;
 
 let pendingAnimeScanData = null;
 let animeFranchiseScanTimer = null;
@@ -989,6 +1002,7 @@ function showLogin() {
   introPlayed = false;
   safeStorageRemove(INTRO_SESSION_KEY);
   resetFilterState();
+   clearUnifiedLoadingState();
   updateBackToTopVisibility();
 }
 
@@ -996,6 +1010,7 @@ function showAppForUser(user) {
   loginScreen.classList.add('hidden');
   appRoot.classList.remove('hidden');
   userNameEl.textContent = user.displayName || user.email || 'You';
+  clearUnifiedLoadingState();
   updateBackToTopVisibility();
   playTheListIntro();
   loadPrimaryLists();
@@ -1301,6 +1316,8 @@ function getListLabel(type) {
 // listType: movies | tvShows | anime | books
 function loadList(listType) {
   if (!currentUser) return;
+  listInitialLoadState.set(listType, false);
+  refreshUnifiedLoadingIndicator();
   const listContainer = document.getElementById(`${listType}-list`);
   if (listContainer) {
     listContainer.innerHTML = 'Loading...';
@@ -1320,11 +1337,15 @@ function loadList(listType) {
     if (listType === 'anime') {
       scheduleAnimeFranchiseScan(data);
     }
+    listInitialLoadState.set(listType, true);
+    refreshUnifiedLoadingIndicator();
   }, (err) => {
     console.error('DB read error', err);
     if (listContainer) {
       listContainer.innerHTML = '<div class="small">Unable to load items.</div>';
     }
+    listInitialLoadState.set(listType, true);
+    refreshUnifiedLoadingIndicator();
   });
 
   // store unsubscribe
@@ -3130,6 +3151,92 @@ function resetFilterState() {
   renderUnifiedLibrary();
 }
 
+function ensureGlobalLoadingElements() {
+  if (globalLoadingOverlayEl) return true;
+  const el = document.getElementById('global-loading-overlay');
+  if (!el) return false;
+  globalLoadingOverlayEl = el;
+  globalLoadingMessageEl = el.querySelector('[data-overlay-message]');
+  return true;
+}
+
+function scheduleGlobalLoadingOverlayInit() {
+  if (globalLoadingOverlayInitPending) return;
+  if (typeof document === 'undefined' || document.readyState !== 'loading') return;
+  globalLoadingOverlayInitPending = true;
+  document.addEventListener('DOMContentLoaded', () => {
+    globalLoadingOverlayInitPending = false;
+    updateGlobalLoadingOverlay();
+  }, { once: true });
+}
+
+function updateGlobalLoadingOverlay() {
+  if (!ensureGlobalLoadingElements()) {
+    scheduleGlobalLoadingOverlayInit();
+    return;
+  }
+  if (!globalLoadingOverlayEl) return;
+  if (!globalLoadingReasons.size) {
+    globalLoadingOverlayEl.classList.add('hidden');
+    globalLoadingOverlayEl.classList.remove('visible');
+    globalLoadingOverlayEl.setAttribute('aria-hidden', 'true');
+    return;
+  }
+  let activeKey = null;
+  for (const key of GLOBAL_LOADING_PRIORITY) {
+    if (globalLoadingReasons.has(key)) {
+      activeKey = key;
+      break;
+    }
+  }
+  if (!activeKey) {
+    const iterator = globalLoadingReasons.keys().next();
+    activeKey = iterator && !iterator.done ? iterator.value : null;
+  }
+  const entry = activeKey ? globalLoadingReasons.get(activeKey) : null;
+  if (globalLoadingMessageEl && entry) {
+    globalLoadingMessageEl.textContent = entry.message || 'Working...';
+  }
+  globalLoadingOverlayEl.classList.remove('hidden');
+  globalLoadingOverlayEl.classList.add('visible');
+  globalLoadingOverlayEl.setAttribute('aria-hidden', 'false');
+}
+
+function setGlobalLoadingReason(reason, isActive, message) {
+  if (!reason) return;
+  if (isActive) {
+    const label = message || GLOBAL_LOADING_MESSAGES[reason] || 'Working...';
+    globalLoadingReasons.set(reason, { message: label, timestamp: Date.now() });
+  } else {
+    globalLoadingReasons.delete(reason);
+  }
+  updateGlobalLoadingOverlay();
+}
+
+function refreshUnifiedLoadingIndicator() {
+  if (!currentUser || !listInitialLoadState.size) {
+    setGlobalLoadingReason('unifiedLoad', false);
+    return;
+  }
+  const pending = [];
+  listInitialLoadState.forEach((loaded, listType) => {
+    if (!loaded) pending.push(listType);
+  });
+  if (!pending.length) {
+    setGlobalLoadingReason('unifiedLoad', false);
+    return;
+  }
+  const message = pending.length > 1
+    ? GLOBAL_LOADING_MESSAGES.unifiedLoad
+    : `Loading ${getListLabel(pending[0])}...`;
+  setGlobalLoadingReason('unifiedLoad', true, message);
+}
+
+function clearUnifiedLoadingState() {
+  listInitialLoadState.clear();
+  setGlobalLoadingReason('unifiedLoad', false);
+}
+
 function renderTitleSuggestions(container, suggestions, onSelect) {
   container.innerHTML = '';
   if (!suggestions || suggestions.length === 0) {
@@ -4626,6 +4733,18 @@ function scheduleJikanForcedCooldown(durationMs) {
   if (target > jikanForcedCooldownUntil) {
     jikanForcedCooldownUntil = target;
   }
+  const wait = Math.max(0, jikanForcedCooldownUntil - Date.now());
+  setGlobalLoadingReason('jikanCooldown', true);
+  if (jikanCooldownTimerId) {
+    clearTimeout(jikanCooldownTimerId);
+  }
+  jikanCooldownTimerId = setTimeout(() => {
+    if (Date.now() >= jikanForcedCooldownUntil) {
+      jikanForcedCooldownUntil = 0;
+      setGlobalLoadingReason('jikanCooldown', false);
+      jikanCooldownTimerId = null;
+    }
+  }, wait + 50);
 }
 
 function parseRetryAfterMs(value) {
@@ -5097,47 +5216,56 @@ async function fetchAniListFranchisePlan({ aniListId, preferredSeriesName } = {}
 
 async function autoAddAnimeFranchiseEntries(plan, rootAniListId, selectedIds) {
   if (!plan || !Array.isArray(plan.entries) || !plan.entries.length) return 0;
-  const rootId = rootAniListId ? Number(rootAniListId) : null;
-  const selectionSet = Array.isArray(selectedIds) && selectedIds.length
-    ? new Set(selectedIds.map(id => String(id)))
-    : null;
-  const totalSeriesEntries = Number.isFinite(plan.totalEntries) ? plan.totalEntries : plan.entries.length;
-  let addedCount = 0;
-  for (const entry of plan.entries) {
-    if (!entry || !entry.title) continue;
-    if (rootId && Number(entry.aniListId) === rootId) continue;
-    if (selectionSet && !selectionSet.has(String(entry.aniListId))) continue;
-    const payload = {
-      title: entry.title,
-      createdAt: Date.now(),
-      year: entry.year ? String(entry.year) : '',
-      seriesName: entry.seriesName || plan.seriesName || '',
-      seriesOrder: entry.seriesOrder ?? null,
-      seriesSize: Number.isFinite(entry.seriesSize) ? entry.seriesSize : totalSeriesEntries,
-      aniListId: entry.aniListId || null,
-      aniListUrl: entry.siteUrl || '',
-      animeFormat: entry.format || '',
-      animeEpisodes: entry.episodes ?? '',
-      animeDuration: entry.duration ?? '',
-      animeStatus: entry.status || '',
-      poster: entry.cover || '',
-      originalLanguage: 'Japanese',
-      originalLanguageIso: 'ja',
-    };
-    if (isDuplicateCandidate('anime', payload)) continue;
-    try {
-      await addItem('anime', payload);
-      addedCount++;
-    } catch (err) {
-      console.warn('Auto-add anime entry failed', entry.title, err);
+  franchiseAutoAddInflight++;
+  setGlobalLoadingReason('franchiseAutoAdd', true);
+  try {
+    const rootId = rootAniListId ? Number(rootAniListId) : null;
+    const selectionSet = Array.isArray(selectedIds) && selectedIds.length
+      ? new Set(selectedIds.map(id => String(id)))
+      : null;
+    const totalSeriesEntries = Number.isFinite(plan.totalEntries) ? plan.totalEntries : plan.entries.length;
+    let addedCount = 0;
+    for (const entry of plan.entries) {
+      if (!entry || !entry.title) continue;
+      if (rootId && Number(entry.aniListId) === rootId) continue;
+      if (selectionSet && !selectionSet.has(String(entry.aniListId))) continue;
+      const payload = {
+        title: entry.title,
+        createdAt: Date.now(),
+        year: entry.year ? String(entry.year) : '',
+        seriesName: entry.seriesName || plan.seriesName || '',
+        seriesOrder: entry.seriesOrder ?? null,
+        seriesSize: Number.isFinite(entry.seriesSize) ? entry.seriesSize : totalSeriesEntries,
+        aniListId: entry.aniListId || null,
+        aniListUrl: entry.siteUrl || '',
+        animeFormat: entry.format || '',
+        animeEpisodes: entry.episodes ?? '',
+        animeDuration: entry.duration ?? '',
+        animeStatus: entry.status || '',
+        poster: entry.cover || '',
+        originalLanguage: 'Japanese',
+        originalLanguageIso: 'ja',
+      };
+      if (isDuplicateCandidate('anime', payload)) continue;
+      try {
+        await addItem('anime', payload);
+        addedCount++;
+      } catch (err) {
+        console.warn('Auto-add anime entry failed', entry.title, err);
+      }
+    }
+    if (addedCount > 0) {
+      try {
+        console.info(`[MyAnimeList] Auto-added ${addedCount} related anime entries for "${plan.seriesName}"`);
+      } catch (_) {}
+    }
+    return addedCount;
+  } finally {
+    franchiseAutoAddInflight = Math.max(0, franchiseAutoAddInflight - 1);
+    if (franchiseAutoAddInflight === 0) {
+      setGlobalLoadingReason('franchiseAutoAdd', false);
     }
   }
-  if (addedCount > 0) {
-    try {
-      console.info(`[MyAnimeList] Auto-added ${addedCount} related anime entries for "${plan.seriesName}"`);
-    } catch (_) {}
-  }
-  return addedCount;
 }
 
 function getAniListIdFromItem(item) {
