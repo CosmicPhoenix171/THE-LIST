@@ -178,6 +178,10 @@ const tmEasterEgg = (() => {
   const MIN_FALL_MS = 2200;
   const MAX_FALL_MS = 3600;
   const BURST_COOLDOWN_MS = 1200;
+  const WINTER_THEME = 'festive';
+  const WINTER_LOOP_MIN_DELAY = 320;
+  const WINTER_LOOP_MAX_DELAY = 640;
+  const WINTER_LOOP_BATCH = 2;
   const THEMES = {
     default: { glyph: 'TM', colors: ['#ff2679', '#7df2c9', '#50c9ff'] },
     pride: { glyph: 'TM', colors: ['#ff7aa2', '#ffb347', '#fff275', '#7df2c9', '#50c9ff', '#c084fc'] },
@@ -190,6 +194,8 @@ const tmEasterEgg = (() => {
   let activeTheme = 'default';
   const activeAnimations = new Set();
   let triggersBound = false;
+  let winterLoopActive = false;
+  let winterLoopTimer = null;
 
   const rand = (min, max) => Math.random() * (max - min) + min;
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -216,17 +222,26 @@ const tmEasterEgg = (() => {
     return THEMES[name] || THEMES.default;
   }
 
+  function setLayerActive(themeName) {
+    const layer = ensureLayer();
+    if (!layer) return null;
+    layer.classList.add('active');
+    layer.dataset.theme = themeName;
+    activeTheme = themeName;
+    return layer;
+  }
+
   function hideLayerSoon() {
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
-      if (!activeAnimations.size && layerEl) {
+      if (!activeAnimations.size && layerEl && !winterLoopActive) {
         layerEl.classList.remove('active');
       }
     }, 650);
   }
 
   function spawnSprite(themeName) {
-    const layer = ensureLayer();
+    const layer = setLayerActive(themeName);
     if (!layer) return;
     const palette = resolveTheme(themeName);
     const sprite = document.createElement('span');
@@ -265,11 +280,8 @@ const tmEasterEgg = (() => {
   }
 
   function sprinkle(themeName) {
-    const layer = ensureLayer();
+    const layer = setLayerActive(themeName);
     if (!layer) return;
-    layer.classList.add('active');
-    layer.dataset.theme = themeName;
-    activeTheme = themeName;
     const count = Math.round(rand(MIN_SPRITES, MAX_SPRITES));
     for (let i = 0; i < count; i += 1) {
       setTimeout(() => spawnSprite(themeName), i * 45);
@@ -310,6 +322,9 @@ const tmEasterEgg = (() => {
     const wire = () => {
       document.querySelectorAll(TRIGGER_SELECTOR).forEach(enhanceTrigger);
       triggersBound = true;
+      if (getSeasonalTheme() === WINTER_THEME) {
+        startWinterLoop();
+      }
     };
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', wire, { once: true });
@@ -326,11 +341,28 @@ const tmEasterEgg = (() => {
     return 'default';
   }
 
+  function startWinterLoop() {
+    if (winterLoopActive) return;
+    winterLoopActive = true;
+    const loop = () => {
+      if (!winterLoopActive) return;
+      const layer = setLayerActive(WINTER_THEME);
+      if (!layer) return;
+      for (let i = 0; i < WINTER_LOOP_BATCH; i += 1) {
+        spawnSprite(WINTER_THEME);
+      }
+      winterLoopTimer = setTimeout(loop, rand(WINTER_LOOP_MIN_DELAY, WINTER_LOOP_MAX_DELAY));
+    };
+    sprinkle(WINTER_THEME);
+    loop();
+  }
+
   return {
     bindTriggers,
     getSeasonalTheme,
     getCurrentTmTheme: () => activeTheme || getSeasonalTheme(),
     triggerBurst,
+    startWinterLoop,
   };
 })();
 
