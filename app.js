@@ -53,6 +53,7 @@ const JIKAN_MAX_RETRIES = 2;
 const JIKAN_RATE_LIMIT_BACKOFF_MS = 1200;
 const JIKAN_RATE_LIMIT_NOTICE_INTERVAL_MS = 60000;
 const JIKAN_NETWORK_NOTICE_INTERVAL_MS = 60000;
+const WHEEL_ACCEL_AUDIO_URL = 'assets/audio/spin-boost.mp3'; // place your audio clip at this relative path
 const MYANIMELIST_ANIME_URL = 'https://myanimelist.net/anime';
 const METADATA_SCHEMA_VERSION = 3;
 const APP_VERSION = 'test-pages-2025.11.15';
@@ -159,6 +160,8 @@ if (addFormTemplatesContainer) {
 
 const wheelUIState = { sourceSelect: null, spinnerEl: null, resultEl: null };
 let closeWheelModalRef = () => {};
+let wheelAccelAudio = null;
+let wheelAccelAudioTimeoutId = null;
 
 const { setupAddModal, openAddModal, closeAddModal } = createAddModalManager({
   trigger: addModalTrigger,
@@ -4399,7 +4402,74 @@ function loadSpinnerSourceData(listType) {
   return get(listRef).then(snap => ({ data: snap.val() || {}, source: 'remote' }));
 }
 
+function ensureWheelAccelerationAudio() {
+  if (!WHEEL_ACCEL_AUDIO_URL || typeof Audio === 'undefined') {
+    return null;
+  }
+  if (!wheelAccelAudio) {
+    try {
+      wheelAccelAudio = new Audio(WHEEL_ACCEL_AUDIO_URL);
+      wheelAccelAudio.preload = 'auto';
+      wheelAccelAudio.crossOrigin = 'anonymous';
+      wheelAccelAudio.volume = 0.9;
+    } catch (err) {
+      console.warn('Wheel audio init failed', err);
+      wheelAccelAudio = null;
+      return null;
+    }
+  }
+  return wheelAccelAudio;
+}
+
+function playWheelAccelerationAudio() {
+  const audio = ensureWheelAccelerationAudio();
+  if (!audio) return;
+  try {
+    audio.currentTime = 0;
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(err => console.warn('Wheel audio playback blocked', err));
+    }
+  } catch (err) {
+    console.warn('Wheel audio playback failed', err);
+  }
+}
+
+function scheduleWheelAccelerationAudio(schedule) {
+  if (!Array.isArray(schedule) || !schedule.length || !WHEEL_ACCEL_AUDIO_URL) {
+    return;
+  }
+  if (wheelAccelAudioTimeoutId) {
+    clearTimeout(wheelAccelAudioTimeoutId);
+    wheelAccelAudioTimeoutId = null;
+  }
+  const triggerIndex = Math.min(schedule.length - 1, Math.max(1, Math.floor(schedule.length * 0.12)));
+  const triggerDelay = schedule[triggerIndex];
+  if (!Number.isFinite(triggerDelay)) {
+    return;
+  }
+  const leadIn = 150; // start slightly before the fastest streak hits the UI
+  wheelAccelAudioTimeoutId = setTimeout(() => {
+    wheelAccelAudioTimeoutId = null;
+    playWheelAccelerationAudio();
+  }, Math.max(0, triggerDelay - leadIn));
+}
+
+function resetWheelAccelerationAudio() {
+  if (wheelAccelAudioTimeoutId) {
+    clearTimeout(wheelAccelAudioTimeoutId);
+    wheelAccelAudioTimeoutId = null;
+  }
+  if (wheelAccelAudio) {
+    try {
+      wheelAccelAudio.pause();
+      wheelAccelAudio.currentTime = 0;
+    } catch (_) {}
+  }
+}
+
 function clearWheelAnimation() {
+  resetWheelAccelerationAudio();
   spinTimeouts.forEach(id => clearTimeout(id));
   spinTimeouts = [];
   const { spinnerEl } = wheelUIState;
@@ -4648,6 +4718,8 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverri
       schedule.push(Math.round(eased * totalDuration));
     }
   }
+
+  scheduleWheelAccelerationAudio(schedule);
 
   try {
     console.log('[Wheel] animate start', {
