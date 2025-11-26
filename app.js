@@ -3170,7 +3170,46 @@ function renderTitleSuggestions(container, suggestions, onSelect) {
       year.textContent = suggestion.year;
       button.appendChild(year);
     }
-    button.addEventListener('click', () => onSelect && onSelect(suggestion));
+    const triggerSelection = () => {
+      if (onSelect) {
+        try {
+          const result = onSelect(suggestion);
+          if (result && typeof result.catch === 'function') {
+            result.catch(err => console.warn('Suggestion handler failed', err));
+          }
+        } catch (err) {
+          console.warn('Suggestion handler failed', err);
+        }
+      }
+    };
+    let pointerHandled = false;
+    let pointerHandledResetTimer = null;
+    button.addEventListener('pointerdown', (event) => {
+      if (typeof event.button === 'number' && event.button !== 0) return;
+      pointerHandled = true;
+      if (pointerHandledResetTimer) {
+        clearTimeout(pointerHandledResetTimer);
+        pointerHandledResetTimer = null;
+      }
+      pointerHandledResetTimer = setTimeout(() => {
+        pointerHandled = false;
+        pointerHandledResetTimer = null;
+      }, 400);
+      event.preventDefault();
+      triggerSelection();
+    });
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (pointerHandled) {
+        pointerHandled = false;
+        if (pointerHandledResetTimer) {
+          clearTimeout(pointerHandledResetTimer);
+          pointerHandledResetTimer = null;
+        }
+        return;
+      }
+      triggerSelection();
+    });
     container.appendChild(button);
   });
 }
