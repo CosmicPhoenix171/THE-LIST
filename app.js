@@ -56,6 +56,7 @@ const WATCH_PROVIDER_LISTS = new Set(['movies', 'tvShows']);
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
 const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
+const WATCH_TIME_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const TMDB_KEYWORD_DISCOVER_PAGE_LIMIT = 5;
 const JIKAN_MAX_RETRIES = 3;
 const JIKAN_RATE_LIMIT_BACKOFF_MS = 1500;
@@ -1365,6 +1366,7 @@ function detachAllListeners() {
 function renderList(listType, data) {
   listCaches[listType] = data || {};
   renderUnifiedLibrary();
+  renderGlobalLibrarySummary();
 }
 
 function renderUnifiedLibrary() {
@@ -1509,6 +1511,7 @@ function loadList(listType) {
   if (!currentUser) return;
   listInitialLoadState.set(listType, false);
   refreshUnifiedLoadingIndicator();
+  renderGlobalLibrarySummary();
   const listContainer = document.getElementById(`${listType}-list`);
   if (listContainer) {
     listContainer.innerHTML = 'Loading...';
@@ -3472,6 +3475,7 @@ function resetFilterState() {
   COLLAPSIBLE_LISTS.forEach(listType => updateCollapsibleCardStates(listType));
   resetUnifiedFilters();
   renderUnifiedLibrary();
+  renderGlobalLibrarySummary();
 }
 
 function ensureGlobalLoadingElements() {
@@ -5051,6 +5055,7 @@ if (auth) {
 function bootstrapUnifiedLibraryUi() {
   initUnifiedLibraryControls();
   renderUnifiedLibrary();
+  renderGlobalLibrarySummary();
 }
 
 if (document.readyState === 'loading') {
@@ -5083,6 +5088,91 @@ function updateListStats(listType, entries) {
     return;
   }
   statsEl.textContent = label;
+}
+
+function haveAllListsFinishedInitialLoad() {
+  if (!listInitialLoadState.size) return false;
+  return PRIMARY_LIST_TYPES.every(listType => listInitialLoadState.get(listType));
+}
+
+function computeGlobalLibraryStats() {
+  let totalItems = 0;
+  let totalWatchMinutes = 0;
+  PRIMARY_LIST_TYPES.forEach(listType => {
+    const cache = listCaches[listType] || {};
+    const entries = Object.entries(cache);
+    totalItems += entries.length;
+    if (WATCH_TIME_LISTS.has(listType)) {
+      entries.forEach(([, item]) => {
+        totalWatchMinutes += estimateItemWatchMinutes(listType, item);
+      });
+    }
+  });
+  return {
+    totalItems,
+    totalWatchMinutes: Math.round(totalWatchMinutes),
+  };
+}
+
+function formatExtendedDurationUnit(value, unit) {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const formatted = value >= 100
+    ? Math.round(value).toString()
+    : value >= 10
+      ? value.toFixed(1)
+      : value.toFixed(2);
+  const trimmed = formatted.replace(/\.00?$/, '').replace(/(\.\d)0$/, '$1');
+  const label = Math.abs(value - 1) < 0.0001 ? unit : `${unit}s`;
+  return `${trimmed} ${label}`;
+}
+
+function formatExtendedWatchDuration(minutes) {
+  if (!minutes || minutes <= 0) return '';
+  const minutesPerDay = 60 * 24;
+  const breakdown = [
+    { unit: 'day', value: minutes / minutesPerDay },
+    { unit: 'week', value: minutes / (minutesPerDay * 7) },
+    { unit: 'month', value: minutes / (minutesPerDay * 30) },
+    { unit: 'year', value: minutes / (minutesPerDay * 365) },
+  ];
+  return breakdown
+    .map(entry => formatExtendedDurationUnit(entry.value, entry.unit))
+    .filter(Boolean)
+    .join(' • ');
+}
+
+function renderGlobalLibrarySummary() {
+  const summaryEl = document.getElementById('library-summary');
+  if (!summaryEl) return;
+  summaryEl.innerHTML = '';
+  const loading = !haveAllListsFinishedInitialLoad();
+  if (!currentUser) {
+    summaryEl.appendChild(createEl('p', 'library-summary-count', { text: 'Sign in to track your lists.' }));
+    return;
+  }
+  if (loading) {
+    summaryEl.appendChild(createEl('p', 'library-summary-count', { text: 'Calculating totals...' }));
+    summaryEl.appendChild(createEl('p', 'summary-watch-secondary', { text: 'Hang tight while we load your media.' }));
+    return;
+  }
+  const stats = computeGlobalLibraryStats();
+  const countText = stats.totalItems > 0
+    ? `${stats.totalItems.toLocaleString()} total item${stats.totalItems === 1 ? '' : 's'} saved`
+    : 'No items saved yet';
+  summaryEl.appendChild(createEl('p', 'library-summary-count', { text: countText }));
+  const watchBlock = createEl('div', 'library-summary-watch');
+  if (stats.totalWatchMinutes > 0) {
+    const runtimeLabel = formatRuntimeDuration(stats.totalWatchMinutes) || `${stats.totalWatchMinutes.toLocaleString()} min`;
+    watchBlock.appendChild(createEl('div', 'summary-watch-primary', { text: `${runtimeLabel} of watch time` }));
+    const extended = formatExtendedWatchDuration(stats.totalWatchMinutes);
+    if (extended) {
+      watchBlock.appendChild(createEl('div', 'summary-watch-secondary', { text: extended }));
+    }
+  } else {
+    watchBlock.appendChild(createEl('div', 'summary-watch-primary', { text: 'Watch time unavailable' }));
+    watchBlock.appendChild(createEl('div', 'summary-watch-secondary', { text: 'Add runtimes or episode counts to calculate totals.' }));
+  }
+  summaryEl.appendChild(watchBlock);
 }
 
 function sanitizeAniListDescription(text) {

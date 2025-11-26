@@ -123,6 +123,11 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .library-filter-bar input:focus{outline:none;border-color:var(--primary-300);box-shadow:0 0 0 3px rgba(61,169,245,0.16)}
 .type-filter-group{display:flex;flex-wrap:wrap;gap:.45rem;justify-content:flex-end}
 .type-filter{border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:var(--text-300);border-radius:999px;padding:.35rem .85rem;font-weight:600;font-size:.85rem;cursor:pointer;transition:all .18s ease}
+.library-summary-card{margin-top:.75rem;background:linear-gradient(180deg,rgba(24,35,45,0.88),rgba(18,27,36,0.88));border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:1rem 1.15rem;box-shadow:0 12px 28px rgba(5,10,16,0.32);display:flex;flex-direction:column;gap:.4rem}
+.library-summary-count{margin:0;font-weight:600;color:var(--text-100);font-size:1rem}
+.library-summary-watch{display:flex;flex-direction:column;gap:.2rem}
+.summary-watch-primary{font-weight:600;color:var(--text-100)}
+.summary-watch-secondary{color:var(--text-500);font-size:.88rem}
 .type-filter.active{background:linear-gradient(135deg,var(--accent-300),#50c9ff);color:#08131b;border-color:transparent;box-shadow:0 8px 20px rgba(80,201,255,0.25)}
 .type-filter-group .type-filter{flex:0 0 auto}
 .add-forms-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.2rem}
