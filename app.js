@@ -2160,6 +2160,7 @@ function buildMovieMetaText(item) {
   if (item.year) metaParts.push(item.year);
   if (item.director) metaParts.push(item.director);
   if (item.runtime) metaParts.push(item.runtime);
+  else if (item.episodeRuntime) metaParts.push(`${item.episodeRuntime} min/ep`);
   else if (item.animeDuration) metaParts.push(`${item.animeDuration} min/ep`);
   if (item.imdbRating) metaParts.push(`IMDb ${item.imdbRating}`);
   return metaParts.join(' • ');
