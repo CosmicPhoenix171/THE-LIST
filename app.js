@@ -114,6 +114,7 @@ let lastJikanNetworkToastTime = 0;
 const jikanNotFoundAnimeIds = new Set();
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
 const PRIMARY_LIST_TYPES = ['movies', 'tvShows', 'anime', 'books'];
+const WHEEL_SPIN_ALL_OPTION = 'all';
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
 const seriesGroups = {};
@@ -2973,14 +2974,22 @@ function parseSeriesOrder(value) {
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
-function buildSpinnerCandidates(listType, rawData) {
+function buildSpinnerCandidates(listType, rawData, options = {}) {
   const entries = Object.entries(rawData || {});
   if (!entries.length) return [];
 
+  const annotateListType = Boolean(options.annotateListType);
   const mapped = entries
     .map(([id, item]) => {
       if (!item) return null;
-      return item.__id ? item : Object.assign({ __id: id }, item);
+      const withId = item.__id ? item : Object.assign({ __id: id }, item);
+      if (!annotateListType) {
+        return withId;
+      }
+      if (withId.__listType === listType) {
+        return withId;
+      }
+      return Object.assign({}, withId, { __listType: listType });
     })
     .filter(Boolean);
 
@@ -4763,6 +4772,26 @@ function spinWheel(listType) {
     console.warn('Wheel spinner UI is not mounted. Open the wheel modal first.');
     return;
   }
+
+  const requestedType = listType || PRIMARY_LIST_TYPES[0];
+  const isSpinAll = requestedType === WHEEL_SPIN_ALL_OPTION;
+  if (!isSpinAll && !PRIMARY_LIST_TYPES.includes(requestedType)) {
+    showAlert('Choose a valid list to spin.');
+    return;
+  }
+
+  const showEmptyState = (allMode = false) => {
+    if (!wheelUIState.spinnerEl || !wheelUIState.resultEl) return;
+    clearWheelAnimation();
+    const emptyState = document.createElement('span');
+    emptyState.className = 'spin-text';
+    emptyState.textContent = 'No eligible items to spin.';
+    wheelUIState.spinnerEl.appendChild(emptyState);
+    wheelUIState.resultEl.textContent = allMode
+      ? 'Nothing left to spin across your lists. Add something new or reset a few items back to Planned/Watching.'
+      : 'No eligible items right now. Add something new or reset some items back to Planned/Watching.';
+  };
+
   clearWheelAnimation();
   resultEl.innerHTML = '';
   spinnerEl.classList.remove('hidden');
@@ -4772,37 +4801,7 @@ function spinWheel(listType) {
   placeholder.textContent = 'Spinning…';
   spinnerEl.appendChild(placeholder);
 
-  loadSpinnerSourceData(listType).then(({ data, source }) => {
-    if (!wheelUIState.spinnerEl || !wheelUIState.resultEl) {
-      clearWheelAnimation();
-      return;
-    }
-    const scopedData = buildSpinnerDataScope(listType, data);
-    const candidates = buildSpinnerCandidates(listType, scopedData);
-    try {
-      console.log('[Wheel] spin start', {
-        listType,
-        source,
-        candidateCount: candidates.length,
-        titles: candidates.map(c => c && c.title).filter(Boolean)
-      });
-    } catch (_) {}
-    if (candidates.length === 0) {
-      if (!wheelUIState.spinnerEl || !wheelUIState.resultEl) return;
-      clearWheelAnimation();
-      const emptyState = document.createElement('span');
-      emptyState.className = 'spin-text';
-      emptyState.textContent = 'No eligible items to spin.';
-      wheelUIState.spinnerEl.appendChild(emptyState);
-      wheelUIState.resultEl.textContent = 'No eligible items right now. Add something new or reset some items back to Planned/Watching.';
-      return;
-    }
-    const chosenIndex = Math.floor(Math.random() * candidates.length);
-    const chosenCandidate = candidates[chosenIndex];
-    const resolvedCandidate = resolveSeriesRedirect(listType, chosenCandidate, data) || chosenCandidate;
-    try { console.log('[Wheel] pick', { chosenIndex, chosen: chosenCandidate?.title, resolved: resolvedCandidate?.title }); } catch (_) {}
-    animateWheelSequence(candidates, chosenIndex, listType, resolvedCandidate);
-  }).catch(err => {
+  const handleError = (err) => {
     console.error('Wheel load failed', err);
     if (!wheelUIState.spinnerEl || !wheelUIState.resultEl) {
       clearWheelAnimation();
@@ -4814,7 +4813,85 @@ function spinWheel(listType) {
     errorState.textContent = 'Unable to load items.';
     wheelUIState.spinnerEl.appendChild(errorState);
     wheelUIState.resultEl.textContent = 'Unable to load items.';
-  });
+  };
+
+  const handleSingleSpin = ({ data, source }) => {
+    if (!wheelUIState.spinnerEl || !wheelUIState.resultEl) {
+      clearWheelAnimation();
+      return;
+    }
+    const scopedData = buildSpinnerDataScope(requestedType, data);
+    const candidates = buildSpinnerCandidates(requestedType, scopedData);
+    try {
+      console.log('[Wheel] spin start', {
+        listType: requestedType,
+        source,
+        candidateCount: candidates.length,
+        titles: candidates.map(c => c && c.title).filter(Boolean)
+      });
+    } catch (_) {}
+    if (candidates.length === 0) {
+      showEmptyState(false);
+      return;
+    }
+    const chosenIndex = Math.floor(Math.random() * candidates.length);
+    const chosenCandidate = candidates[chosenIndex];
+    const resolvedCandidate = resolveSeriesRedirect(requestedType, chosenCandidate, data) || chosenCandidate;
+    try { console.log('[Wheel] pick', { chosenIndex, chosen: chosenCandidate?.title, resolved: resolvedCandidate?.title }); } catch (_) {}
+    animateWheelSequence(candidates, chosenIndex, requestedType, resolvedCandidate);
+  };
+
+  const handleSpinAll = (payloads) => {
+    if (!wheelUIState.spinnerEl || !wheelUIState.resultEl) {
+      clearWheelAnimation();
+      return;
+    }
+    const candidatePool = [];
+    const rawDataByType = {};
+    const logBreakdown = [];
+    payloads.forEach(entry => {
+      if (!entry) return;
+      const type = entry.listType;
+      rawDataByType[type] = entry.data;
+      const scoped = buildSpinnerDataScope(type, entry.data);
+      const candidates = buildSpinnerCandidates(type, scoped, { annotateListType: true });
+      if (candidates.length) {
+        candidatePool.push(...candidates);
+      }
+      logBreakdown.push({ listType: type, source: entry.source, candidateCount: candidates.length });
+    });
+    try {
+      console.log('[Wheel] spin start', {
+        listType: WHEEL_SPIN_ALL_OPTION,
+        totalCandidates: candidatePool.length,
+        breakdown: logBreakdown,
+      });
+    } catch (_) {}
+    if (!candidatePool.length) {
+      showEmptyState(true);
+      return;
+    }
+    const chosenIndex = Math.floor(Math.random() * candidatePool.length);
+    const chosenCandidate = candidatePool[chosenIndex];
+    const candidateType = PRIMARY_LIST_TYPES.includes(chosenCandidate.__listType)
+      ? chosenCandidate.__listType
+      : PRIMARY_LIST_TYPES[0];
+    const resolvedCandidate = resolveSeriesRedirect(candidateType, chosenCandidate, rawDataByType[candidateType]) || chosenCandidate;
+    try { console.log('[Wheel] pick', { mode: WHEEL_SPIN_ALL_OPTION, chosenIndex, chosenType: candidateType, chosen: chosenCandidate?.title, resolved: resolvedCandidate?.title }); } catch (_) {}
+    animateWheelSequence(candidatePool, chosenIndex, candidateType, resolvedCandidate);
+  };
+
+  const loadPromise = isSpinAll
+    ? Promise.all(PRIMARY_LIST_TYPES.map(type => loadSpinnerSourceData(type).then(payload => Object.assign({ listType: type }, payload))))
+    : loadSpinnerSourceData(requestedType);
+
+  loadPromise.then(result => {
+    if (isSpinAll) {
+      handleSpinAll(result);
+    } else {
+      handleSingleSpin(result);
+    }
+  }).catch(handleError);
 }
 
 // Boot
