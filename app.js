@@ -1800,7 +1800,7 @@ function formatAnimeFormatLabel(value) {
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
 }
 
-function collectAnimeSeriesEntries(listType, cardId, fallbackItem) {
+function collectSeriesEntries(listType, cardId, fallbackItem) {
   const normalizedListType = listType || 'anime';
   let entries = [];
   if (cardId && isCollapsibleList(normalizedListType)) {
@@ -1816,7 +1816,7 @@ function collectAnimeSeriesEntries(listType, cardId, fallbackItem) {
 }
 
 function deriveAnimeSeriesMetrics(listType, cardId, fallbackItem) {
-  const entries = collectAnimeSeriesEntries(listType, cardId, fallbackItem);
+  const entries = collectSeriesEntries(listType, cardId, fallbackItem);
   if (!entries.length) return null;
 
   const formatLabels = new Map();
@@ -1906,6 +1906,13 @@ function buildMovieCardDetails(listType, cardId, entryId, item) {
     details.appendChild(createEl('div', 'notes detail-block', { text: item.notes }));
   }
 
+  if (listType === 'tvShows') {
+    const tvBlock = buildTvDetailBlock(listType, cardId, item);
+    if (tvBlock) {
+      details.appendChild(tvBlock);
+    }
+  }
+
   if (listType === 'anime') {
     const animeBlock = buildAnimeDetailBlock(item);
     if (animeBlock) {
@@ -1945,12 +1952,12 @@ function buildAnimeDetailBlock(item) {
     block.appendChild(row);
   }
   if (seasonBreakdown.length) {
-    const seasonBlock = createEl('div', 'anime-season-breakdown');
-    seasonBlock.appendChild(createEl('div', 'anime-season-heading', { text: 'Season Overview' }));
-    const list = createEl('div', 'anime-season-list');
+    const seasonBlock = createEl('div', 'season-breakdown');
+    seasonBlock.appendChild(createEl('div', 'season-heading', { text: 'Season Overview' }));
+    const list = createEl('div', 'season-list');
     seasonBreakdown.forEach(season => {
-      const row = createEl('div', 'anime-season-row');
-      row.appendChild(createEl('div', 'anime-season-label', { text: season.label || 'Season' }));
+      const row = createEl('div', 'season-row');
+      row.appendChild(createEl('div', 'season-label', { text: season.label || 'Season' }));
       const metaParts = [];
       if (season.episodes) {
         metaParts.push(`${season.episodes} ep`);
@@ -1959,7 +1966,7 @@ function buildAnimeDetailBlock(item) {
         metaParts.push(season.title);
       }
       if (metaParts.length) {
-        row.appendChild(createEl('div', 'anime-season-meta', { text: metaParts.join(' • ') }));
+        row.appendChild(createEl('div', 'season-meta', { text: metaParts.join(' • ') }));
       }
       list.appendChild(row);
     });
@@ -1976,6 +1983,59 @@ function buildAnimeDetailBlock(item) {
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     block.appendChild(link);
+  }
+  return block.children.length ? block : null;
+}
+
+function buildTvDetailBlock(listType, cardId, item) {
+  if (!item) return null;
+  const block = createEl('div', 'detail-block tv-detail-block');
+  const seasonBreakdown = deriveTvSeasonBreakdown(listType, cardId, item);
+  const chips = [];
+  const seasonCount = item.tvSeasonCount || item.seasonCount || seasonBreakdown.length;
+  if (seasonCount) {
+    chips.push(`${seasonCount} season${seasonCount === 1 ? '' : 's'}`);
+  }
+  const derivedSeasonEpisodes = seasonBreakdown.reduce((sum, season) => {
+    const value = Number(season.episodes);
+    return Number.isFinite(value) ? sum + value : sum;
+  }, 0);
+  const totalEpisodes = item.episodeCount || (derivedSeasonEpisodes || 0);
+  if (totalEpisodes) {
+    chips.push(`${totalEpisodes} episode${totalEpisodes === 1 ? '' : 's'}`);
+  }
+  if (item.episodeRuntime) {
+    chips.push(`${item.episodeRuntime} min/ep`);
+  }
+  if (chips.length) {
+    const row = createEl('div', 'anime-stats-row');
+    chips.forEach(text => row.appendChild(createEl('span', 'anime-chip', { text })));
+    block.appendChild(row);
+  }
+  if (seasonBreakdown.length) {
+    const seasonBlock = createEl('div', 'season-breakdown');
+    seasonBlock.appendChild(createEl('div', 'season-heading', { text: 'Season Overview' }));
+    const list = createEl('div', 'season-list');
+    seasonBreakdown.forEach(season => {
+      const row = createEl('div', 'season-row');
+      row.appendChild(createEl('div', 'season-label', { text: season.label || 'Season' }));
+      const metaParts = [];
+      if (season.episodes !== null && season.episodes !== undefined) {
+        metaParts.push(`${season.episodes} ep`);
+      }
+      if (season.year) {
+        metaParts.push(season.year);
+      }
+      if (season.title && season.title !== season.label) {
+        metaParts.push(season.title);
+      }
+      if (metaParts.length) {
+        row.appendChild(createEl('div', 'season-meta', { text: metaParts.join(' • ') }));
+      }
+      list.appendChild(row);
+    });
+    seasonBlock.appendChild(list);
+    block.appendChild(seasonBlock);
   }
   return block.children.length ? block : null;
 }
@@ -3088,6 +3148,14 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
     setField('seasonCount', Number.isFinite(normalizedSeasons) && normalizedSeasons > 0 ? normalizedSeasons : seasonCountValue);
   }
 
+  if (metadata.TvSeasonCount !== undefined && metadata.TvSeasonCount !== null && metadata.TvSeasonCount !== '') {
+    const normalizedTvSeasons = Number(metadata.TvSeasonCount);
+    setField('tvSeasonCount', Number.isFinite(normalizedTvSeasons) && normalizedTvSeasons > 0 ? normalizedTvSeasons : metadata.TvSeasonCount);
+  }
+  if (Array.isArray(metadata.TvSeasons) && metadata.TvSeasons.length) {
+    setField('tvSeasons', normalizeTvSeasonEntries(metadata.TvSeasons));
+  }
+
   const episodeRuntimeValue = metadata.EpisodeRuntime !== undefined ? metadata.EpisodeRuntime : (metadata.RuntimePerEpisode !== undefined ? metadata.RuntimePerEpisode : undefined);
   if (episodeRuntimeValue !== undefined && episodeRuntimeValue !== null && episodeRuntimeValue !== '') {
     const runtimeMinutes = parseRuntimeMinutes(episodeRuntimeValue);
@@ -3856,6 +3924,7 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
     : (Array.isArray(detail.episode_run_time) && detail.episode_run_time.length ? detail.episode_run_time[0] : null);
   const totalEpisodes = mediaType === 'tv' ? Number(detail.number_of_episodes) || null : null;
   const totalSeasons = mediaType === 'tv' ? Number(detail.number_of_seasons) || null : null;
+  const tvSeasonEntries = mediaType === 'tv' ? extractTvSeasonMetadata(detail) : [];
   const crew = Array.isArray(detail.credits?.crew) ? detail.credits.crew : [];
   const directorCrew = crew.find(member => member && member.job === 'Director');
   const director = directorCrew?.name
@@ -3870,7 +3939,7 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
   const tmdbId = detail.id || '';
   const englishDubAvailable = hasEnglishSpokenLanguage(detail.spoken_languages);
 
-  return {
+  const payload = {
     Title: detail.title || detail.name || '',
     Year: releaseDate ? String(releaseDate).slice(0, 4) : '',
     Director: director,
@@ -3895,6 +3964,40 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
     Seasons: totalSeasons,
     EpisodeRuntime: runtimeMinutes || null,
   };
+  if (mediaType === 'tv') {
+    if (tvSeasonEntries.length) {
+      payload.TvSeasons = tvSeasonEntries;
+    }
+    if (tvSeasonEntries.length || totalSeasons) {
+      payload.TvSeasonCount = tvSeasonEntries.length || totalSeasons || null;
+    }
+  }
+  return payload;
+}
+
+function extractTvSeasonMetadata(detail) {
+  if (!detail || !Array.isArray(detail.seasons)) return [];
+  return detail.seasons
+    .filter(season => season && typeof season.season_number === 'number' && season.season_number >= 1)
+    .map((season, index) => {
+      const number = Number(season.season_number);
+      const year = extractPrimaryYear(season.air_date || '') || '';
+      const episodes = Number(season.episode_count);
+      return {
+        number: Number.isFinite(number) ? number : index,
+        label: season.name || '',
+        title: season.name || '',
+        episodes: Number.isFinite(episodes) && episodes >= 0 ? episodes : null,
+        year,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (Number.isFinite(a.number) && Number.isFinite(b.number)) {
+        return a.number - b.number;
+      }
+      return (a.title || '').localeCompare(b.title || '');
+    });
 }
 
 async function tmdbFetch(path, params = {}) {
@@ -3995,7 +4098,7 @@ function buildFranchiseSeasonEntries(tvDetails) {
 }
 
   function deriveAnimeSeasonBreakdown(listType, cardId, fallbackItem) {
-    const entries = collectAnimeSeriesEntries(listType, cardId, fallbackItem);
+    const entries = collectSeriesEntries(listType, cardId, fallbackItem);
     if (!entries.length) return [];
     const seasons = [];
     entries.forEach(entry => {
@@ -4023,6 +4126,78 @@ function buildFranchiseSeasonEntries(tvDetails) {
       title: season.title,
       episodes: season.episodes,
     }));
+  }
+
+  function normalizeTvSeasonEntries(source) {
+    if (!Array.isArray(source)) return [];
+    const normalized = source.map((season, index) => {
+      if (!season) return null;
+      const rawNumber = Number(
+        season.number ?? season.seasonNumber ?? season.season ?? season.order ?? season.seriesOrder
+      );
+      const number = Number.isFinite(rawNumber) && rawNumber > 0 ? rawNumber : null;
+      const label = season.label || season.name || season.title || (number ? `Season ${number}` : '');
+      const title = season.title || season.name || '';
+      const episodesValue = Number(
+        season.episodes ?? season.episodeCount ?? season.totalEpisodes ?? season.count
+      );
+      const episodes = Number.isFinite(episodesValue) && episodesValue >= 0 ? episodesValue : null;
+      const airYear = season.year || extractPrimaryYear(season.airDate || season.premiereDate || '') || '';
+      return {
+        number,
+        label,
+        title,
+        episodes,
+        year: airYear,
+        index,
+      };
+    }).filter(Boolean);
+    normalized.sort((a, b) => {
+      if (Number.isFinite(a.number) && Number.isFinite(b.number)) {
+        return a.number - b.number;
+      }
+      if (Number.isFinite(a.number)) return -1;
+      if (Number.isFinite(b.number)) return 1;
+      return (a.label || '').localeCompare(b.label || '');
+    });
+    return normalized.map((season, idx) => ({
+      label: season.label || (Number.isFinite(season.number) ? `Season ${season.number}` : `Season ${idx + 1}`),
+      title: season.title || season.label || '',
+      episodes: season.episodes,
+      year: season.year || '',
+      number: season.number ?? null,
+    }));
+  }
+
+  function deriveTvSeasonBreakdown(listType, cardId, fallbackItem) {
+    const entries = collectSeriesEntries(listType, cardId, fallbackItem);
+    if (!entries.length) return [];
+    const metadataSource = entries.find(entry => Array.isArray(entry.tvSeasons) && entry.tvSeasons.length);
+    if (metadataSource) {
+      return normalizeTvSeasonEntries(metadataSource.tvSeasons);
+    }
+
+    const derived = entries.map(entry => {
+      if (!entry) return null;
+      const order = numericSeriesOrder(entry.seriesOrder);
+      const episodes = Number(entry.episodeCount || entry.episodes);
+      return {
+        number: Number.isFinite(order) && order > 0 ? order : null,
+        title: entry.title || '',
+        label: Number.isFinite(order) && order > 0 ? `Season ${order}` : (entry.title || ''),
+        episodes: Number.isFinite(episodes) && episodes > 0 ? episodes : null,
+        year: entry.year || '',
+      };
+    }).filter(Boolean);
+    const normalized = normalizeTvSeasonEntries(derived);
+    if (normalized.length) return normalized;
+
+    const fallback = entries[0];
+    const fallbackCount = Number(fallback?.tvSeasonCount || fallback?.seasonCount);
+    if (Number.isFinite(fallbackCount) && fallbackCount > 0) {
+      return normalizeTvSeasonEntries(Array.from({ length: fallbackCount }, (_, idx) => ({ number: idx + 1 })));
+    }
+    return [];
   }
 
 function collectRecommendationEntries(details, mediaType) {
