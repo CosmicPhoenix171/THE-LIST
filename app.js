@@ -61,6 +61,7 @@ const animeFranchiseIgnoredIds = new Set();
 const suggestionForms = new Set();
 const seriesGroups = {};
 const expandedCards = {};
+const seriesCarouselState = {};
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES)
