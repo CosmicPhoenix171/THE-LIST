@@ -982,6 +982,8 @@ function renderUnifiedLibrary() {
   if (!container) return;
   container.innerHTML = '';
 
+  const combinedGrid = document.createElement('div');
+  combinedGrid.className = 'movies-grid unified-grid';
   let hasAnyItems = false;
 
   PRIMARY_LIST_TYPES.forEach(listType => {
@@ -999,29 +1001,21 @@ function renderUnifiedLibrary() {
     if (entries.length === 0) return;
     hasAnyItems = true;
 
-    // Sort by title
     entries.sort((a, b) => (a[1].title || '').localeCompare(b[1].title || ''));
 
-    const section = document.createElement('section');
-    section.className = 'library-section';
-    const heading = document.createElement('h3');
-    heading.textContent = getListLabel(listType);
-    section.appendChild(heading);
-
     if (isCollapsibleList(listType)) {
-       renderCollapsibleMediaGrid(listType, section, entries);
+      renderCollapsibleMediaGrid(listType, combinedGrid, entries, { inline: true });
     } else {
-       const grid = document.createElement('div');
-       grid.className = 'movies-grid';
-       renderStandardList(grid, listType, entries);
-       section.appendChild(grid);
+      renderStandardList(combinedGrid, listType, entries);
     }
-    container.appendChild(section);
   });
 
   if (!hasAnyItems) {
     container.innerHTML = '<div class="empty-state">No items found.</div>';
+    return;
   }
+
+  container.appendChild(combinedGrid);
 }
 
 function getListLabel(type) {
@@ -1176,8 +1170,9 @@ function prepareCollapsibleRecords(listType, entries) {
   return { displayRecords, leaderMembersByCardId, visibleIds };
 }
 
-function renderCollapsibleMediaGrid(listType, container, entries) {
-  const grid = createEl('div', 'movies-grid');
+function renderCollapsibleMediaGrid(listType, container, entries, options = {}) {
+  const inline = Boolean(options.inline);
+  const grid = inline ? container : createEl('div', 'movies-grid');
   const { displayRecords, leaderMembersByCardId, visibleIds } = prepareCollapsibleRecords(listType, entries);
   seriesGroups[listType] = leaderMembersByCardId;
 
@@ -1188,7 +1183,9 @@ function renderCollapsibleMediaGrid(listType, container, entries) {
     }));
   });
 
-  container.appendChild(grid);
+  if (!inline) {
+    container.appendChild(grid);
+  }
 
   const expandedSet = ensureExpandedSet(listType);
   expandedSet.forEach(cardId => {
