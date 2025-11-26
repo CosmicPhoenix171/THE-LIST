@@ -14,77 +14,74 @@ import {
   getDatabase,
   ref,
   push,
-        b.y += ny * overlap;
-        const relVelX = b.vx - a.vx;
-        const relVelY = b.vy - a.vy;
-        const velAlongNormal = relVelX * nx + relVelY * ny;
-        if (velAlongNormal > 0) continue;
-        const restitution = 0.65;
-        const impulse = -(1 + restitution) * velAlongNormal / 2;
-        const impulseX = impulse * nx;
-        const impulseY = impulse * ny;
-        a.vx -= impulseX;
-        a.vy -= impulseY;
-        b.vx += impulseX;
-        b.vy += impulseY;
-        if (Math.abs(a.vx) > wakeSpeed || Math.abs(a.vy) > wakeSpeed) a.resting = false;
-        if (Math.abs(b.vx) > wakeSpeed || Math.abs(b.vy) > wakeSpeed) b.resting = false;
-        if (ny > supportAngleThreshold) a.supported = true;
-        if (ny < -supportAngleThreshold) b.supported = true;
-      }
-    }
-  }
+  set,
+  onValue,
+  remove,
+  update,
+  off
+} from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
+import { initWheelModal, closeWheelModal } from './wheel-modal.js';
+import { showAlert } from './alerts.js';
 
-  function tick() {
-    rafId = requestAnimationFrame(tick);
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    sprites.forEach(sprite => {
-      sprite.supported = false;
-      if (!sprite.resting) {
-        sprite.vy += gravity;
-        sprite.vx *= friction;
-        sprite.x += sprite.vx;
-        sprite.y += sprite.vy;
-      }
-      sprite.rotation = (sprite.rotation + sprite.spin * 0.016) % 360;
-      const radius = sprite.radius;
-      if (sprite.x - radius < 0) {
-        sprite.x = radius;
-        sprite.vx *= -bounce;
-      } else if (sprite.x + radius > width) {
-        sprite.x = width - radius;
-        sprite.vx *= -bounce;
-      }
-      if (sprite.y + radius > height) {
-        sprite.y = height - radius;
-        if (!sprite.resting) {
-          sprite.vy *= -bounce;
-        }
-        sprite.supported = true;
-      }
-    });
-    resolveCollisions();
-    sprites.forEach(sprite => {
-      const settledVertically = Math.abs(sprite.vy) < settleThreshold;
-      const settledHorizontally = Math.abs(sprite.vx) < settleThreshold;
-      if (sprite.supported && settledVertically && settledHorizontally) {
-        sprite.vx = 0;
-        sprite.vy = 0;
-        sprite.resting = true;
-      } else if (!sprite.supported && sprite.resting) {
-        sprite.resting = false;
-      }
-    });
-    sprites.forEach(syncSprite);
-  }
+const APP_VERSION = '1.0.0';
+const TMDB_API_KEY = ''; // TODO: Add your TMDB API Key
+const GOOGLE_BOOKS_API_KEY = ''; // TODO: Add your Google Books API Key
+const JIKAN_API_BASE_URL = 'https://api.jikan.moe/v4';
+const TMDB_API_BASE_URL = 'https://api.themoviedb.org/3';
+const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
+const MYANIMELIST_ANIME_URL = 'https://myanimelist.net/anime';
 
-  return {
-    bindTriggers,
-    getSeasonalTheme,
-    getCurrentTmTheme,
-  };
-})();
+const firebaseConfig = {
+  // TODO: Paste your Firebase configuration here
+};
+
+const PRIMARY_LIST_TYPES = ['movies', 'tvShows', 'anime', 'books'];
+const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
+const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
+const TMDB_KEYWORD_DISCOVER_PAGE_LIMIT = 5;
+const ANIME_FRANCHISE_IGNORE_KEY = 'animeFranchiseIgnoredIds';
+const INTRO_SESSION_KEY = 'introPlayed';
+
+const listCaches = {};
+const actorFilters = {};
+const sortModes = {};
+const listeners = {};
+const animeFranchiseIgnoredIds = new Set();
+const suggestionForms = new Set();
+
+let currentUser = null;
+let appInitialized = false;
+let introPlayed = false;
+let tmdbWarningShown = false;
+let globalSuggestionClickBound = false;
+
+const googleSigninBtn = document.getElementById('google-signin');
+const signOutBtn = document.getElementById('sign-out');
+const modalRoot = document.getElementById('modal-root');
+const backToTopBtn = document.getElementById('back-to-top');
+const appRoot = document.getElementById('app');
+const loginScreen = document.getElementById('login-screen');
+
+const tmEasterEgg = {
+  bindTriggers: () => {},
+  getSeasonalTheme: () => 'default',
+  getCurrentTmTheme: () => 'default'
+};
+
+function closeAddModal() {
+  if (modalRoot) modalRoot.innerHTML = '';
+}
+
+function setupAddModal() {
+  const btn = document.getElementById('open-add-modal');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      console.warn('Add Modal logic missing');
+      showAlert('Add Modal logic is currently missing.');
+    });
+  }
+}
 
 function logAppVersionOnce() {
   const flagKey = '__THE_LIST_VERSION_LOGGED__';
@@ -4036,7 +4033,7 @@ if (auth) {
   } catch(e) { /* silent */ }
 }
 
-tmEasterEgg.bindTriggers();
+// tmEasterEgg.bindTriggers();
 initUnifiedLibraryControls();
 renderUnifiedLibrary();
 
