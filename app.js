@@ -982,10 +982,8 @@ function renderUnifiedLibrary() {
   if (!container) return;
   container.innerHTML = '';
 
-  const combinedGrid = document.createElement('div');
-  combinedGrid.className = 'movies-grid unified-grid';
+  const filteredEntries = new Map();
   let hasAnyItems = false;
-
   PRIMARY_LIST_TYPES.forEach(listType => {
     if (!unifiedFilters.types.has(listType)) return;
     const data = listCaches[listType] || {};
@@ -997,17 +995,10 @@ function renderUnifiedLibrary() {
       }
       return true;
     });
-
-    if (entries.length === 0) return;
+    if (!entries.length) return;
     hasAnyItems = true;
-
     entries.sort((a, b) => (a[1].title || '').localeCompare(b[1].title || ''));
-
-    if (isCollapsibleList(listType)) {
-      renderCollapsibleMediaGrid(listType, combinedGrid, entries, { inline: true });
-    } else {
-      renderStandardList(combinedGrid, listType, entries);
-    }
+    filteredEntries.set(listType, entries);
   });
 
   if (!hasAnyItems) {
@@ -1015,6 +1006,39 @@ function renderUnifiedLibrary() {
     return;
   }
 
+  const cards = [];
+  const animeEntries = filteredEntries.get('anime') || [];
+  if (animeEntries.length) {
+    const { displayRecords, leaderMembersByCardId } = prepareCollapsibleRecords('anime', animeEntries);
+    seriesGroups['anime'] = leaderMembersByCardId;
+    displayRecords.forEach(record => {
+      const card = buildCollapsibleMovieCard('anime', record.id, record.displayItem, record.index, {
+        displayEntryId: record.displayEntryId,
+      });
+      const title = (record.displayItem?.title || record.item?.title || '').trim();
+      cards.push({ node: card, sortKey: title.toLowerCase(), title });
+    });
+  }
+
+  filteredEntries.forEach((entries, listType) => {
+    if (listType === 'anime') return;
+    entries.forEach(([id, item]) => {
+      if (!item) return;
+      const card = buildStandardCard(listType, id, item);
+      const title = (item.title || '').trim();
+      cards.push({ node: card, sortKey: title.toLowerCase(), title });
+    });
+  });
+
+  cards.sort((a, b) => {
+    if (a.sortKey < b.sortKey) return -1;
+    if (a.sortKey > b.sortKey) return 1;
+    return 0;
+  });
+
+  const combinedGrid = document.createElement('div');
+  combinedGrid.className = 'movies-grid unified-grid';
+  cards.forEach(cardInfo => combinedGrid.appendChild(cardInfo.node));
   container.appendChild(combinedGrid);
 }
 
