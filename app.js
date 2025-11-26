@@ -26,7 +26,7 @@ import { initWheelModal, closeWheelModal } from './wheel-modal.js';
 import { showAlert } from './alerts.js';
 
 const APP_VERSION = '1.0.0';
-const TMDB_API_KEY = ''; // TODO: Add your TMDB API Key
+const TMDB_API_KEY = '46dcf1eaa2ce4284037a00fdefca9bb8';
 const GOOGLE_BOOKS_API_KEY = ''; // TODO: Add your Google Books API Key
 const JIKAN_API_BASE_URL = 'https://api.jikan.moe/v4';
 const TMDB_API_BASE_URL = 'https://api.themoviedb.org/3';
@@ -59,7 +59,11 @@ const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const TMDB_KEYWORD_DISCOVER_PAGE_LIMIT = 5;
 const JIKAN_MAX_RETRIES = 3;
 const JIKAN_RATE_LIMIT_BACKOFF_MS = 1500;
-const JIKAN_RATE_LIMIT_MIN_INTERVAL_MS = 520;
+const JIKAN_MAX_REQUESTS_PER_SECOND = 3;
+const JIKAN_MAX_REQUESTS_PER_MINUTE = 60;
+const JIKAN_SECOND_WINDOW_MS = 1000;
+const JIKAN_MINUTE_WINDOW_MS = 1000 * 60;
+const JIKAN_RATE_LIMIT_MIN_INTERVAL_MS = Math.ceil(JIKAN_SECOND_WINDOW_MS / JIKAN_MAX_REQUESTS_PER_SECOND);
 const ANIME_STATUS_PRIORITY = {
   RELEASING: 4,
   AIRING: 4,
@@ -117,6 +121,8 @@ const seriesCarouselState = {};
 const jikanNotFoundAnimeIds = new Set();
 const animeFranchiseMissingHashes = new Map();
 const metadataRefreshHistory = new Map();
+const jikanSecondWindow = [];
+const jikanMinuteWindow = [];
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES)
@@ -129,6 +135,7 @@ let animeFranchiseLastScanTime = Number(safeLocalStorageGet(ANIME_FRANCHISE_LAST
 let lastJikanRequestTimestamp = 0;
 let lastJikanRateLimitNotice = 0;
 let lastJikanNetworkIssueNotice = 0;
+let jikanRateLimiterTail = Promise.resolve();
 
 let currentUser = null;
 let appInitialized = false;
@@ -4476,18 +4483,56 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function pruneJikanRateWindows(now) {
+  while (jikanSecondWindow.length && (now - jikanSecondWindow[0]) >= JIKAN_SECOND_WINDOW_MS) {
+    jikanSecondWindow.shift();
+  }
+  while (jikanMinuteWindow.length && (now - jikanMinuteWindow[0]) >= JIKAN_MINUTE_WINDOW_MS) {
+    jikanMinuteWindow.shift();
+  }
+}
+
+function millisecondsUntilNextJikanSlot(now) {
+  let wait = JIKAN_RATE_LIMIT_MIN_INTERVAL_MS;
+  if (jikanSecondWindow.length >= JIKAN_MAX_REQUESTS_PER_SECOND) {
+    const oldest = jikanSecondWindow[0];
+    wait = Math.max(wait, Math.max(0, JIKAN_SECOND_WINDOW_MS - (now - oldest)));
+  }
+  if (jikanMinuteWindow.length >= JIKAN_MAX_REQUESTS_PER_MINUTE) {
+    const oldestMinute = jikanMinuteWindow[0];
+    wait = Math.max(wait, Math.max(0, JIKAN_MINUTE_WINDOW_MS - (now - oldestMinute)));
+  }
+  return Math.max(wait, 50);
+}
+
+async function acquireJikanRateLimitSlot() {
+  while (true) {
+    const now = Date.now();
+    pruneJikanRateWindows(now);
+    const underSecond = jikanSecondWindow.length < JIKAN_MAX_REQUESTS_PER_SECOND;
+    const underMinute = jikanMinuteWindow.length < JIKAN_MAX_REQUESTS_PER_MINUTE;
+    if (underSecond && underMinute) {
+      jikanSecondWindow.push(now);
+      jikanMinuteWindow.push(now);
+      return;
+    }
+    const waitMs = millisecondsUntilNextJikanSlot(now);
+    await delay(waitMs);
+  }
+}
+
 async function withJikanRateLimit(fn) {
   if (typeof fn !== 'function') return null;
-  const now = Date.now();
-  const elapsed = now - lastJikanRequestTimestamp;
-  if (elapsed < JIKAN_RATE_LIMIT_MIN_INTERVAL_MS) {
-    await delay(JIKAN_RATE_LIMIT_MIN_INTERVAL_MS - elapsed);
-  }
-  try {
-    return await fn();
-  } finally {
-    lastJikanRequestTimestamp = Date.now();
-  }
+  const task = jikanRateLimiterTail.then(async () => {
+    await acquireJikanRateLimitSlot();
+    try {
+      return await fn();
+    } finally {
+      lastJikanRequestTimestamp = Date.now();
+    }
+  });
+  jikanRateLimiterTail = task.catch(() => {});
+  return task;
 }
 
 function notifyJikanRateLimit() {
