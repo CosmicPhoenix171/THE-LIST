@@ -52,6 +52,7 @@ const MEDIA_TYPE_LABELS = {
   anime: 'Anime',
   books: 'Books',
 };
+const WATCH_PROVIDER_LISTS = new Set(['movies', 'tvShows']);
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
 const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
@@ -1114,6 +1115,10 @@ function isCollapsibleList(listType) {
   return COLLAPSIBLE_LISTS.has(listType);
 }
 
+function supportsWatchProviders(listType) {
+  return WATCH_PROVIDER_LISTS.has(listType);
+}
+
 function listSupportsActorFilter(listType) {
   return Object.prototype.hasOwnProperty.call(actorFilters, listType);
 }
@@ -1433,6 +1438,13 @@ function buildMovieCardDetails(listType, cardId, entryId, item) {
     details.appendChild(infoStack);
   }
 
+  if (supportsWatchProviders(listType)) {
+    const watchBlock = buildWatchNowSection(listType, item);
+    if (watchBlock) {
+      details.appendChild(watchBlock);
+    }
+  }
+
   if (item.plot) {
     details.appendChild(createEl('div', 'plot-summary detail-block', { text: item.plot.trim() }));
   }
@@ -1650,11 +1662,6 @@ function buildMovieLinks(listType, item) {
     aniList.target = '_blank';
     aniList.rel = 'noopener noreferrer';
     links.appendChild(aniList);
-  }
-  // Inline "Watch Now" next to trailer for movies
-  if (listType === 'movies' && TMDB_API_KEY) {
-    const watchInline = buildWatchNowSection(listType, item, true);
-    if (watchInline) links.appendChild(watchInline);
   }
   return links.children.length ? links : null;
 }
