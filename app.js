@@ -48,6 +48,7 @@ const firebaseConfig = {
 const PRIMARY_LIST_TYPES = ['movies', 'tvShows', 'anime', 'books'];
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
+const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const TMDB_KEYWORD_DISCOVER_PAGE_LIMIT = 5;
 const ANIME_FRANCHISE_IGNORE_KEY = 'animeFranchiseIgnoredIds';
 const INTRO_SESSION_KEY = 'introPlayed';
@@ -59,6 +60,7 @@ const listeners = {};
 const animeFranchiseIgnoredIds = new Set();
 const suggestionForms = new Set();
 const seriesGroups = {};
+const expandedCards = {};
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES)
