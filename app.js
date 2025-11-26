@@ -5100,10 +5100,20 @@ function haveAllListsFinishedInitialLoad() {
 function computeGlobalLibraryStats() {
   let totalItems = 0;
   let totalWatchMinutes = 0;
+  let movieCount = 0;
+  let episodeCount = 0;
   PRIMARY_LIST_TYPES.forEach(listType => {
     const cache = listCaches[listType] || {};
     const entries = Object.entries(cache);
     totalItems += entries.length;
+    if (listType === 'movies') {
+      movieCount += entries.length;
+    }
+    if (listType === 'tvShows' || listType === 'anime') {
+      entries.forEach(([, item]) => {
+        episodeCount += extractEpisodeCount(item);
+      });
+    }
     if (WATCH_TIME_LISTS.has(listType)) {
       entries.forEach(([, item]) => {
         totalWatchMinutes += estimateItemWatchMinutes(listType, item);
@@ -5112,6 +5122,8 @@ function computeGlobalLibraryStats() {
   });
   return {
     totalItems,
+    movieCount,
+    episodeCount,
     totalWatchMinutes: Math.round(totalWatchMinutes),
   };
 }
@@ -5158,9 +5170,20 @@ function renderGlobalLibrarySummary() {
     return;
   }
   const stats = computeGlobalLibraryStats();
-  const countText = stats.totalItems > 0
-    ? `${stats.totalItems.toLocaleString()} total item${stats.totalItems === 1 ? '' : 's'} saved`
-    : 'No items saved yet';
+  const hasMovies = stats.movieCount > 0;
+  const hasEpisodes = stats.episodeCount > 0;
+  let countText = 'No items saved yet';
+  if (hasMovies || hasEpisodes) {
+    const movieLabel = `${stats.movieCount.toLocaleString()} movie${stats.movieCount === 1 ? '' : 's'}`;
+    const episodeLabel = `${stats.episodeCount.toLocaleString()} episode${stats.episodeCount === 1 ? '' : 's'}`;
+    if (hasMovies && hasEpisodes) {
+      countText = `${movieLabel} • ${episodeLabel}`;
+    } else if (hasMovies) {
+      countText = movieLabel;
+    } else {
+      countText = episodeLabel;
+    }
+  }
   summaryEl.appendChild(createEl('p', 'library-summary-count', { text: countText }));
   const watchBlock = createEl('div', 'library-summary-watch');
   if (stats.totalWatchMinutes > 0) {
