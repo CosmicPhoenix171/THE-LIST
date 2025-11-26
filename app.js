@@ -18,7 +18,9 @@ import {
   onValue,
   remove,
   update,
-  off
+  off,
+  query,
+  orderByChild
 } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 import { initWheelModal, closeWheelModal } from './wheel-modal.js';
 import { showAlert } from './alerts.js';
