@@ -74,6 +74,7 @@ const ANIME_STATUS_PRIORITY = {
 const METADATA_SCHEMA_VERSION = 1;
 const METADATA_REFRESH_COOLDOWN_MS = 1000 * 60 * 5; // avoid hitting metadata APIs repeatedly
 const ANIME_FRANCHISE_IGNORE_KEY = 'animeFranchiseIgnoredIds';
+const LAST_ADD_LIST_TYPE_KEY = 'lastAddListType';
 const ANIME_FRANCHISE_LAST_SCAN_KEY = 'animeFranchiseLastScan';
 const INTRO_SESSION_KEY = 'introPlayed';
 const ANIME_FRANCHISE_RELATION_TYPES = new Set([
@@ -152,17 +153,147 @@ const tmEasterEgg = {
 };
 
 function closeAddModal() {
-  if (modalRoot) modalRoot.innerHTML = '';
+  if (!modalRoot) return;
+  cleanupAddModalForms();
+  modalRoot.innerHTML = '';
 }
 
 function setupAddModal() {
   const btn = document.getElementById('open-add-modal');
   if (btn) {
-    btn.addEventListener('click', () => {
-      console.warn('Add Modal logic missing');
-      showAlert('Add Modal logic is currently missing.');
-    });
+    btn.addEventListener('click', () => openAddModal());
   }
+}
+
+function openAddModal(initialListType = null) {
+  if (!modalRoot) return;
+  if (!currentUser) {
+    showAlert('Please sign in to add items.');
+    return;
+  }
+  const templateRoot = document.getElementById('add-form-templates');
+  if (!templateRoot) {
+    showAlert('Add form templates are missing from the page.');
+    return;
+  }
+  closeWheelModal();
+  cleanupAddModalForms();
+  modalRoot.innerHTML = '';
+
+  const storedType = safeLocalStorageGet(LAST_ADD_LIST_TYPE_KEY);
+  const fallbackType = PRIMARY_LIST_TYPES[0];
+  let activeType = PRIMARY_LIST_TYPES.includes(initialListType) ? initialListType
+    : (PRIMARY_LIST_TYPES.includes(storedType) ? storedType : fallbackType);
+  let activeForm = null;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop add-modal-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal add-modal';
+
+  const header = document.createElement('div');
+  header.className = 'modal-header';
+  const title = document.createElement('h3');
+  title.textContent = 'Add Items';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'btn ghost';
+  closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', () => closeAddModal());
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+
+  const typeSelectLabel = document.createElement('label');
+  typeSelectLabel.className = 'small';
+  typeSelectLabel.textContent = 'Choose list';
+  const typeSelect = document.createElement('select');
+  typeSelect.className = 'add-modal-type-select';
+  PRIMARY_LIST_TYPES.forEach(type => {
+    const option = document.createElement('option');
+    option.value = type;
+    option.textContent = MEDIA_TYPE_LABELS[type] || type;
+    if (type === activeType) option.selected = true;
+    typeSelect.appendChild(option);
+  });
+  typeSelect.addEventListener('change', () => {
+    const selected = typeSelect.value;
+    if (!PRIMARY_LIST_TYPES.includes(selected)) return;
+    activeType = selected;
+    safeLocalStorageSet(LAST_ADD_LIST_TYPE_KEY, selected);
+    renderForm(selected);
+  });
+
+  const intro = document.createElement('p');
+  intro.className = 'small';
+  intro.textContent = 'Search for a title to auto-fill metadata, then tweak any fields before saving.';
+
+  const selectRow = document.createElement('div');
+  selectRow.className = 'add-modal-select-row';
+  selectRow.appendChild(typeSelectLabel);
+  selectRow.appendChild(typeSelect);
+
+  const formHost = document.createElement('div');
+  formHost.className = 'add-modal-form-host';
+
+  function renderForm(targetType) {
+    if (activeForm) {
+      teardownFormAutocomplete(activeForm);
+    }
+    formHost.innerHTML = '';
+    const template = templateRoot.querySelector(`template[data-list="${targetType}"]`);
+    if (!template) {
+      const missing = document.createElement('p');
+      missing.className = 'small';
+      missing.textContent = 'Unable to load form template for this list.';
+      formHost.appendChild(missing);
+      activeForm = null;
+      return;
+    }
+    const fragment = template.content.cloneNode(true);
+    const panel = fragment.querySelector('.add-panel');
+    if (panel) {
+      panel.classList.remove('sr-only');
+    }
+    const form = fragment.querySelector('form');
+    if (!form) {
+      formHost.appendChild(fragment);
+      activeForm = null;
+      return;
+    }
+    form.dataset.addForm = 'true';
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      addItemFromForm(targetType, form);
+    });
+    setupFormAutocomplete(form, targetType);
+    formHost.appendChild(fragment);
+    activeForm = form;
+  }
+
+  renderForm(activeType);
+
+  const body = document.createElement('div');
+  body.className = 'modal-body add-modal-body';
+  body.appendChild(intro);
+  body.appendChild(selectRow);
+  body.appendChild(formHost);
+
+  modal.appendChild(header);
+  modal.appendChild(body);
+  backdrop.appendChild(modal);
+  backdrop.addEventListener('click', (ev) => {
+    if (ev.target === backdrop) {
+      closeAddModal();
+    }
+  });
+  modalRoot.appendChild(backdrop);
+}
+
+function cleanupAddModalForms() {
+  if (!modalRoot) return;
+  modalRoot.querySelectorAll('form[data-add-form="true"]').forEach(form => {
+    teardownFormAutocomplete(form);
+  });
 }
 
 function logAppVersionOnce() {
