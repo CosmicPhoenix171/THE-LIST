@@ -2,7 +2,7 @@ import { ref, get } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-dat
 import { createModalElements, bindModalDismissHandlers, removeModalDismissHandlers } from './modal-helpers.js';
 import { showAlert } from './alerts.js';
 
-const WHEEL_ACCEL_AUDIO_URL = 'assets/audio/spin-boost.mp3';
+const WHEEL_ACCEL_AUDIO_URL = './spin-boost.mp3';
 const WHEEL_SPIN_ALL_OPTION = 'all';
 
 const wheelUIState = { sourceSelect: null, spinnerEl: null, resultEl: null };
@@ -699,7 +699,7 @@ function spinWheel(listType) {
     const chosenCandidate = candidates[chosenIndex];
     const resolvedCandidate = resolveSeriesRedirect(requestedType, chosenCandidate, data) || chosenCandidate;
     const rawEntryCount = Object.keys(data || {}).length;
-    const shouldTriggerAudio = rawEntryCount > 100;
+    const shouldTriggerAudio = true;
     try { console.log('[Wheel] pick', { chosenIndex, chosen: chosenCandidate?.title, resolved: resolvedCandidate?.title }); } catch (_) {}
     animateWheelSequence(candidates, chosenIndex, requestedType, resolvedCandidate, { shouldTriggerAudio });
   };
@@ -742,7 +742,7 @@ function spinWheel(listType) {
       ? chosenCandidate.__listType
       : primaryTypes[0];
     const resolvedCandidate = resolveSeriesRedirect(candidateType, chosenCandidate, rawDataByType[candidateType]) || chosenCandidate;
-    const shouldTriggerAudio = totalRawEntries > 100;
+    const shouldTriggerAudio = true;
     try { console.log('[Wheel] pick', { mode: WHEEL_SPIN_ALL_OPTION, chosenIndex, chosenType: candidateType, chosen: chosenCandidate?.title, resolved: resolvedCandidate?.title }); } catch (_) {}
     animateWheelSequence(candidatePool, chosenIndex, candidateType, resolvedCandidate, { shouldTriggerAudio });
   };
