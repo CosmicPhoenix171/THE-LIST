@@ -1041,8 +1041,8 @@ function handleTypeFilterTrigger(event) {
 
 function toggleUnifiedTypeFilter(listType, event = null) {
   if (!listType) return;
-  const wantsMultiSelect = !!(event && (event.metaKey || event.ctrlKey || event.shiftKey));
-  if (!wantsMultiSelect) {
+  const wantsExclusive = !!(event && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey));
+  if (wantsExclusive) {
     const isAlreadySolo = unifiedFilters.types.size === 1 && unifiedFilters.types.has(listType);
     unifiedFilters.types = isAlreadySolo
       ? new Set(PRIMARY_LIST_TYPES)
