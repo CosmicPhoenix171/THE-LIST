@@ -1027,7 +1027,7 @@ function collectUnifiedCards() {
       tempSection.appendChild(grid);
     }
 
-    const cardNodes = Array.from(tempSection.querySelectorAll('.movie-card'));
+    const cardNodes = Array.from(tempSection.querySelectorAll('.card'));
     cardNodes.forEach(card => {
       const titleEl = card.querySelector('.title');
       const title = (titleEl ? titleEl.textContent : card.dataset.title || '').trim();
