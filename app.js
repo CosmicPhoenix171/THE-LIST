@@ -1784,7 +1784,13 @@ function buildAnimeSummaryBadges(item, context = {}) {
     chips.push(`${metrics.movieCount} movie${metrics.movieCount === 1 ? '' : 's'}`);
   }
   if (metrics.totalEpisodes > 0) {
-    chips.push(`${metrics.totalEpisodes} ep total`);
+    const label = listType === 'tvShows'
+      ? `${metrics.totalEpisodes} episode${metrics.totalEpisodes === 1 ? '' : 's'}`
+      : `${metrics.totalEpisodes} ep total`;
+    chips.push(label);
+  }
+  if (listType === 'tvShows' && metrics.seasonCount > 0) {
+    chips.push(`${metrics.seasonCount} season${metrics.seasonCount === 1 ? '' : 's'}`);
   }
   if (metrics.statusLabel) {
     chips.push(formatAnimeStatusLabel(metrics.statusLabel));
@@ -1815,6 +1821,16 @@ function collectSeriesEntries(listType, cardId, fallbackItem) {
   return entries;
 }
 
+function extractUnifiedEpisodeCount(entry) {
+  if (!entry) return null;
+  const candidates = [entry.episodeCount, entry.animeEpisodes, entry.episodes];
+  for (const value of candidates) {
+    const num = Number(value);
+    if (Number.isFinite(num) && num > 0) return num;
+  }
+  return null;
+}
+
 function deriveAnimeSeriesMetrics(listType, cardId, fallbackItem) {
   const entries = collectSeriesEntries(listType, cardId, fallbackItem);
   if (!entries.length) return null;
@@ -1824,6 +1840,7 @@ function deriveAnimeSeriesMetrics(listType, cardId, fallbackItem) {
   let totalEpisodes = 0;
   let bestStatus = '';
   let bestPriority = -1;
+  let seasonCount = 0;
 
   entries.forEach(entry => {
     if (!entry) return;
@@ -1837,9 +1854,13 @@ function deriveAnimeSeriesMetrics(listType, cardId, fallbackItem) {
         movieCount++;
       }
     }
-    const epValue = Number(entry.animeEpisodes || entry.episodes);
-    if (Number.isFinite(epValue) && epValue > 0) {
+    const epValue = extractUnifiedEpisodeCount(entry);
+    if (Number.isFinite(epValue)) {
       totalEpisodes += epValue;
+    }
+    const seasonsValue = Number(entry.tvSeasonCount || entry.seasonCount);
+    if (Number.isFinite(seasonsValue) && seasonsValue > seasonCount) {
+      seasonCount = seasonsValue;
     }
     const status = (entry.animeStatus || entry.status || '').toUpperCase();
     if (status) {
@@ -1855,6 +1876,7 @@ function deriveAnimeSeriesMetrics(listType, cardId, fallbackItem) {
     formatLabels: Array.from(formatLabels.values()),
     movieCount,
     totalEpisodes,
+    seasonCount,
     statusLabel: bestStatus,
   };
 }
