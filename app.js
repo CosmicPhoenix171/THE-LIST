@@ -23,7 +23,7 @@ import {
   orderByChild
 } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 import { initWheelModal, closeWheelModal } from './wheel-modal.js';
-import { showAlert } from './alerts.js';
+import { showAlert, pushNotification } from './alerts.js';
 
 const APP_VERSION = '1.0.0';
 const TMDB_API_KEY = '46dcf1eaa2ce4284037a00fdefca9bb8';
@@ -66,6 +66,7 @@ const JIKAN_SECOND_WINDOW_MS = 1000;
 const JIKAN_MINUTE_WINDOW_MS = 1000 * 60;
 const JIKAN_RATE_LIMIT_MIN_INTERVAL_MS = Math.ceil(JIKAN_SECOND_WINDOW_MS / JIKAN_MAX_REQUESTS_PER_SECOND);
 const JIKAN_DEFAULT_RETRY_AFTER_MS = 8000;
+const JIKAN_ERROR_NOTICE_COOLDOWN_MS = 1000 * 60 * 2;
 const ANIME_STATUS_PRIORITY = {
   RELEASING: 4,
   AIRING: 4,
@@ -126,6 +127,7 @@ const animeFranchiseMissingHashes = new Map();
 const metadataRefreshHistory = new Map();
 const jikanSecondWindow = [];
 const jikanMinuteWindow = [];
+const jikanErrorNoticeTimestamps = new Map();
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES)
@@ -2532,7 +2534,10 @@ async function addItemFromForm(listType, form) {
     let movieCollectionInfo = null;
     if (!metadata && supportsMetadata) {
       if (useAniList) {
-        metadata = await fetchAniListMetadata({ aniListId: selectedAniListId, title, year });
+        metadata = await fetchAniListMetadata(
+          { aniListId: selectedAniListId, title, year },
+          { requestSource: 'Add form metadata', notifyOnError: true }
+        );
       } else if (useGoogleBooks) {
         metadata = await fetchGoogleBooksMetadata({ volumeId: selectedGoogleBookId, title, author: creatorValue, isbn: selectedGoogleIsbn });
       } else if (!hasMetadataProvider) {
@@ -3373,7 +3378,7 @@ function refreshAniListMetadataForItem(itemId, item) {
     title: item.title || '',
     year: item.year || '',
   };
-  fetchAniListMetadata(lookup).then(metadata => {
+  fetchAniListMetadata(lookup, { requestSource: 'Auto metadata refresh' }).then(metadata => {
     if (!metadata) return;
     const updates = deriveMetadataAssignments(metadata, item, {
       overwrite: false,
@@ -3763,7 +3768,10 @@ function setupFormAutocomplete(form, listType) {
           delete form.dataset.selectedAnilistId;
         }
         try {
-          const detail = await fetchAniListMetadata({ aniListId: suggestion.anilistId, title: suggestion.title, year: suggestionYear });
+          const detail = await fetchAniListMetadata(
+            { aniListId: suggestion.anilistId, title: suggestion.title, year: suggestionYear },
+            { requestSource: 'Autocomplete metadata', notifyOnError: true }
+          );
           if (detail) {
             form.__selectedMetadata = detail;
             if (yearInput && detail.Year) {
@@ -4852,11 +4860,14 @@ async function refreshItemMetadata(listType, itemId, item, options = {}) {
   try {
     let metadata = null;
     if (listType === 'anime') {
-      metadata = await fetchAniListMetadata({
-        aniListId: getAniListIdFromItem(item),
-        title: lookupTitle,
-        year: lookupYear,
-      });
+      metadata = await fetchAniListMetadata(
+        {
+          aniListId: getAniListIdFromItem(item),
+          title: lookupTitle,
+          year: lookupYear,
+        },
+        { requestSource: 'Manual metadata refresh', notifyOnError: true }
+      );
     } else if (listType === 'books') {
       metadata = await fetchGoogleBooksMetadata({
         volumeId: item.googleBooksId || '',
@@ -5405,6 +5416,51 @@ function notifyJikanNetworkIssue(message) {
   lastJikanNetworkIssueNotice = now;
   console.warn('Jikan network issue', message || '');
 }
+// Surface actionable MAL lookup failures without spamming the user.
+function formatJikanLookupLabel(animeId, context = {}) {
+  const parts = [];
+  const title = typeof context.title === 'string' ? context.title.trim() : '';
+  if (title) parts.push(title);
+  const year = context.year ? String(context.year).trim() : '';
+  if (year) parts.push(`(${year})`);
+  let label = parts.join(' ').trim();
+  const idSegment = animeId || context.aniListId || context.malId;
+  if (label && idSegment) {
+    label = `${label} #${idSegment}`;
+  } else if (!label && idSegment) {
+    label = `Anime ID ${idSegment}`;
+  } else if (!label) {
+    label = 'Anime lookup';
+  }
+  return label;
+}
+
+function shouldSkipJikanErrorNotice(key) {
+  const now = Date.now();
+  const last = jikanErrorNoticeTimestamps.get(key) || 0;
+  if (now - last < JIKAN_ERROR_NOTICE_COOLDOWN_MS) {
+    return true;
+  }
+  jikanErrorNoticeTimestamps.set(key, now);
+  return false;
+}
+
+function surfaceJikanLookupIssue({ animeId, status, message = '', context = null }) {
+  const identifier = animeId || context?.aniListId || context?.title || 'unknown';
+  const key = `${status || 'error'}:${identifier}`;
+  if (shouldSkipJikanErrorNotice(key)) return;
+  const descriptor = formatJikanLookupLabel(animeId || context?.aniListId, context);
+  const stage = context?.source ? context.source : '';
+  const detail = message || (status === 404 ? 'Entry not found (404).' : `Request failed (${status || 'unknown'}).`);
+  const malTarget = animeId || context?.aniListId;
+  const urlHint = malTarget ? `${MYANIMELIST_ANIME_URL}/${malTarget}` : '';
+  const summary = [descriptor, stage, detail, urlHint].filter(Boolean).join(' • ');
+  pushNotification({
+    title: 'MyAnimeList lookup issue',
+    message: summary,
+    duration: 12000,
+  });
+}
 
 async function fetchJikanJson(path, params = {}) {
   let attempt = 0;
@@ -5496,16 +5552,34 @@ function extractJikanErrorMessage(payload) {
   return '';
 }
 
-async function fetchJikanAnimeDetails(id) {
+async function fetchJikanAnimeDetails(id, options = {}) {
+  const { context = null, notifyOnError = false } = options || {};
   const numericId = Number(id);
   if (!Number.isFinite(numericId) || numericId <= 0) return null;
   if (jikanNotFoundAnimeIds.has(numericId)) {
+    if (notifyOnError) {
+      surfaceJikanLookupIssue({
+        animeId: numericId,
+        status: 404,
+        message: 'Previously marked as missing on MyAnimeList.',
+        context,
+      });
+    }
     return null;
   }
   const response = await fetchJikanJson(`/anime/${numericId}/full`);
   if (!response || !response.ok || !response.data) {
     if (response && response.status === 404) {
       jikanNotFoundAnimeIds.add(numericId);
+    }
+    const status = response ? response.status : 0;
+    if (notifyOnError && status >= 400 && status !== 429) {
+      surfaceJikanLookupIssue({
+        animeId: numericId,
+        status,
+        message: response?.message || '',
+        context,
+      });
     }
     return null;
   }
@@ -5541,11 +5615,22 @@ async function fetchAniListSuggestions(query) {
   })).filter(entry => entry.title);
 }
 
-async function fetchAniListMetadata(lookup = {}) {
+async function fetchAniListMetadata(lookup = {}, options = {}) {
   if (!lookup) return null;
+  const { notifyOnError = false, requestSource = 'metadata lookup' } = options || {};
+  const normalizedSource = requestSource || 'metadata lookup';
+  const baseContext = {
+    title: lookup.title || '',
+    year: lookup.year || '',
+    aniListId: lookup.aniListId || '',
+    source: normalizedSource,
+  };
   let anime = null;
   if (lookup.aniListId) {
-    anime = await fetchJikanAnimeDetails(lookup.aniListId);
+    anime = await fetchJikanAnimeDetails(lookup.aniListId, {
+      context: baseContext,
+      notifyOnError,
+    });
   }
   if (!anime && lookup.title) {
     const params = {
@@ -5565,7 +5650,16 @@ async function fetchAniListMetadata(lookup = {}) {
     const response = await fetchJikanJson('/anime', params);
     const payload = response && response.ok ? response.data : null;
     if (payload && Array.isArray(payload.data) && payload.data.length) {
-      anime = await fetchJikanAnimeDetails(payload.data[0].mal_id);
+      const malId = payload.data[0].mal_id;
+      const searchContext = {
+        ...baseContext,
+        aniListId: malId,
+        source: `${normalizedSource} search`,
+      };
+      anime = await fetchJikanAnimeDetails(malId, {
+        context: searchContext,
+        notifyOnError,
+      });
     }
   }
   if (!anime) return null;
