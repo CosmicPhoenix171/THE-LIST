@@ -1156,7 +1156,6 @@ function renderUnifiedLibrary() {
 function collectUnifiedCards() {
   const cards = [];
   PRIMARY_LIST_TYPES.forEach(listType => {
-    if (!unifiedFilters.types.has(listType)) return;
     const data = listCaches[listType] || {};
     const entries = Object.entries(data).filter(([_, item]) => {
       if (!item) return false;
@@ -1186,6 +1185,8 @@ function collectUnifiedCards() {
 
     const cardNodes = Array.from(tempSection.querySelectorAll('.card'));
     cardNodes.forEach(card => {
+      const badgeKeywords = annotateCardBadgeKeywords(card, listType);
+      if (!cardMatchesBadgeFilters(listType, badgeKeywords)) return;
       const titleEl = card.querySelector('.title');
       const title = (titleEl ? titleEl.textContent : card.dataset.title || '').trim();
       const sortKey = title.toLowerCase();
@@ -1196,6 +1197,67 @@ function collectUnifiedCards() {
     }
   });
   return cards;
+}
+
+function annotateCardBadgeKeywords(card, listType) {
+  const keywords = new Set();
+  const chipNodes = card.querySelectorAll('.anime-summary-badges .anime-chip, .watch-time-chip');
+  chipNodes.forEach(chip => collectBadgeKeywordsFromText(chip?.textContent || '', keywords));
+  collectFallbackKeywordsForList(listType, keywords);
+  card.dataset.badgeKeywords = Array.from(keywords).join(',');
+  return keywords;
+}
+
+function collectFallbackKeywordsForList(listType, bucket) {
+  switch (listType) {
+    case 'movies':
+      bucket.add('movie');
+      break;
+    case 'tvShows':
+      bucket.add('tv');
+      bucket.add('series');
+      break;
+    case 'anime':
+      bucket.add('anime');
+      break;
+    case 'books':
+      bucket.add('book');
+      break;
+    default:
+      break;
+  }
+}
+
+function collectBadgeKeywordsFromText(text, bucket) {
+  const normalized = String(text || '').trim().toLowerCase();
+  if (!normalized) return;
+  if (/\bmovie(s)?\b/.test(normalized)) bucket.add('movie');
+  if (/\btv\b/.test(normalized) || /\bseries\b/.test(normalized) || /\bshow\b/.test(normalized)) bucket.add('tv');
+  if (/\banime\b/.test(normalized)) bucket.add('anime');
+  if (/\bbook(s)?\b/.test(normalized) || /\bread\b/.test(normalized)) bucket.add('book');
+  if (/\bova\b/.test(normalized) || /\bona\b/.test(normalized) || /\bspecial\b/.test(normalized) || /\bmusic\b/.test(normalized)) bucket.add('anime');
+}
+
+function cardMatchesBadgeFilters(listType, badgeKeywords) {
+  const activeFilters = unifiedFilters.types;
+  if (!activeFilters || !activeFilters.size || activeFilters.size === PRIMARY_LIST_TYPES.length) {
+    return true;
+  }
+  const hasKeyword = (token) => badgeKeywords && badgeKeywords.has(token);
+  return Array.from(activeFilters).some(type => {
+    switch (type) {
+      case 'movies':
+        return listType === 'movies' || hasKeyword('movie');
+      case 'tvShows':
+        return listType === 'tvShows' || hasKeyword('tv');
+      case 'anime':
+        return listType === 'anime' || hasKeyword('anime');
+      case 'books':
+        return listType === 'books' || hasKeyword('book');
+      default:
+        return true;
+    }
+  });
 }
 
 function getListLabel(type) {
