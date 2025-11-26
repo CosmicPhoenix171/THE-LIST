@@ -901,7 +901,10 @@ function resetUnifiedFilters() {
 }
 
 function playTheListIntro() {
-  if (introPlayed) return;
+  if (introPlayed || safeStorageGet(INTRO_SESSION_KEY) === '1') {
+    introPlayed = true;
+    return;
+  }
   const intro = document.getElementById('the-list-intro');
   if (!intro) return;
   introPlayed = true;
