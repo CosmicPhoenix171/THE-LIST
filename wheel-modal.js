@@ -3,7 +3,7 @@ import { createModalElements, bindModalDismissHandlers, removeModalDismissHandle
 import { showAlert } from './alerts.js';
 
 const WHEEL_ACCEL_AUDIO_URL = './spin-boost.mp3';
-const WHEEL_SPIN_DURATION_MS = 15000;
+const WHEEL_SPIN_DURATION_MS = 20000;
 const WHEEL_SPIN_ALL_OPTION = 'all';
 
 const wheelUIState = { sourceSelect: null, spinnerEl: null, resultEl: null };
