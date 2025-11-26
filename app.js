@@ -61,6 +61,7 @@ const ANIME_STATUS_PRIORITY = {
   CANCELLED: 1,
   HIATUS: 1,
 };
+const METADATA_SCHEMA_VERSION = 1;
 const ANIME_FRANCHISE_IGNORE_KEY = 'animeFranchiseIgnoredIds';
 const INTRO_SESSION_KEY = 'introPlayed';
 
