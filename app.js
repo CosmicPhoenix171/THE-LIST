@@ -23,7 +23,7 @@ import {
   get
 } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 import { createAddModalManager } from './add-modal.js';
-import { createWheelModalManager } from './wheel-modal.js';
+import { wheelUIState, initWheelModal, closeWheelModal } from './wheel-modal.js';
 import { createListRenderer } from './list-renderer.js';
 import { showAlert, pushNotification } from './alerts.js';
 
@@ -145,8 +145,6 @@ const modalRoot = document.getElementById('modal-root');
 const combinedListEl = document.getElementById('combined-list');
 const unifiedSearchInput = document.getElementById('library-search');
 const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
-const wheelModalTrigger = document.getElementById('open-wheel-modal');
-const wheelModalTemplate = document.getElementById('wheel-modal-template');
 const addModalTrigger = document.getElementById('open-add-modal');
 const addFormTemplatesContainer = document.getElementById('add-form-templates');
 const addFormTemplateMap = {};
@@ -159,8 +157,6 @@ if (addFormTemplatesContainer) {
   });
 }
 
-const wheelUIState = { sourceSelect: null, spinnerEl: null, resultEl: null };
-let closeWheelModalRef = () => {};
 let wheelAccelAudio = null;
 let wheelAccelAudioTimeoutId = null;
 
@@ -173,20 +169,8 @@ const { setupAddModal, openAddModal, closeAddModal } = createAddModalManager({
   setupFormAutocomplete,
   teardownFormAutocomplete,
   addItemFromForm,
-  closeWheelModal: () => closeWheelModalRef(),
+  closeWheelModal,
 });
-
-const { setupWheelModal, openWheelModal, closeWheelModal } = createWheelModalManager({
-  trigger: wheelModalTrigger,
-  modalRoot,
-  template: wheelModalTemplate,
-  spinWheel,
-  clearWheelAnimation,
-  closeAddModal,
-  uiState: wheelUIState,
-});
-
-closeWheelModalRef = closeWheelModal;
 
 document.addEventListener(NOTIFICATION_ACTION_EVENT, handleNotificationActionEvent);
 
@@ -540,7 +524,12 @@ function initFirebase() {
   signOutBtn.addEventListener('click', () => signOut());
 
   setupAddModal();
-  setupWheelModal();
+  initWheelModal({
+    modalRoot,
+    closeAddModal,
+    spinWheel,
+    clearWheelAnimation,
+  });
 
   document.querySelectorAll('[data-role="actor-filter"]').forEach(input => {
     const listType = input.dataset.list;
@@ -4728,7 +4717,9 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverri
     }
   }
 
-  scheduleWheelAccelerationAudio(schedule);
+  if (len > 100) {
+    scheduleWheelAccelerationAudio(schedule);
+  }
 
   try {
     console.log('[Wheel] animate start', {

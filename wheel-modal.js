@@ -1,5 +1,47 @@
 import { createModalElements, bindModalDismissHandlers, removeModalDismissHandlers } from './modal-helpers.js';
 
+export const wheelUIState = { sourceSelect: null, spinnerEl: null, resultEl: null };
+
+let wheelModalController = null;
+
+export function initWheelModal({
+  modalRoot,
+  spinWheel,
+  clearWheelAnimation,
+  closeAddModal,
+}) {
+  if (wheelModalController) {
+    return wheelModalController;
+  }
+  const trigger = document.getElementById('open-wheel-modal');
+  const template = document.getElementById('wheel-modal-template');
+  if (!trigger || !template || !modalRoot) {
+    console.warn('Wheel modal is missing required DOM references.');
+    return null;
+  }
+  wheelModalController = createWheelModalManager({
+    trigger,
+    modalRoot,
+    template,
+    spinWheel,
+    clearWheelAnimation,
+    closeAddModal,
+    uiState: wheelUIState,
+  });
+  wheelModalController.setupWheelModal();
+  return wheelModalController;
+}
+
+export function openWheelModal() {
+  if (!wheelModalController) return;
+  wheelModalController.openWheelModal();
+}
+
+export function closeWheelModal() {
+  if (!wheelModalController) return;
+  wheelModalController.closeWheelModal();
+}
+
 export function createWheelModalManager({
   trigger,
   modalRoot,
