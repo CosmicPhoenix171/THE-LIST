@@ -130,9 +130,13 @@ const jikanMinuteWindow = [];
 const jikanErrorNoticeTimestamps = new Map();
 const UNIFIED_PLACEHOLDER_MIN_HEIGHT = 260;
 const UNIFIED_VIEWPORT_BUFFER_PX = 800;
+const UNIFIED_INITIAL_RENDER_COUNT = 24;
 let unifiedVirtualObserver = null;
 let unifiedVirtualRecords = [];
 let unifiedRenderedPlaceholderMap = new WeakMap();
+let unifiedVisibilityFallbackBound = false;
+let unifiedVisibilityFallbackHandler = null;
+let unifiedVisibilityFallbackRaf = 0;
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES)
@@ -1383,6 +1387,7 @@ function teardownUnifiedVirtualizer() {
   }
   unifiedVirtualRecords = [];
   unifiedRenderedPlaceholderMap = new WeakMap();
+  releaseUnifiedVisibilityFallback();
 }
 
 function buildUnifiedCardNode(record) {
@@ -1443,9 +1448,69 @@ function releaseUnifiedPlaceholder(placeholder) {
   unifiedRenderedPlaceholderMap.delete(placeholder);
 }
 
+function scheduleUnifiedVisibilityCheck() {
+  if (unifiedVisibilityFallbackRaf) return;
+  unifiedVisibilityFallbackRaf = requestAnimationFrame(() => {
+    unifiedVisibilityFallbackRaf = 0;
+    runUnifiedVisibilityCheck();
+  });
+}
+
+function ensureUnifiedVisibilityFallback() {
+  if (unifiedVisibilityFallbackBound) return;
+  unifiedVisibilityFallbackHandler = () => scheduleUnifiedVisibilityCheck();
+  window.addEventListener('scroll', unifiedVisibilityFallbackHandler, { passive: true });
+  window.addEventListener('resize', unifiedVisibilityFallbackHandler);
+  document.addEventListener('visibilitychange', unifiedVisibilityFallbackHandler);
+  unifiedVisibilityFallbackBound = true;
+}
+
+function releaseUnifiedVisibilityFallback() {
+  if (!unifiedVisibilityFallbackBound) return;
+  if (unifiedVisibilityFallbackHandler) {
+    window.removeEventListener('scroll', unifiedVisibilityFallbackHandler);
+    window.removeEventListener('resize', unifiedVisibilityFallbackHandler);
+    document.removeEventListener('visibilitychange', unifiedVisibilityFallbackHandler);
+  }
+  if (unifiedVisibilityFallbackRaf) {
+    cancelAnimationFrame(unifiedVisibilityFallbackRaf);
+    unifiedVisibilityFallbackRaf = 0;
+  }
+  unifiedVisibilityFallbackHandler = null;
+  unifiedVisibilityFallbackBound = false;
+}
+
+function runUnifiedVisibilityCheck() {
+  if (!unifiedVirtualRecords || !unifiedVirtualRecords.length) return;
+  const container = document.getElementById('combined-list');
+  if (!container) return;
+  const placeholders = container.querySelectorAll('.unified-card-placeholder');
+  if (!placeholders.length) return;
+  const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+  const viewportTop = scrollY - UNIFIED_VIEWPORT_BUFFER_PX;
+  const viewportBottom = scrollY + (window.innerHeight || document.documentElement.clientHeight || 0) + UNIFIED_VIEWPORT_BUFFER_PX;
+  placeholders.forEach(placeholder => {
+    if (!placeholder || placeholder.dataset.rendered === '1') return;
+    const rect = placeholder.getBoundingClientRect();
+    const top = rect.top + scrollY;
+    const bottom = top + rect.height;
+    if (bottom >= viewportTop && top <= viewportBottom) {
+      ensureUnifiedPlaceholderRendered(placeholder);
+    }
+  });
+}
+
+function primeInitialUnifiedPlaceholders(grid) {
+  if (!grid) return;
+  const placeholders = Array.from(grid.querySelectorAll('.unified-card-placeholder')).slice(0, UNIFIED_INITIAL_RENDER_COUNT);
+  placeholders.forEach(ensureUnifiedPlaceholderRendered);
+  scheduleUnifiedVisibilityCheck();
+}
+
 function setupUnifiedVirtualizer(records, grid) {
   teardownUnifiedVirtualizer();
   unifiedVirtualRecords = records;
+  ensureUnifiedVisibilityFallback();
   unifiedVirtualObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -1465,6 +1530,7 @@ function setupUnifiedVirtualizer(records, grid) {
     grid.appendChild(placeholder);
     unifiedVirtualObserver.observe(placeholder);
   });
+  primeInitialUnifiedPlaceholders(grid);
 }
 
 function renderUnifiedLibrary() {
