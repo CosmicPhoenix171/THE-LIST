@@ -121,6 +121,13 @@ const MEDIA_TYPE_LABELS = {
   anime: 'Anime',
   books: 'Books',
 };
+const alphabetGateState = {
+  enabled: false,
+  windowSize: 3,
+  windowStart: 0,
+  letters: [],
+  activeSet: new Set(),
+};
 
 // DOM references
 const loginScreen = document.getElementById('login-screen');
@@ -1534,6 +1541,8 @@ function renderUnifiedLibrary() {
     return idxA - idxB;
   });
 
+  configureAlphabetGate(filtered);
+
   if (!filtered.length) {
     disposeCombinedVirtualGrid();
     combinedListEl.innerHTML = '<div class="small">No entries match the current filters yet.</div>';
@@ -1620,10 +1629,21 @@ class VirtualizedCardGrid {
     const scrollTop = Math.max(0, window.scrollY - containerTop);
     const rowHeight = Math.max(1, this.rowHeight);
     const overscanRows = this.computeOverscanRows();
-    const startRow = Math.max(0, Math.floor(scrollTop / rowHeight) - overscanRows);
-    const endRow = Math.ceil((scrollTop + viewportHeight) / rowHeight) + overscanRows;
+    const coreStartRow = Math.max(0, Math.floor(scrollTop / rowHeight));
+    const coreEndRow = Math.ceil((scrollTop + viewportHeight) / rowHeight);
+    const startRow = Math.max(0, coreStartRow - overscanRows);
+    const endRow = coreEndRow + overscanRows;
+    const coreStart = Math.max(0, Math.min(this.entries.length, coreStartRow * this.itemsPerRow));
+    const coreEnd = Math.max(coreStart, Math.min(this.entries.length, coreEndRow * this.itemsPerRow));
     const start = Math.max(0, Math.min(this.entries.length, startRow * this.itemsPerRow));
     const end = Math.max(start, Math.min(this.entries.length, endRow * this.itemsPerRow));
+    if (typeof this.options.beforeRenderRange === 'function') {
+      const shouldRetry = this.options.beforeRenderRange({ start, end, coreStart, coreEnd, entries: this.entries });
+      if (shouldRetry && !force) {
+        this.updateVisibleRange(true);
+        return;
+      }
+    }
     if (!force && start === this.rangeStart && end === this.rangeEnd) {
       return;
     }
@@ -1650,24 +1670,14 @@ class VirtualizedCardGrid {
     if (!children.length) return;
     const firstRect = children[0].getBoundingClientRect();
     if (!firstRect || !firstRect.height) return;
-    let columns = 1;
-    const tolerance = 1;
-    for (let i = 1; i < children.length; i++) {
-      const rect = children[i].getBoundingClientRect();
-      if (Math.abs(rect.top - firstRect.top) <= tolerance) {
-        columns += 1;
-      } else {
-        break;
-      }
-    }
     const styles = window.getComputedStyle(this.viewport);
     const rowGap = parseFloat(styles.rowGap || styles.gap || '0') || 0;
+    const columnGap = parseFloat(styles.columnGap || styles.gap || '0') || 0;
     const measuredRowHeight = Math.ceil(firstRect.height + rowGap);
-    if (columns < 1) {
-      const cardWidth = firstRect.width || Math.max(1, parseFloat(styles.minWidth || '0'));
-      const availableWidth = this.viewport.clientWidth || cardWidth;
-      columns = Math.max(1, Math.floor(availableWidth / Math.max(1, cardWidth)));
-    }
+    const cardWidth = Math.max(1, firstRect.width);
+    const viewportWidth = Math.max(cardWidth, this.viewport.clientWidth || cardWidth);
+    const effectiveWidth = cardWidth + columnGap;
+    const columns = Math.max(1, Math.floor((viewportWidth + columnGap) / effectiveWidth));
     const normalizedRowHeight = Math.max(1, measuredRowHeight || this.rowHeight);
     const changed = columns !== this.itemsPerRow || Math.abs(normalizedRowHeight - this.rowHeight) > 1;
     if (!changed && !force) return;
@@ -1695,6 +1705,10 @@ function ensureCombinedVirtualGrid() {
       estimatedItemHeight: 360,
       overscan: 8,
       renderItem: (entry) => buildUnifiedCard(entry),
+      beforeRenderRange: ({ start, end, coreStart, coreEnd, entries }) => {
+        if (!alphabetGateState.enabled) return false;
+        return ensureAlphabetWindowForRange(start, end, entries, coreStart, coreEnd);
+      },
     });
   }
   return combinedVirtualGrid;
@@ -1757,7 +1771,115 @@ function matchesUnifiedSearch(item, query) {
   return fields.some(field => field && String(field).toLowerCase().includes(query));
 }
 
+function computeAlphaKeyFromEntry(entry) {
+  const title = entry?.displayItem?.title || entry?.item?.title || entry?.title || '';
+  const normalized = String(title || '').trim().toUpperCase();
+  if (!normalized) return '#';
+  const char = normalized[0];
+  if (char >= 'A' && char <= 'Z') return char;
+  return '#';
+}
+
+function resetAlphabetGate() {
+  alphabetGateState.enabled = false;
+  alphabetGateState.windowStart = 0;
+  alphabetGateState.letters = [];
+  alphabetGateState.activeSet = new Set();
+}
+
+function configureAlphabetGate(entries) {
+  if (!Array.isArray(entries) || entries.length <= 100) {
+    resetAlphabetGate();
+    entries?.forEach(entry => {
+      delete entry.alphaKey;
+      delete entry.alphaIndex;
+    });
+    return false;
+  }
+  alphabetGateState.enabled = true;
+  alphabetGateState.windowStart = 0;
+  alphabetGateState.letters = [];
+  const keyToIndex = new Map();
+  entries.forEach(entry => {
+    const key = computeAlphaKeyFromEntry(entry);
+    entry.alphaKey = key;
+    if (!keyToIndex.has(key)) {
+      keyToIndex.set(key, alphabetGateState.letters.length);
+      alphabetGateState.letters.push(key);
+    }
+    entry.alphaIndex = keyToIndex.get(key);
+  });
+  updateAlphabetActiveSet();
+  return true;
+}
+
+function updateAlphabetActiveSet() {
+  const letters = alphabetGateState.letters;
+  if (!letters.length) {
+    alphabetGateState.activeSet = new Set();
+    return;
+  }
+  const windowSize = Math.min(alphabetGateState.windowSize, letters.length);
+  const slice = letters.slice(alphabetGateState.windowStart, alphabetGateState.windowStart + windowSize);
+  alphabetGateState.activeSet = new Set(slice);
+}
+
+function setAlphabetWindowStart(nextIndex) {
+  const letters = alphabetGateState.letters;
+  if (!letters.length) return;
+  const windowSize = Math.min(alphabetGateState.windowSize, letters.length);
+  const maxStart = Math.max(0, letters.length - windowSize);
+  const clamped = Math.min(Math.max(0, nextIndex), maxStart);
+  if (clamped === alphabetGateState.windowStart) return;
+  alphabetGateState.windowStart = clamped;
+  updateAlphabetActiveSet();
+}
+
+function ensureAlphabetWindowForRange(startIndex, endIndex, entries, coreStartIndex = null, coreEndIndex = null) {
+  if (!alphabetGateState.enabled || !entries.length) return false;
+  const letters = alphabetGateState.letters;
+  if (!letters.length) return false;
+  const windowSize = Math.min(alphabetGateState.windowSize, letters.length);
+  const maxStart = Math.max(0, letters.length - windowSize);
+  let desiredStart = alphabetGateState.windowStart;
+  const effectiveStartIndex = typeof coreStartIndex === 'number' ? coreStartIndex : startIndex;
+  const effectiveEndIndex = typeof coreEndIndex === 'number' ? coreEndIndex : endIndex;
+  if (effectiveStartIndex < entries.length) {
+    const startEntry = entries[Math.min(entries.length - 1, Math.max(0, effectiveStartIndex))];
+    if (startEntry && typeof startEntry.alphaIndex === 'number') {
+      if (startEntry.alphaIndex < desiredStart) {
+        desiredStart = startEntry.alphaIndex;
+      }
+    }
+  }
+  if (effectiveEndIndex > 0) {
+    const endEntry = entries[Math.min(entries.length - 1, Math.max(0, effectiveEndIndex - 1))];
+    if (endEntry && typeof endEntry.alphaIndex === 'number') {
+      if (endEntry.alphaIndex > desiredStart + windowSize - 1) {
+        desiredStart = endEntry.alphaIndex - (windowSize - 1);
+      }
+    }
+  }
+  desiredStart = Math.min(Math.max(0, desiredStart), maxStart);
+  if (desiredStart !== alphabetGateState.windowStart) {
+    alphabetGateState.windowStart = desiredStart;
+    updateAlphabetActiveSet();
+    return true;
+  }
+  return false;
+}
+
+function alphabetGateAllowsEntry(entry) {
+  if (!alphabetGateState.enabled) return true;
+  if (!entry) return false;
+  const key = entry.alphaKey || computeAlphaKeyFromEntry(entry);
+  return alphabetGateState.activeSet.has(key);
+}
+
 function buildUnifiedCard(entry) {
+  if (alphabetGateState.enabled && !alphabetGateAllowsEntry(entry)) {
+    return null;
+  }
   const { listType, id, displayItem, displayEntryId, positionIndex } = entry;
   if (isCollapsibleList(listType)) {
     return buildCollapsibleMovieCard(listType, id, displayItem, positionIndex, {
