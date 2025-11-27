@@ -198,88 +198,42 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   const FPS = 60;
   const FRAMES_PER_SECTION = (TARGET_SECTION_DURATION_MS / 1000) * FPS;
   
-  const breakdown = breakdownDurationMinutes(finalMinutes);
-  let { years, months, days, hours, minutes } = breakdown;
-  let weeks = 0;
-  if (days >= 7) {
-    weeks = Math.floor(days / 7);
-    days = days % 7;
-  }
-  
+  const definitions = [
+    { unit: 'minutes', threshold: 0, divisor: 1, max: 60, class: 'runtime-minutes' },
+    { unit: 'hours', threshold: 60, divisor: 60, max: 24, class: 'runtime-hours' },
+    { unit: 'days', threshold: 1440, divisor: 1440, max: 7, class: 'runtime-days' },
+    { unit: 'weeks', threshold: 10080, divisor: 10080, max: 4, class: 'runtime-weeks' },
+    { unit: 'months', threshold: 43200, divisor: 43200, max: 12, class: 'runtime-months' },
+    { unit: 'years', threshold: 525600, divisor: 525600, max: Infinity, class: 'runtime-years' }
+  ];
+
   const sequence = [];
-  
-  // Build sequence: Minutes -> Hours -> Days -> Weeks -> Months -> Years
-  // Only add units if they are relevant (i.e. total duration reaches them)
-  // For intermediate units, target is max capacity. For final unit, target is actual value.
-  
-  if (finalMinutes > 0) {
-    sequence.push({ 
-      unit: 'minutes', 
-      max: 60, 
-      target: (finalMinutes >= 60) ? 60 : minutes 
-    });
+  for (let i = 0; i < definitions.length; i++) {
+    const def = definitions[i];
+    if (finalMinutes >= def.threshold) {
+       const nextDef = definitions[i+1];
+       const isLast = !nextDef || finalMinutes < nextDef.threshold;
+       
+       sequence.push({
+         unit: def.unit,
+         max: def.max,
+         divisor: def.divisor,
+         class: def.class,
+         target: isLast ? (finalMinutes / def.divisor) : def.max
+       });
+       
+       if (isLast) break;
+    }
   }
-  
-  if (finalMinutes >= 60) {
-    sequence.push({ 
-      unit: 'hours', 
-      max: 24, 
-      target: (finalMinutes >= 1440) ? 24 : hours 
-    });
-  }
-  
-  if (finalMinutes >= 1440) {
-    sequence.push({ 
-      unit: 'days', 
-      max: 7, 
-      target: (finalMinutes >= 10080) ? 7 : days 
-    });
-  }
-  
-  if (finalMinutes >= 10080) {
-    sequence.push({ 
-      unit: 'weeks', 
-      max: 4, 
-      target: (finalMinutes >= 43200) ? 4 : weeks 
-    });
-  }
-  
-  if (finalMinutes >= 43200) {
-    sequence.push({ 
-      unit: 'months', 
-      max: 12, 
-      target: (finalMinutes >= 525600) ? 12 : months 
-    });
-  }
-  
-  if (finalMinutes >= 525600) {
-    sequence.push({ 
-      unit: 'years', 
-      max: years, 
-      target: years 
-    });
-  }
-  
-  let animationState = {
-    years: 0, months: 0, weeks: 0, days: 0, hours: 0, minutes: 0
-  };
   
   let activeStageIndex = 0;
   let currentFrame = 0;
-  
-  const thresholds = [
-    { max: 60, class: 'runtime-minutes' },
-    { max: 1440, class: 'runtime-hours' },
-    { max: 10080, class: 'runtime-days' },
-    { max: 43200, class: 'runtime-weeks' },
-    { max: 525600, class: 'runtime-months' },
-    { max: Infinity, class: 'runtime-years' }
-  ];
+  let currentStageValue = 0;
 
   function updateFrame() {
     if (activeStageIndex >= sequence.length) {
       valueEl.innerHTML = formatRuntimeDurationDetailed(finalMinutes);
-      thresholds.forEach(t => chipElement.classList.remove(t.class));
+      definitions.forEach(d => chipElement.classList.remove(d.class));
       chipElement.classList.add(getRuntimeThresholdClass(finalMinutes));
       return;
     }
@@ -288,53 +242,23 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
     currentFrame++;
     const progress = Math.min(currentFrame / FRAMES_PER_SECTION, 1);
     
-    // Update current unit
-    animationState[stage.unit] = progress * stage.target;
+    // Calculate current value for this stage (e.g. 1.5 hours)
+    currentStageValue = progress * stage.target;
+    
+    // Convert to total minutes to drive the full breakdown
+    const currentTotalMinutes = currentStageValue * stage.divisor;
     
     // Update color
-    let currentClass = 'runtime-minutes';
-    if (stage.unit === 'hours') currentClass = 'runtime-hours';
-    if (stage.unit === 'days') currentClass = 'runtime-days';
-    if (stage.unit === 'weeks') currentClass = 'runtime-weeks';
-    if (stage.unit === 'months') currentClass = 'runtime-months';
-    if (stage.unit === 'years') currentClass = 'runtime-years';
+    definitions.forEach(d => chipElement.classList.remove(d.class));
+    chipElement.classList.add(stage.class);
     
-    thresholds.forEach(t => chipElement.classList.remove(t.class));
-    chipElement.classList.add(currentClass);
-    
-    // Render
-    const displayValues = {
-        years: Math.floor(animationState.years),
-        months: Math.floor(animationState.months),
-        weeks: Math.floor(animationState.weeks),
-        days: Math.floor(animationState.days),
-        hours: Math.floor(animationState.hours),
-        minutes: Math.floor(animationState.minutes)
-    };
-    
-    const parts = [];
-    const hasYears = displayValues.years > 0;
-    const hasMonths = displayValues.months > 0 || hasYears;
-    const hasWeeks = displayValues.weeks > 0 || hasMonths;
-    const hasDays = displayValues.days > 0 || hasWeeks;
-    const hasHours = displayValues.hours > 0 || hasDays;
-    
-    if (hasYears) parts.push(formatDurationUnit(displayValues.years, 'year'));
-    if (hasMonths) parts.push(formatDurationUnit(displayValues.months, 'month', hasYears));
-    if (hasWeeks) parts.push(formatDurationUnit(displayValues.weeks, 'week', hasMonths));
-    if (hasDays) parts.push(formatDurationUnit(displayValues.days, 'day', hasWeeks));
-    if (hasHours) parts.push(formatDurationUnit(displayValues.hours, 'hour', hasDays));
-    parts.push(formatDurationUnit(displayValues.minutes, 'minute', hasHours));
-    
-    valueEl.innerHTML = parts.join(', ');
+    // Render full breakdown
+    valueEl.innerHTML = formatRuntimeDurationDetailed(currentTotalMinutes);
     
     if (progress >= 1) {
-      // Stage done. If not last stage, reset to 0 (wrap effect)
-      if (activeStageIndex < sequence.length - 1) {
-          animationState[stage.unit] = 0;
-      }
       activeStageIndex++;
       currentFrame = 0;
+      currentStageValue = 0;
     }
     
     requestAnimationFrame(updateFrame);
