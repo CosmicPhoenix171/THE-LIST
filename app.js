@@ -3545,6 +3545,11 @@ function formatRuntimeDurationDetailed(totalMinutes) {
 function formatDurationUnit(value, unitLabel, keepZero = false) {
   const amount = Math.floor(value);
   if (!amount && !keepZero) return '';
+  
+  if (amount === 0) {
+    return `00 ${unitLabel}s`;
+  }
+  
   const formattedAmount = amount < 10 
     ? `<span style="opacity: 0;">0</span>${amount}` 
     : `${amount}`;
