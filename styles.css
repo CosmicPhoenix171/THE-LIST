@@ -22,6 +22,12 @@
   --tv-pill-color:#c084fc;
   --anime-pill-color:#fb923c;
   --books-pill-color:#4ade80;
+  --runtime-minutes-color:#c0c0c0;
+  --runtime-hours-color:#4da3ff;
+  --runtime-days-color:#47e6a1;
+  --runtime-weeks-color:#f5c568;
+  --runtime-months-color:#fb923c;
+  --runtime-years-color:#ff6b6b;
 }
 
 *{box-sizing:border-box}
@@ -97,17 +103,23 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .runtime-pill-value{font-size:1.05rem;font-weight:600;color:#f3fbff;font-variant-numeric:tabular-nums;min-width:2.5ch;text-align:center}
 .runtime-pill-label{font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,0.65)}
 .runtime-pill-leading-zero{opacity:0;display:inline-block;width:.6ch}
-.library-stat-chip.runtime-minutes{background:linear-gradient(120deg,rgba(80,201,255,0.2),rgba(100,210,255,0.15));border-color:rgba(80,201,255,0.45);box-shadow:0 10px 26px rgba(80,201,255,0.35)}
-.library-stat-chip.runtime-minutes .library-stat-value{color:#a8e6ff}
-.library-stat-chip.runtime-hours{background:linear-gradient(120deg,rgba(125,242,201,0.18),rgba(80,220,180,0.14));border-color:rgba(125,242,201,0.45);box-shadow:0 10px 26px rgba(125,242,201,0.32)}
-.library-stat-chip.runtime-hours .library-stat-value{color:#d4fff0}
-.library-stat-chip.runtime-days{background:linear-gradient(120deg,rgba(245,197,104,0.2),rgba(255,200,100,0.15));border-color:rgba(245,197,104,0.5);box-shadow:0 10px 26px rgba(245,197,104,0.35)}
-.library-stat-chip.runtime-days .library-stat-value{color:#fff5d6}
-.library-stat-chip.runtime-weeks{background:linear-gradient(120deg,rgba(190,242,100,0.2),rgba(180,230,100,0.15));border-color:rgba(190,242,100,0.5);box-shadow:0 10px 26px rgba(190,242,100,0.35)}
-.library-stat-chip.runtime-weeks .library-stat-value{color:#f4ffdb}
-.library-stat-chip.runtime-months{background:linear-gradient(120deg,rgba(251,146,60,0.22),rgba(255,160,80,0.16));border-color:rgba(251,146,60,0.55);box-shadow:0 10px 26px rgba(251,146,60,0.38)}
+.runtime-pill.runtime-pill-minutes.is-active{background:linear-gradient(135deg,rgba(192,192,192,0.32),rgba(96,96,96,0.18));border-color:rgba(192,192,192,0.65);box-shadow:0 12px 26px rgba(112,112,112,0.45)}
+.runtime-pill.runtime-pill-hours.is-active{background:linear-gradient(135deg,rgba(77,163,255,0.3),rgba(61,169,245,0.16));border-color:rgba(77,163,255,0.6);box-shadow:0 12px 26px rgba(61,169,245,0.42)}
+.runtime-pill.runtime-pill-days.is-active{background:linear-gradient(135deg,rgba(71,230,161,0.32),rgba(40,150,110,0.18));border-color:rgba(71,230,161,0.62);box-shadow:0 12px 26px rgba(71,230,161,0.45)}
+.runtime-pill.runtime-pill-weeks.is-active{background:linear-gradient(135deg,rgba(245,197,104,0.34),rgba(200,150,60,0.16));border-color:rgba(245,197,104,0.65);box-shadow:0 12px 26px rgba(245,197,104,0.45)}
+.runtime-pill.runtime-pill-months.is-active{background:linear-gradient(135deg,rgba(251,146,60,0.34),rgba(210,110,40,0.18));border-color:rgba(251,146,60,0.65);box-shadow:0 12px 26px rgba(251,146,60,0.46)}
+.runtime-pill.runtime-pill-years.is-active{background:linear-gradient(135deg,rgba(255,107,107,0.36),rgba(180,70,70,0.2));border-color:rgba(255,107,107,0.68);box-shadow:0 12px 28px rgba(255,107,107,0.5)}
+.library-stat-chip.runtime-minutes{background:linear-gradient(120deg,rgba(192,192,192,0.32),rgba(120,120,120,0.16));border-color:rgba(192,192,192,0.55);box-shadow:0 10px 26px rgba(150,150,150,0.35)}
+.library-stat-chip.runtime-minutes .library-stat-value{color:#f5f5f5}
+.library-stat-chip.runtime-hours{background:linear-gradient(120deg,rgba(77,163,255,0.28),rgba(61,169,245,0.16));border-color:rgba(77,163,255,0.55);box-shadow:0 10px 26px rgba(61,169,245,0.35)}
+.library-stat-chip.runtime-hours .library-stat-value{color:#d8f1ff}
+.library-stat-chip.runtime-days{background:linear-gradient(120deg,rgba(71,230,161,0.28),rgba(40,150,110,0.16));border-color:rgba(71,230,161,0.55);box-shadow:0 10px 26px rgba(71,230,161,0.32)}
+.library-stat-chip.runtime-days .library-stat-value{color:#e6fff3}
+.library-stat-chip.runtime-weeks{background:linear-gradient(120deg,rgba(245,197,104,0.28),rgba(200,150,60,0.16));border-color:rgba(245,197,104,0.58);box-shadow:0 10px 26px rgba(245,197,104,0.34)}
+.library-stat-chip.runtime-weeks .library-stat-value{color:#fff6dc}
+.library-stat-chip.runtime-months{background:linear-gradient(120deg,rgba(251,146,60,0.3),rgba(210,110,40,0.16));border-color:rgba(251,146,60,0.58);box-shadow:0 10px 26px rgba(251,146,60,0.38)}
 .library-stat-chip.runtime-months .library-stat-value{color:#ffe8d6}
-.library-stat-chip.runtime-years{background:linear-gradient(120deg,rgba(255,107,107,0.24),rgba(255,120,120,0.18));border-color:rgba(255,107,107,0.6);box-shadow:0 12px 30px rgba(255,107,107,0.42)}
+.library-stat-chip.runtime-years{background:linear-gradient(120deg,rgba(255,107,107,0.32),rgba(180,70,70,0.18));border-color:rgba(255,107,107,0.62);box-shadow:0 12px 30px rgba(255,107,107,0.42)}
 .library-stat-chip.runtime-years .library-stat-value{color:#ffe0e0}
 .library-stat-label{font-size:.68rem;letter-spacing:.14em;color:var(--text-500)}
 .section-content{display:flex;flex-direction:column;gap:1.25rem}
