@@ -198,7 +198,7 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   const FPS = 60;
   const FRAMES_PER_SECTION = (TARGET_SECTION_DURATION_MS / 1000) * FPS;
   
-  // Calculate breakdown for forceShow logic
+  // Calculate breakdown for final value
   const breakdown = breakdownDurationMinutes(finalMinutes);
   let { years, months, days, hours, minutes } = breakdown;
   let weeks = 0;
@@ -238,20 +238,16 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   let activeStageIndex = 0;
   let currentFrame = 0;
   let currentStageValue = 0;
-  
-  // Determine which units should be forced visible based on final value
-  const forceShow = {
-    years: years > 0,
-    months: months > 0 || years > 0,
-    weeks: weeks > 0 || months > 0 || years > 0,
-    days: days > 0 || weeks > 0 || months > 0 || years > 0,
-    hours: hours > 0 || days > 0 || weeks > 0 || months > 0 || years > 0,
-    minutes: true
-  };
 
   function updateFrame() {
     if (activeStageIndex >= sequence.length) {
-      valueEl.innerHTML = formatRuntimeDurationDetailed(finalMinutes, forceShow);
+      // Final state: show everything based on actual values
+      // We construct a forceShow that mimics the final state of the animation
+      // to prevent layout shifts if some values are 0 in the final result
+      const finalForceShow = {};
+      sequence.forEach(s => finalForceShow[s.unit] = true);
+      
+      valueEl.innerHTML = formatRuntimeDurationDetailed(finalMinutes, finalForceShow);
       definitions.forEach(d => chipElement.classList.remove(d.class));
       chipElement.classList.add(getRuntimeThresholdClass(finalMinutes));
       return;
@@ -261,18 +257,26 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
     currentFrame++;
     const progress = Math.min(currentFrame / FRAMES_PER_SECTION, 1);
     
-    // Calculate current value for this stage (e.g. 1.5 hours)
+    // Calculate current value for this stage
     currentStageValue = progress * stage.target;
     
-    // Convert to total minutes to drive the full breakdown
+    // Convert to total minutes. 
+    // Since we want "separate" zones, we only calculate the minutes for the CURRENT unit.
+    // Lower units will be 0 (and thus display as 00 due to forceShow).
     const currentTotalMinutes = currentStageValue * stage.divisor;
     
     // Update color
     definitions.forEach(d => chipElement.classList.remove(d.class));
     chipElement.classList.add(stage.class);
     
-    // Render full breakdown with forced units
-    valueEl.innerHTML = formatRuntimeDurationDetailed(currentTotalMinutes, forceShow);
+    // Determine visible units: Current stage + all previous stages
+    const visibleUnits = {};
+    for (let i = 0; i <= activeStageIndex; i++) {
+        visibleUnits[sequence[i].unit] = true;
+    }
+    
+    // Render
+    valueEl.innerHTML = formatRuntimeDurationDetailed(currentTotalMinutes, visibleUnits);
     
     if (progress >= 1) {
       activeStageIndex++;
