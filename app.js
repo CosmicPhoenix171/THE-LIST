@@ -1377,7 +1377,7 @@ function detachAllListeners() {
 function renderList(listType, data) {
   listCaches[listType] = data || {};
   try {
-    console.debug('[Unified] cache updated', listType, Object.keys(listCaches[listType]).length);
+    console.log('[Unified] cache updated', listType, Object.keys(listCaches[listType]).length);
   } catch (_) {}
   renderUnifiedLibrary();
   renderGlobalLibrarySummary();
@@ -1544,7 +1544,10 @@ function renderUnifiedLibrary() {
 
   const records = collectUnifiedRecords();
   try {
-    console.debug('[Unified] render pass', { records: records.length });
+    console.log('[Unified] render pass', { count: records.length });
+    if (records.length) {
+      console.log('[Unified] first records', records.slice(0, 5));
+    }
   } catch (_) {}
   if (!records.length) {
     container.innerHTML = '<div class="empty-state">No items found.</div>';
@@ -1565,7 +1568,7 @@ function collectUnifiedRecords() {
     const data = listCaches[listType] || {};
     const totalEntries = Object.keys(data).length;
     try {
-      console.debug('[Unified] evaluating type', listType, { totalEntries });
+      console.log('[Unified] evaluating type', listType, { totalEntries });
     } catch (_) {}
     const entries = Object.entries(data).filter(([_, item]) => {
       if (!item) return false;
@@ -1617,7 +1620,7 @@ function collectUnifiedRecords() {
     });
   });
   try {
-    console.debug('[Unified] collected records', records.length);
+    console.log('[Unified] collected records', records.length);
   } catch (_) {}
   return records;
 }
