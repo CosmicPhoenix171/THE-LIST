@@ -44,6 +44,9 @@ const TMDB_KEYWORD_DISCOVER_MAX_RESULTS = 40;
 const GOOGLE_BOOKS_API_KEY = '';
 const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
 const JIKAN_API_BASE_URL = 'https://api.jikan.moe/v4';
+const JIKAN_REQUEST_MIN_DELAY_MS = 500;
+const JIKAN_RETRY_BASE_DELAY_MS = 1500;
+const JIKAN_MAX_RETRIES = 2;
 const MYANIMELIST_ANIME_URL = 'https://myanimelist.net/anime';
 const METADATA_SCHEMA_VERSION = 4;
 const APP_VERSION = 'test-pages-2025.11.15';
@@ -105,6 +108,9 @@ const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
 let combinedVirtualGrid = null;
+const jikanRequestQueue = [];
+let jikanQueueActive = false;
+let lastJikanRequestTime = 0;
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES),
@@ -3564,6 +3570,11 @@ function debounce(fn, wait = 250) {
   };
 }
 
+function delay(ms) {
+  const duration = Math.max(0, Number(ms) || 0);
+  return new Promise(resolve => setTimeout(resolve, duration));
+}
+
 function setButtonBusy(button, isBusy) {
   if (!button) return;
   if (isBusy) {
@@ -5359,7 +5370,45 @@ function extractAnimeDurationMinutes(media) {
   return '';
 }
 
+function enqueueJikanRequest(taskFn) {
+  return new Promise((resolve, reject) => {
+    jikanRequestQueue.push({ taskFn, resolve, reject });
+    pumpJikanQueue();
+  });
+}
+
+function pumpJikanQueue() {
+  if (jikanQueueActive) return;
+  jikanQueueActive = true;
+
+  const runNext = () => {
+    if (!jikanRequestQueue.length) {
+      jikanQueueActive = false;
+      return;
+    }
+    const now = Date.now();
+    const wait = Math.max(0, JIKAN_REQUEST_MIN_DELAY_MS - (now - lastJikanRequestTime));
+    const next = jikanRequestQueue.shift();
+    setTimeout(() => {
+      lastJikanRequestTime = Date.now();
+      Promise.resolve()
+        .then(next.taskFn)
+        .then(next.resolve)
+        .catch(next.reject)
+        .finally(() => {
+          runNext();
+        });
+    }, wait);
+  };
+
+  runNext();
+}
+
 async function fetchJikanJson(path, params = {}) {
+  return enqueueJikanRequest(() => executeJikanFetch(path, params));
+}
+
+async function executeJikanFetch(path, params = {}, attempt = 0) {
   try {
     const url = new URL(`${JIKAN_API_BASE_URL}${path}`);
     Object.entries(params || {}).forEach(([key, value]) => {
@@ -5367,18 +5416,39 @@ async function fetchJikanJson(path, params = {}) {
       url.searchParams.set(key, value);
     });
     const resp = await fetch(url.toString(), {
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
+
+    if (resp.status === 429) {
+      const retryDelay = computeJikanRetryDelay(attempt, resp);
+      console.warn('Jikan request rate-limited', path, { attempt, retryDelay });
+      if (attempt < JIKAN_MAX_RETRIES) {
+        await delay(retryDelay);
+        return executeJikanFetch(path, params, attempt + 1);
+      }
+      return null;
+    }
+
     if (!resp.ok) {
       const text = await resp.text();
       console.warn('Jikan request failed', resp.status, path, text);
       return null;
     }
+
     return await resp.json();
   } catch (err) {
     console.warn('Jikan request error', err);
     return null;
   }
+}
+
+function computeJikanRetryDelay(attempt, resp) {
+  const retryAfter = resp?.headers?.get ? resp.headers.get('Retry-After') : null;
+  const parsedSeconds = retryAfter ? Number(retryAfter) : NaN;
+  if (Number.isFinite(parsedSeconds) && parsedSeconds >= 0) {
+    return Math.max(parsedSeconds * 1000, JIKAN_REQUEST_MIN_DELAY_MS);
+  }
+  return JIKAN_RETRY_BASE_DELAY_MS * (attempt + 1);
 }
 
 async function fetchJikanAnimeDetails(id) {
