@@ -1425,7 +1425,10 @@ function ensureUnifiedPlaceholderRendered(placeholder) {
   const record = unifiedVirtualRecords[index];
   if (!record) return;
   try {
-    console.log('[Unified] rendering placeholder', index, record.item?.title || record.cardId);
+    if (!placeholder.dataset.logReported) {
+      console.log('[Unified] rendering placeholder', index, record.item?.title || record.cardId);
+      placeholder.dataset.logReported = '1';
+    }
   } catch (_) {}
   const node = buildUnifiedCardNode(record);
   placeholder.innerHTML = '';
@@ -1446,6 +1449,11 @@ function releaseUnifiedPlaceholder(placeholder) {
   const node = unifiedRenderedPlaceholderMap.get(placeholder);
   if (node && node.parentNode === placeholder) {
     placeholder.removeChild(node);
+  }
+  if (placeholder.dataset.logReported) {
+    try {
+      console.log('[Unified] releasing placeholder', placeholder.dataset.index);
+    } catch (_) {}
   }
   placeholder.dataset.rendered = '0';
   placeholder.style.minHeight = `${UNIFIED_PLACEHOLDER_MIN_HEIGHT}px`;
