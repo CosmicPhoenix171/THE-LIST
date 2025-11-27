@@ -231,13 +231,13 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
       currentMinutes = finalMinutes;
     }
     
-    const displayText = formatRuntimeDurationDetailed(Math.floor(currentMinutes)) + ' to finish';
+    const displayText = formatRuntimeDurationDetailed(Math.floor(currentMinutes));
     valueEl.textContent = displayText;
     
     if (currentMinutes < finalMinutes) {
       requestAnimationFrame(updateFrame);
     } else {
-      valueEl.textContent = formatRuntimeDurationDetailed(finalMinutes) + ' to finish';
+      valueEl.textContent = formatRuntimeDurationDetailed(finalMinutes);
       thresholds.forEach(t => chipElement.classList.remove(t.class));
       chipElement.classList.add(getRuntimeThresholdClass(finalMinutes));
     }
