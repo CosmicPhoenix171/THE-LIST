@@ -90,7 +90,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .library-stat-chip .library-stat-value{font-size:1.05rem;font-weight:700;color:var(--text-100);letter-spacing:normal;text-transform:none}
 .library-stat-chip.runtime{min-width:220px;background:linear-gradient(120deg,rgba(80,201,255,0.16),rgba(125,242,201,0.12));border-color:rgba(125,242,201,0.35);box-shadow:0 10px 26px rgba(80,201,255,0.28);transition:background .4s ease,border-color .4s ease,box-shadow .4s ease}
 .library-stat-chip.runtime .library-stat-value{color:#e4fbff;font-variant-numeric:tabular-nums;min-width:14ch;display:block}
-.runtime-pill-row{display:flex;gap:.4rem;align-items:flex-end;flex-wrap:wrap;min-height:2.2rem}
+.runtime-pill-row{display:flex;gap:.4rem;align-items:flex-end;flex-wrap:wrap;min-height:2.2rem;justify-content:flex-end}
 .runtime-pill{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:64px;padding:.25rem .4rem;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);box-shadow:0 6px 14px rgba(2,8,14,0.35);opacity:0;transform:translateY(8px);transition:opacity .25s ease,transform .25s ease;background-clip:padding-box}
 .runtime-pill.is-visible{opacity:1;transform:translateY(0)}
 .runtime-pill-value{font-size:1.05rem;font-weight:600;color:#f3fbff;font-variant-numeric:tabular-nums;min-width:2.5ch;text-align:center}
