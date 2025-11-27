@@ -2577,14 +2577,14 @@ function buildMovieCardDetails(listType, cardId, entryId, item) {
   }
 
   if (listType === 'anime') {
-    const animeBlock = buildAnimeDetailBlock(item);
+    const animeBlock = buildAnimeDetailBlock(listType, entryId, item);
     if (animeBlock) {
       details.appendChild(animeBlock);
     }
   }
 
   if (listType === 'tvShows') {
-    const tvBlock = buildTvDetailBlock(item);
+    const tvBlock = buildTvDetailBlock(listType, entryId, item);
     if (tvBlock) {
       details.appendChild(tvBlock);
     }
@@ -2601,7 +2601,7 @@ function buildMovieCardDetails(listType, cardId, entryId, item) {
   return details;
 }
 
-function buildAnimeDetailBlock(item) {
+function buildAnimeDetailBlock(listType, entryId, item) {
   if (!item) return null;
   const block = createEl('div', 'detail-block anime-detail-block');
   const chips = [];
@@ -2625,54 +2625,192 @@ function buildAnimeDetailBlock(item) {
     link.rel = 'noopener noreferrer';
     block.appendChild(link);
   }
+  const resolvedEntryId = entryId || item.__id || item.id || '';
+  const animeSeasonField = getAnimeSeasonField(item);
+  if (animeSeasonField) {
+    const seasonBreakdown = buildSeasonNotesBreakdown({
+      listType,
+      entryId: resolvedEntryId,
+      rawSeasons: Array.isArray(item[animeSeasonField]) ? item[animeSeasonField] : [],
+      fieldName: animeSeasonField,
+      fallbackLabel: 'Season',
+      placeholder: 'Notes for this season',
+    });
+    if (seasonBreakdown) {
+      block.appendChild(seasonBreakdown);
+    }
+  }
   return block.children.length ? block : null;
 }
 
-function buildTvDetailBlock(item) {
+function buildTvDetailBlock(listType, entryId, item) {
   if (!item) return null;
   const chips = buildTvStatChips(item);
   const hasChips = chips.length > 0;
-  const seasonSummaries = Array.isArray(item.tvSeasonSummaries)
-    ? item.tvSeasonSummaries
-        .filter(season => season && (season.seasonNumber !== undefined && season.seasonNumber !== null))
-        .sort((a, b) => {
-          const seasonA = Number(a.seasonNumber);
-          const seasonB = Number(b.seasonNumber);
-          if (Number.isFinite(seasonA) && Number.isFinite(seasonB)) return seasonA - seasonB;
-          if (Number.isFinite(seasonA)) return -1;
-          if (Number.isFinite(seasonB)) return 1;
-          return 0;
-        })
-    : [];
-  if (!hasChips && !seasonSummaries.length) return null;
+  const resolvedEntryId = entryId || item.__id || item.id || '';
+  const seasonBreakdown = buildSeasonNotesBreakdown({
+    listType,
+    entryId: resolvedEntryId,
+    rawSeasons: Array.isArray(item.tvSeasonSummaries) ? item.tvSeasonSummaries : [],
+    fieldName: 'tvSeasonSummaries',
+    fallbackLabel: 'Season',
+    placeholder: 'Notes for this season',
+  });
+  if (!hasChips && !seasonBreakdown) return null;
   const block = createEl('div', 'detail-block tv-detail-block');
   if (hasChips) {
     const row = createEl('div', 'tv-stats-row');
     chips.forEach(text => row.appendChild(createEl('span', 'tv-chip', { text })));
     block.appendChild(row);
   }
-  if (seasonSummaries.length) {
-    const breakdown = createEl('div', 'tv-season-breakdown');
-    seasonSummaries.forEach(season => {
-      const segments = [];
-      if (season.title) {
-        segments.push(season.title);
-      } else if (season.seasonNumber !== undefined && season.seasonNumber !== null) {
-        segments.push(`Season ${season.seasonNumber}`);
-      }
-      const count = Number(season.episodeCount);
-      if (Number.isFinite(count) && count > 0) {
-        segments.push(`${count} episode${count === 1 ? '' : 's'}`);
-      }
-      if (season.year) {
-        segments.push(`(${season.year})`);
-      }
-      if (!segments.length) return;
-      breakdown.appendChild(createEl('div', 'tv-season-line', { text: segments.join(' • ') }));
-    });
-    block.appendChild(breakdown);
+  if (seasonBreakdown) {
+    block.appendChild(seasonBreakdown);
   }
   return block;
+}
+
+function buildSeasonNotesBreakdown({
+  listType,
+  entryId,
+  rawSeasons = [],
+  fieldName,
+  fallbackLabel = 'Season',
+  placeholder = 'Notes for this season',
+} = {}) {
+  if (!Array.isArray(rawSeasons) || !rawSeasons.length || !fieldName) return null;
+  const normalized = rawSeasons
+    .filter(season => season && (season.seasonNumber !== undefined || season.title))
+    .slice();
+  if (!normalized.length) return null;
+  normalized.sort((a, b) => {
+    const seasonA = Number(a.seasonNumber);
+    const seasonB = Number(b.seasonNumber);
+    if (Number.isFinite(seasonA) && Number.isFinite(seasonB)) return seasonA - seasonB;
+    if (Number.isFinite(seasonA)) return -1;
+    if (Number.isFinite(seasonB)) return 1;
+    const titleA = (a.title || '').toLowerCase();
+    const titleB = (b.title || '').toLowerCase();
+    if (titleA < titleB) return -1;
+    if (titleA > titleB) return 1;
+    return 0;
+  });
+  const breakdown = createEl('div', 'tv-season-breakdown');
+  normalized.forEach(season => {
+    breakdown.appendChild(createSeasonNoteRow({
+      listType,
+      entryId,
+      season,
+      fieldName,
+      sourceSeasons: rawSeasons,
+      fallbackLabel,
+      placeholder,
+    }));
+  });
+  return breakdown;
+}
+
+function createSeasonNoteRow({
+  listType,
+  entryId,
+  season,
+  fieldName,
+  sourceSeasons = [],
+  fallbackLabel = 'Season',
+  placeholder = 'Notes for this season',
+} = {}) {
+  const row = createEl('div', 'tv-season-line');
+  const summaryText = formatSeasonSummary(season, fallbackLabel);
+  row.appendChild(createEl('div', 'tv-season-line-summary', { text: summaryText }));
+  const notesLabel = createEl('label', 'season-notes-field');
+  notesLabel.appendChild(createEl('span', 'sr-only', { text: `${summaryText} notes` }));
+  const textarea = document.createElement('textarea');
+  textarea.className = 'season-notes-input';
+  textarea.placeholder = placeholder;
+  textarea.value = typeof season?.notes === 'string' ? season.notes : '';
+  textarea.rows = 3;
+  notesLabel.appendChild(textarea);
+  row.appendChild(notesLabel);
+
+  const canPersist = Boolean(listType && entryId && fieldName);
+  if (!canPersist) {
+    textarea.disabled = true;
+    textarea.placeholder = 'Notes unavailable in this view';
+    return row;
+  }
+
+  const saveNote = (value) => persistSeasonNote(listType, entryId, fieldName, sourceSeasons, season, value);
+  const debouncedSave = debounce(saveNote, 600);
+
+  textarea.addEventListener('input', () => {
+    debouncedSave(textarea.value);
+  });
+  textarea.addEventListener('change', () => {
+    saveNote(textarea.value);
+  });
+  ['click', 'keydown', 'keyup'].forEach(evt => {
+    textarea.addEventListener(evt, (ev) => ev.stopPropagation());
+  });
+
+  return row;
+}
+
+function persistSeasonNote(listType, entryId, fieldName, sourceSeasons, targetSeason, noteValue) {
+  if (!listType || !entryId || !fieldName || !Array.isArray(sourceSeasons) || !targetSeason) return;
+  const normalizedValue = typeof noteValue === 'string' ? noteValue : '';
+  let needsUpdate = false;
+  const next = sourceSeasons.map(season => {
+    if (!seasonMatches(season, targetSeason)) return season;
+    const currentNote = typeof season?.notes === 'string' ? season.notes : '';
+    if (currentNote === normalizedValue) return season;
+    needsUpdate = true;
+    return { ...season, notes: normalizedValue };
+  });
+  if (!needsUpdate) return;
+  targetSeason.notes = normalizedValue;
+  updateItem(listType, entryId, { [fieldName]: next }).catch(err => {
+    console.warn('Failed to save season note', { listType, entryId, fieldName }, err);
+  });
+}
+
+function seasonMatches(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.seasonNumber !== undefined && b.seasonNumber !== undefined) {
+    return Number(a.seasonNumber) === Number(b.seasonNumber);
+  }
+  if (a.title && b.title) {
+    return a.title === b.title;
+  }
+  return false;
+}
+
+function formatSeasonSummary(season, fallbackLabel = 'Season') {
+  if (!season) return fallbackLabel;
+  const segments = [];
+  if (season.title) {
+    segments.push(season.title);
+  } else if (season.seasonNumber !== undefined && season.seasonNumber !== null) {
+    segments.push(`${fallbackLabel} ${season.seasonNumber}`);
+  }
+  const count = Number(season.episodeCount);
+  if (Number.isFinite(count) && count > 0) {
+    segments.push(`${count} episode${count === 1 ? '' : 's'}`);
+  }
+  if (season.year) {
+    segments.push(`(${season.year})`);
+  }
+  return segments.length ? segments.join(' • ') : fallbackLabel;
+}
+
+function getAnimeSeasonField(item) {
+  if (!item) return null;
+  if (Array.isArray(item.animeSeasonSummaries) && item.animeSeasonSummaries.length) {
+    return 'animeSeasonSummaries';
+  }
+  if (Array.isArray(item.tvSeasonSummaries) && item.tvSeasonSummaries.length) {
+    return 'tvSeasonSummaries';
+  }
+  return null;
 }
 
 function formatAnimeEpisodesLabel(value) {
