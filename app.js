@@ -45,7 +45,7 @@ const GOOGLE_BOOKS_API_KEY = '';
 const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
 const JIKAN_API_BASE_URL = 'https://api.jikan.moe/v4';
 const MYANIMELIST_ANIME_URL = 'https://myanimelist.net/anime';
-const METADATA_SCHEMA_VERSION = 3;
+const METADATA_SCHEMA_VERSION = 4;
 const APP_VERSION = 'test-pages-2025.11.15';
 const ANIME_FRANCHISE_RELATION_TYPES = new Set([
   'SEQUEL',
@@ -1792,7 +1792,12 @@ function buildMovieCardInfo(listType, item, context = {}) {
   info.appendChild(header);
 
   if (isCollapsibleList(listType)) {
-    const badges = buildAnimeSummaryBadges(item, { ...context, listType });
+    let badges = null;
+    if (listType === 'anime') {
+      badges = buildAnimeSummaryBadges(item, { ...context, listType });
+    } else if (listType === 'tvShows') {
+      badges = buildTvSummaryBadges(item);
+    }
     if (badges) info.appendChild(badges);
   }
 
@@ -1821,6 +1826,87 @@ function buildAnimeSummaryBadges(item, context = {}) {
   const row = createEl('div', 'anime-summary-badges');
   chips.forEach(text => row.appendChild(createEl('span', 'anime-chip', { text })));
   return row;
+}
+
+function buildTvSummaryBadges(item) {
+  if (!item) return null;
+  const chips = buildTvStatChips(item);
+  if (!chips.length) return null;
+  const row = createEl('div', 'tv-summary-badges');
+  chips.forEach(text => row.appendChild(createEl('span', 'tv-chip', { text })));
+  return row;
+}
+
+function buildTvStatChips(item) {
+  if (!item) return [];
+  const chips = [];
+  const seasonCount = getTvSeasonCount(item);
+  if (seasonCount > 0) {
+    chips.push(`${seasonCount} season${seasonCount === 1 ? '' : 's'}`);
+  }
+  const episodeCount = getTvEpisodeCount(item);
+  if (episodeCount > 0) {
+    chips.push(`${episodeCount} episode${episodeCount === 1 ? '' : 's'}`);
+  }
+  const runtimeLabel = formatTvRuntimeLabel(item);
+  if (runtimeLabel) {
+    chips.push(runtimeLabel);
+  }
+  const statusLabel = formatTvStatusLabel(item?.tvStatus || item?.status);
+  if (statusLabel) {
+    chips.push(statusLabel);
+  }
+  return chips;
+}
+
+function getTvSeasonCount(item) {
+  if (!item) return 0;
+  const direct = Number(item.tvSeasonCount);
+  if (Number.isFinite(direct) && direct > 0) {
+    return direct;
+  }
+  if (Array.isArray(item.tvSeasonSummaries)) {
+    return item.tvSeasonSummaries.filter(season => season && (season.seasonNumber !== undefined && season.seasonNumber !== null)).length;
+  }
+  return 0;
+}
+
+function getTvEpisodeCount(item) {
+  if (!item) return 0;
+  const direct = Number(item.tvEpisodeCount);
+  if (Number.isFinite(direct) && direct > 0) {
+    return direct;
+  }
+  if (Array.isArray(item.tvSeasonSummaries)) {
+    return item.tvSeasonSummaries.reduce((total, season) => {
+      const count = Number(season?.episodeCount);
+      return Number.isFinite(count) && count > 0 ? total + count : total;
+    }, 0);
+  }
+  return 0;
+}
+
+function formatTvRuntimeLabel(item) {
+  if (!item) return '';
+  const runtime = Number(item.tvEpisodeRuntime);
+  if (Number.isFinite(runtime) && runtime > 0) {
+    return `${runtime} min/ep`;
+  }
+  if (typeof item.runtime === 'string') {
+    const match = item.runtime.match(/(\d+)\s*min/);
+    if (match) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value)) {
+        return item.runtime.includes('/ep') ? `${value} min/ep` : `${value} min`;
+      }
+    }
+  }
+  return '';
+}
+
+function formatTvStatusLabel(value) {
+  if (!value) return '';
+  return value.toString().replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
 }
 
 function formatAnimeFormatLabel(value) {
@@ -1929,6 +2015,13 @@ function buildMovieCardDetails(listType, cardId, entryId, item) {
     }
   }
 
+  if (listType === 'tvShows') {
+    const tvBlock = buildTvDetailBlock(item);
+    if (tvBlock) {
+      details.appendChild(tvBlock);
+    }
+  }
+
   if (isCollapsibleList(listType)) {
     const seriesBlock = buildSeriesCarouselBlock(listType, cardId);
     if (seriesBlock) {
@@ -1965,6 +2058,53 @@ function buildAnimeDetailBlock(item) {
     block.appendChild(link);
   }
   return block.children.length ? block : null;
+}
+
+function buildTvDetailBlock(item) {
+  if (!item) return null;
+  const chips = buildTvStatChips(item);
+  const hasChips = chips.length > 0;
+  const seasonSummaries = Array.isArray(item.tvSeasonSummaries)
+    ? item.tvSeasonSummaries
+        .filter(season => season && (season.seasonNumber !== undefined && season.seasonNumber !== null))
+        .sort((a, b) => {
+          const seasonA = Number(a.seasonNumber);
+          const seasonB = Number(b.seasonNumber);
+          if (Number.isFinite(seasonA) && Number.isFinite(seasonB)) return seasonA - seasonB;
+          if (Number.isFinite(seasonA)) return -1;
+          if (Number.isFinite(seasonB)) return 1;
+          return 0;
+        })
+    : [];
+  if (!hasChips && !seasonSummaries.length) return null;
+  const block = createEl('div', 'detail-block tv-detail-block');
+  if (hasChips) {
+    const row = createEl('div', 'tv-stats-row');
+    chips.forEach(text => row.appendChild(createEl('span', 'tv-chip', { text })));
+    block.appendChild(row);
+  }
+  if (seasonSummaries.length) {
+    const breakdown = createEl('div', 'tv-season-breakdown');
+    seasonSummaries.forEach(season => {
+      const segments = [];
+      if (season.title) {
+        segments.push(season.title);
+      } else if (season.seasonNumber !== undefined && season.seasonNumber !== null) {
+        segments.push(`Season ${season.seasonNumber}`);
+      }
+      const count = Number(season.episodeCount);
+      if (Number.isFinite(count) && count > 0) {
+        segments.push(`${count} episode${count === 1 ? '' : 's'}`);
+      }
+      if (season.year) {
+        segments.push(`(${season.year})`);
+      }
+      if (!segments.length) return;
+      breakdown.appendChild(createEl('div', 'tv-season-line', { text: segments.join(' • ') }));
+    });
+    block.appendChild(breakdown);
+  }
+  return block;
 }
 
 function formatAnimeEpisodesLabel(value) {
@@ -2985,6 +3125,22 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
   const revenueValue = metadata.Revenue && metadata.Revenue !== 'N/A' ? metadata.Revenue : '';
   setField('revenue', revenueValue);
 
+  if (metadata.TvSeasonCount !== undefined && metadata.TvSeasonCount !== null) {
+    setField('tvSeasonCount', metadata.TvSeasonCount);
+  }
+  if (metadata.TvEpisodeCount !== undefined && metadata.TvEpisodeCount !== null) {
+    setField('tvEpisodeCount', metadata.TvEpisodeCount);
+  }
+  if (metadata.TvEpisodeRuntime !== undefined && metadata.TvEpisodeRuntime !== null) {
+    setField('tvEpisodeRuntime', metadata.TvEpisodeRuntime);
+  }
+  if (metadata.TvStatus) {
+    setField('tvStatus', metadata.TvStatus);
+  }
+  if (Array.isArray(metadata.TvSeasonSummaries) && metadata.TvSeasonSummaries.length) {
+    setField('tvSeasonSummaries', metadata.TvSeasonSummaries);
+  }
+
   if (metadata.AnimeEpisodes !== undefined && metadata.AnimeEpisodes !== null) {
     setField('animeEpisodes', metadata.AnimeEpisodes);
   }
@@ -3668,6 +3824,12 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
   const runtimeMinutes = mediaType === 'movie'
     ? detail.runtime
     : (Array.isArray(detail.episode_run_time) && detail.episode_run_time.length ? detail.episode_run_time[0] : null);
+  const normalizedRuntime = typeof runtimeMinutes === 'number' && Number.isFinite(runtimeMinutes)
+    ? runtimeMinutes
+    : null;
+  const runtimeLabel = normalizedRuntime
+    ? `${normalizedRuntime} min${mediaType === 'tv' ? '/ep' : ''}`
+    : '';
   const crew = Array.isArray(detail.credits?.crew) ? detail.credits.crew : [];
   const directorCrew = crew.find(member => member && member.job === 'Director');
   const director = directorCrew?.name
@@ -3681,12 +3843,29 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
   const originalLanguage = resolveLanguageName(detail.original_language, detail.spoken_languages);
   const tmdbId = detail.id || '';
   const englishDubAvailable = hasEnglishSpokenLanguage(detail.spoken_languages);
+  const tvSeasonCount = mediaType === 'tv'
+    ? (Number(detail.number_of_seasons) || (Array.isArray(detail.seasons) ? detail.seasons.length : 0))
+    : null;
+  const tvEpisodeCount = mediaType === 'tv' ? Number(detail.number_of_episodes) || null : null;
+  const tvStatus = mediaType === 'tv' ? (detail.status || '') : '';
+  const tvEpisodeRuntime = mediaType === 'tv' ? normalizedRuntime : null;
+  const tvSeasonSummaries = mediaType === 'tv' && Array.isArray(detail.seasons)
+    ? detail.seasons
+        .filter(season => season && typeof season.season_number === 'number')
+        .map(season => ({
+          seasonNumber: season.season_number,
+          episodeCount: typeof season.episode_count === 'number' ? season.episode_count : null,
+          title: season.name || `Season ${season.season_number}`,
+          year: extractPrimaryYear(season.air_date || ''),
+          airDate: season.air_date || '',
+        }))
+    : [];
 
   return {
     Title: detail.title || detail.name || '',
     Year: releaseDate ? String(releaseDate).slice(0, 4) : '',
     Director: director,
-    Runtime: runtimeMinutes ? `${runtimeMinutes} min` : '',
+    Runtime: runtimeLabel,
     Poster: poster || 'N/A',
     Plot: detail.overview || '',
     imdbID: imdbId,
@@ -3699,6 +3878,11 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
     OriginalLanguageIso: detail.original_language || '',
     EnglishDubAvailable: englishDubAvailable,
     TmdbID: tmdbId,
+    TvSeasonCount: tvSeasonCount,
+    TvEpisodeCount: tvEpisodeCount,
+    TvEpisodeRuntime: tvEpisodeRuntime,
+    TvStatus: tvStatus,
+    TvSeasonSummaries: tvSeasonSummaries,
   };
 }
 
