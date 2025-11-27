@@ -1792,23 +1792,38 @@ function buildMovieCardInfo(listType, item, context = {}) {
   info.appendChild(header);
 
   if (isCollapsibleList(listType)) {
-    let badges = null;
-    if (listType === 'tvShows') {
-      badges = buildTvSummaryBadges(item);
-    } else if (listType === 'anime' || listType === 'movies') {
-      badges = buildAnimeSummaryBadges(item, { ...context, listType });
-    }
+    const badges = buildMediaSummaryBadges(listType, item, context);
     if (badges) info.appendChild(badges);
   }
 
   return info;
 }
 
-function buildAnimeSummaryBadges(item, context = {}) {
+function buildMediaSummaryBadges(listType, item, context = {}) {
   if (!item) return null;
-  const listType = context.listType || 'anime';
-  const metrics = deriveAnimeSeriesMetrics(listType, context.cardId, item);
-  if (!metrics) return null;
+  const chips = collectMediaBadgeChips(listType, item, context);
+  if (!chips.length) return null;
+  const isTv = listType === 'tvShows';
+  const rowClass = isTv ? 'tv-summary-badges' : 'anime-summary-badges';
+  const chipClass = isTv ? 'tv-chip' : 'anime-chip';
+  const row = createEl('div', rowClass);
+  chips.forEach(text => row.appendChild(createEl('span', chipClass, { text })));
+  return row;
+}
+
+function collectMediaBadgeChips(listType, item, context = {}) {
+  if (listType === 'tvShows') {
+    return buildTvStatChips(item);
+  }
+  if (listType === 'movies' || listType === 'anime') {
+    return buildSeriesBadgeChips(listType, context.cardId, item);
+  }
+  return [];
+}
+
+function buildSeriesBadgeChips(listType, cardId, item) {
+  const metrics = deriveSeriesBadgeMetrics(listType, cardId, item);
+  if (!metrics) return [];
   const chips = [];
   if (metrics.formatLabels.length) {
     chips.push(metrics.formatLabels.join(' / '));
@@ -1822,19 +1837,7 @@ function buildAnimeSummaryBadges(item, context = {}) {
   if (metrics.statusLabel) {
     chips.push(formatAnimeStatusLabel(metrics.statusLabel));
   }
-  if (!chips.length) return null;
-  const row = createEl('div', 'anime-summary-badges');
-  chips.forEach(text => row.appendChild(createEl('span', 'anime-chip', { text })));
-  return row;
-}
-
-function buildTvSummaryBadges(item) {
-  if (!item) return null;
-  const chips = buildTvStatChips(item);
-  if (!chips.length) return null;
-  const row = createEl('div', 'tv-summary-badges');
-  chips.forEach(text => row.appendChild(createEl('span', 'tv-chip', { text })));
-  return row;
+  return chips;
 }
 
 function buildTvStatChips(item) {
@@ -1914,7 +1917,7 @@ function formatAnimeFormatLabel(value) {
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
 }
 
-function deriveAnimeSeriesMetrics(listType, cardId, fallbackItem) {
+function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem) {
   const normalizedListType = listType || 'anime';
   let entries = [];
   if (cardId && isCollapsibleList(normalizedListType)) {
