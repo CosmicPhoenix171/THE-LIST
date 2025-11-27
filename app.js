@@ -166,6 +166,9 @@ function getRuntimeThresholdClass(totalMinutes) {
 function animateRuntimeProgression(chipElement, finalMinutes) {
   if (!chipElement || finalMinutes <= 0) return;
   
+  const valueEl = chipElement.querySelector('.library-stat-value');
+  if (!valueEl) return;
+  
   const thresholds = [
     { max: 60, class: 'runtime-minutes' },
     { max: 1440, class: 'runtime-hours' },
@@ -175,25 +178,42 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
     { max: Infinity, class: 'runtime-years' }
   ];
   
-  let currentThresholdIndex = 0;
-  const duration = 1400;
-  const steps = Math.min(thresholds.length, thresholds.findIndex(t => finalMinutes < t.max) + 1);
-  const stepDuration = duration / steps;
+  const duration = 5000;
+  const fps = 60;
+  const totalFrames = (duration / 1000) * fps;
+  const increment = finalMinutes / totalFrames;
+  let currentMinutes = 0;
+  let frame = 0;
+  let lastThresholdIndex = -1;
   
-  function updateThreshold() {
-    if (currentThresholdIndex >= steps) return;
+  function updateFrame() {
+    currentMinutes += increment;
+    frame++;
     
-    thresholds.forEach(t => chipElement.classList.remove(t.class));
-    chipElement.classList.add(thresholds[currentThresholdIndex].class);
+    if (currentMinutes >= finalMinutes) {
+      currentMinutes = finalMinutes;
+    }
     
-    currentThresholdIndex++;
+    const displayText = formatRuntimeDurationDetailed(Math.floor(currentMinutes)) + ' to finish';
+    valueEl.textContent = displayText;
     
-    if (currentThresholdIndex < steps) {
-      setTimeout(updateThreshold, stepDuration);
+    const thresholdIndex = thresholds.findIndex(t => currentMinutes < t.max);
+    if (thresholdIndex !== lastThresholdIndex && thresholdIndex >= 0) {
+      thresholds.forEach(t => chipElement.classList.remove(t.class));
+      chipElement.classList.add(thresholds[thresholdIndex].class);
+      lastThresholdIndex = thresholdIndex;
+    }
+    
+    if (frame < totalFrames && currentMinutes < finalMinutes) {
+      requestAnimationFrame(updateFrame);
+    } else {
+      valueEl.textContent = formatRuntimeDurationDetailed(finalMinutes) + ' to finish';
+      thresholds.forEach(t => chipElement.classList.remove(t.class));
+      chipElement.classList.add(getRuntimeThresholdClass(finalMinutes));
     }
   }
   
-  setTimeout(updateThreshold, 300);
+  setTimeout(() => requestAnimationFrame(updateFrame), 300);
 }
 
 function buildLibraryStatChip(label, value, options = {}) {
@@ -1852,22 +1872,24 @@ function updateLibraryRuntimeStats() {
   libraryStatsSummaryEl.innerHTML = '';
   const movieLabel = stats.movieCount === 1 ? 'Movie' : 'Movies';
   const episodeLabel = stats.episodeCount === 1 ? 'Episode' : 'Episodes';
-  const runtimeText = stats.totalMinutes > 0
-    ? `${formatRuntimeDurationDetailed(stats.totalMinutes)} to finish`
-    : 'Runtime info unavailable';
+  const runtimeText = '0 minutes to finish';
 
-  const thresholdClass = getRuntimeThresholdClass(stats.totalMinutes);
   const movieChip = buildLibraryStatChip(movieLabel, formatLibraryStatNumber(stats.movieCount));
   const episodeChip = buildLibraryStatChip(episodeLabel, formatLibraryStatNumber(stats.episodeCount));
   const runtimeChip = buildLibraryStatChip('Finish Time', runtimeText, { 
-    modifier: `runtime ${thresholdClass}` 
+    modifier: 'runtime runtime-minutes' 
   });
 
   libraryStatsSummaryEl.appendChild(movieChip);
   libraryStatsSummaryEl.appendChild(episodeChip);
   libraryStatsSummaryEl.appendChild(runtimeChip);
 
-  animateRuntimeProgression(runtimeChip, stats.totalMinutes);
+  if (stats.totalMinutes > 0) {
+    animateRuntimeProgression(runtimeChip, stats.totalMinutes);
+  } else {
+    const valueEl = runtimeChip.querySelector('.library-stat-value');
+    if (valueEl) valueEl.textContent = 'Runtime info unavailable';
+  }
 
   const spokenSummary = `${stats.movieCount} ${movieLabel}, ${stats.episodeCount} ${episodeLabel}, ${runtimeText}`;
   libraryStatsSummaryEl.setAttribute('aria-label', spokenSummary);
