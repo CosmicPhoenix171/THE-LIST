@@ -1560,6 +1560,10 @@ function renderUnifiedLibrary() {
   combinedGrid.className = 'movies-grid unified-grid';
   container.appendChild(combinedGrid);
   setupUnifiedVirtualizer(records, combinedGrid);
+  try {
+    const placeholderCount = combinedGrid.querySelectorAll('.unified-card-placeholder').length;
+    console.log('[Unified] grid mounted', { placeholderCount });
+  } catch (_) {}
 }
 
 function collectUnifiedRecords() {
