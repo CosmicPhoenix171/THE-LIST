@@ -108,7 +108,6 @@ const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
-let combinedVirtualGrid = null;
 const jikanRequestQueue = [];
 let jikanQueueActive = false;
 let lastJikanRequestTime = 0;
@@ -127,7 +126,7 @@ const MEDIA_TYPE_LABELS = {
 // 1. Auth & Session Flow
 // 2. Add Modal & Item Management
 // 3. List Loading & Collapsible Cards
-// 4. Unified Library & Virtualized Grid
+// 4. Unified Library
 // 5. Metadata & External API Pipelines
 // 6. Spinner / Wheel Experience
 // 7. Anime Franchise Automations
@@ -1442,14 +1441,13 @@ function renderList(listType, data) {
 }
 
 // ============================================================================
-// Feature 4: Unified Library & Virtualized Grid
+// Feature 4: Unified Library
 // ============================================================================
 
 function renderUnifiedLibrary() {
   if (!combinedListEl) return;
   const hasLoadedAny = PRIMARY_LIST_TYPES.some(type => listCaches[type] !== undefined);
   if (!hasLoadedAny) {
-    disposeCombinedVirtualGrid();
     combinedListEl.innerHTML = '<div class="small">Loading your library...</div>';
     return;
   }
@@ -1476,151 +1474,19 @@ function renderUnifiedLibrary() {
   });
 
   if (!filtered.length) {
-    disposeCombinedVirtualGrid();
     combinedListEl.innerHTML = '<div class="small">No entries match the current filters yet.</div>';
     return;
   }
 
-  const grid = ensureCombinedVirtualGrid();
-  if (grid) {
-    grid.setEntries(filtered);
-  }
-}
-
-class VirtualizedCardGrid {
-  constructor(container, options = {}) {
-    this.container = container;
-    this.options = Object.assign({ estimatedItemHeight: 360, overscan: 6, renderItem: () => null }, options);
-    this.entries = [];
-    this.rangeStart = 0;
-    this.rangeEnd = 0;
-    this.rowHeight = this.options.estimatedItemHeight;
-    this.itemsPerRow = 1;
-    this.topSpacer = createEl('div', 'virtual-spacer');
-    this.viewport = createEl('div', 'virtualized-viewport movies-grid unified-grid');
-    this.bottomSpacer = createEl('div', 'virtual-spacer');
-    this.container.innerHTML = '';
-    this.container.classList.add('virtualized-container');
-    this.container.appendChild(this.topSpacer);
-    this.container.appendChild(this.viewport);
-    this.container.appendChild(this.bottomSpacer);
-    this.handleScroll = this.updateVisibleRange.bind(this);
-    this.handleResize = () => {
-      this.measureFromViewport(true);
-      this.updateVisibleRange(true);
-    };
-    window.addEventListener('scroll', this.handleScroll, { passive: true });
-    window.addEventListener('resize', this.handleResize, { passive: true });
-  }
-
-  destroy() {
-    window.removeEventListener('scroll', this.handleScroll);
-    window.removeEventListener('resize', this.handleResize);
-    if (this.container) {
-      this.container.classList.remove('virtualized-container');
-      this.container.innerHTML = '';
+  combinedListEl.innerHTML = '';
+  const grid = createEl('div', 'movies-grid unified-grid');
+  filtered.forEach(entry => {
+    const node = buildUnifiedCard(entry);
+    if (node) {
+      grid.appendChild(node);
     }
-    this.entries = [];
-  }
-
-  setEntries(entries) {
-    this.entries = Array.isArray(entries) ? entries : [];
-    this.rangeStart = 0;
-    this.rangeEnd = 0;
-    this.refreshSpacers();
-    this.updateVisibleRange(true);
-    this.measureFromViewport(true);
-    this.updateVisibleRange(true);
-  }
-
-  refreshSpacers() {
-    const totalRows = Math.max(0, Math.ceil((this.entries.length || 0) / this.itemsPerRow));
-    const totalHeight = totalRows * this.rowHeight;
-    this.topSpacer.style.height = '0px';
-    this.bottomSpacer.style.height = `${totalHeight}px`;
-  }
-
-  computeOverscanRows() {
-    const overscanItems = Math.max(0, Number(this.options.overscan) || 0);
-    const perRow = Math.max(1, this.itemsPerRow);
-    return Math.max(1, Math.ceil(overscanItems / perRow));
-  }
-
-  updateVisibleRange(force = false) {
-    if (!this.container || !this.entries.length) {
-      if (this.viewport) this.viewport.innerHTML = '';
-      this.refreshSpacers();
-      return;
-    }
-    const containerRect = this.container.getBoundingClientRect();
-    const containerTop = containerRect.top + window.scrollY;
-    const viewportHeight = window.innerHeight;
-    const scrollTop = Math.max(0, window.scrollY - containerTop);
-    const rowHeight = Math.max(1, this.rowHeight);
-    const overscanRows = this.computeOverscanRows();
-    const startRow = Math.max(0, Math.floor(scrollTop / rowHeight) - overscanRows);
-    const endRow = Math.ceil((scrollTop + viewportHeight) / rowHeight) + overscanRows;
-    const start = Math.max(0, Math.min(this.entries.length, startRow * this.itemsPerRow));
-    const end = Math.max(start, Math.min(this.entries.length, endRow * this.itemsPerRow));
-    if (!force && start === this.rangeStart && end === this.rangeEnd) {
-      return;
-    }
-    this.rangeStart = start;
-    this.rangeEnd = end;
-    this.topSpacer.style.height = `${startRow * rowHeight}px`;
-    const totalRows = Math.max(0, Math.ceil(this.entries.length / this.itemsPerRow));
-    const clampedEndRow = Math.min(totalRows, endRow);
-    this.bottomSpacer.style.height = `${Math.max(0, (totalRows - clampedEndRow) * rowHeight)}px`;
-    this.viewport.innerHTML = '';
-    for (let i = start; i < end; i++) {
-      const entry = this.entries[i];
-      const node = this.options.renderItem(entry, i);
-      if (node) {
-        this.viewport.appendChild(node);
-      }
-    }
-  }
-
-  measureFromViewport(force = false) {
-    if (!this.viewport) return;
-    const children = Array.from(this.viewport.children || []);
-    if (!children.length) return;
-    const firstRect = children[0].getBoundingClientRect();
-    if (!firstRect || !firstRect.height) return;
-    const styles = window.getComputedStyle(this.viewport);
-    const rowGap = parseFloat(styles.rowGap || styles.gap || '0') || 0;
-    const columnGap = parseFloat(styles.columnGap || styles.gap || '0') || 0;
-    const measuredRowHeight = Math.ceil(firstRect.height + rowGap);
-    const cardWidth = Math.max(1, firstRect.width);
-    const viewportWidth = Math.max(cardWidth, this.viewport.clientWidth || cardWidth);
-    const effectiveWidth = cardWidth + columnGap;
-    const columns = Math.max(1, Math.floor((viewportWidth + columnGap) / effectiveWidth));
-    const normalizedRowHeight = Math.max(1, measuredRowHeight || this.rowHeight);
-    const changed = columns !== this.itemsPerRow || Math.abs(normalizedRowHeight - this.rowHeight) > 1;
-    if (!changed && !force) return;
-    this.itemsPerRow = columns;
-    this.rowHeight = normalizedRowHeight;
-    this.refreshSpacers();
-  }
-}
-
-function ensureCombinedVirtualGrid() {
-  if (!combinedListEl) return null;
-  if (!combinedVirtualGrid) {
-    combinedVirtualGrid = new VirtualizedCardGrid(combinedListEl, {
-      estimatedItemHeight: 360,
-      overscan: 8,
-      renderItem: (entry) => buildUnifiedCard(entry),
-    });
-  }
-  return combinedVirtualGrid;
-}
-
-function disposeCombinedVirtualGrid() {
-  if (combinedVirtualGrid) {
-    combinedVirtualGrid.destroy();
-    combinedVirtualGrid = null;
-  }
+  });
+  combinedListEl.appendChild(grid);
 }
 
 function collectUnifiedEntries() {
@@ -3363,72 +3229,73 @@ function buildSpinnerCandidates(listType, rawData) {
     return { displayCandidates: [], candidateMap: new Map() };
   }
 
-  const mapped = entries
+  const normalized = entries
     .map(([id, item]) => {
       if (!item) return null;
       return item.__id ? item : Object.assign({ __id: id }, item);
     })
     .filter(Boolean);
 
-  const eligibleItems = mapped.filter((item) => isSpinnerStatusEligible(item));
+  const eligibleItems = normalized.filter(isSpinnerStatusEligible);
   if (!eligibleItems.length) {
     return { displayCandidates: [], candidateMap: new Map() };
   }
 
   const shouldApplySeriesLogic = ['movies', 'tvShows', 'anime'].includes(listType);
-  let standalone = [];
+  const selectedItems = [];
 
-  if (!shouldApplySeriesLogic) {
-    standalone = eligibleItems.filter(item => !isItemWatched(item));
-  } else {
-    const seriesMap = new Map();
+  if (shouldApplySeriesLogic) {
+    const seriesBuckets = new Map();
     eligibleItems.forEach(item => {
-      const seriesNameRaw = typeof item.seriesName === 'string' ? item.seriesName.trim() : '';
-      if (seriesNameRaw) {
-        const key = seriesNameRaw.toLowerCase();
-        if (!seriesMap.has(key)) {
-          seriesMap.set(key, []);
-        }
-        seriesMap.get(key).push({ order: parseSeriesOrder(item.seriesOrder), item });
-      } else if (!isItemWatched(item)) {
-        standalone.push(item);
+      const key = (item.seriesName || item.series?.name || '').trim().toLowerCase();
+      if (!key) {
+        selectedItems.push(item);
+        return;
       }
+      if (!seriesBuckets.has(key)) {
+        seriesBuckets.set(key, []);
+      }
+      seriesBuckets.get(key).push(item);
     });
 
-    seriesMap.forEach(entriesForSeries => {
-      if (!entriesForSeries || !entriesForSeries.length) return;
-      entriesForSeries.sort((a, b) => {
-        if (a.order !== b.order) return a.order - b.order;
-        const titleA = (a.item && a.item.title ? a.item.title : '').toLowerCase();
-        const titleB = (b.item && b.item.title ? b.item.title : '').toLowerCase();
+    seriesBuckets.forEach(items => {
+      const sorted = items.slice().sort((a, b) => {
+        const orderDiff = parseSeriesOrder(a.seriesOrder) - parseSeriesOrder(b.seriesOrder);
+        if (orderDiff !== 0) return orderDiff;
+        const titleA = (a.title || '').toLowerCase();
+        const titleB = (b.title || '').toLowerCase();
         if (titleA < titleB) return -1;
         if (titleA > titleB) return 1;
         return 0;
       });
-      const firstUnwatched = entriesForSeries.find(entry => entry && entry.item && !isItemWatched(entry.item));
-      if (firstUnwatched && firstUnwatched.item) {
-        standalone.push(firstUnwatched.item);
-      }
+      const firstUnwatched = sorted.find(item => !isItemWatched(item));
+      selectedItems.push(firstUnwatched || sorted[0]);
     });
+  } else {
+    selectedItems.push(...eligibleItems);
   }
 
-  standalone.sort((a, b) => {
-    const titleA = (a && a.title ? a.title : '').toLowerCase();
-    const titleB = (b && b.title ? b.title : '').toLowerCase();
+  const candidateMap = new Map();
+  const displayCandidates = [];
+
+  selectedItems.forEach(item => {
+    if (!item) return;
+    const id = item.__id || item.id;
+    if (!id || candidateMap.has(id)) return;
+    candidateMap.set(id, item);
+    displayCandidates.push({
+      id,
+      title: item.title || '(no title)'
+    });
+  });
+
+  displayCandidates.sort((a, b) => {
+    const titleA = (a.title || '').toLowerCase();
+    const titleB = (b.title || '').toLowerCase();
     if (titleA < titleB) return -1;
     if (titleA > titleB) return 1;
     return 0;
   });
-
-  const candidateMap = new Map();
-  const displayCandidates = standalone
-    .map(item => {
-      const id = item.__id || item.id || '';
-      if (!id) return null;
-      candidateMap.set(id, item);
-      return { id, title: item.title || '(no title)' };
-    })
-    .filter(Boolean);
 
   return { displayCandidates, candidateMap };
 }
