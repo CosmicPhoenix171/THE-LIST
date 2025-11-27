@@ -1793,10 +1793,10 @@ function buildMovieCardInfo(listType, item, context = {}) {
 
   if (isCollapsibleList(listType)) {
     let badges = null;
-    if (listType === 'anime') {
-      badges = buildAnimeSummaryBadges(item, { ...context, listType });
-    } else if (listType === 'tvShows') {
+    if (listType === 'tvShows') {
       badges = buildTvSummaryBadges(item);
+    } else if (listType === 'anime' || listType === 'movies') {
+      badges = buildAnimeSummaryBadges(item, { ...context, listType });
     }
     if (badges) info.appendChild(badges);
   }
