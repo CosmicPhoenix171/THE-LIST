@@ -218,16 +218,17 @@ function getRuntimeUnitBreakdown(totalMinutes) {
 
 function renderRuntimePillsDisplay(valueMap = createRuntimePillValueMap(), visibilityMap = {}, activeUnit = null) {
   const pills = [...RUNTIME_PILL_UNITS].reverse().map(({ key, label }) => {
-    const isVisible = Boolean(visibilityMap[key]);
+    const isVisible = key === 'minutes' || Boolean(visibilityMap[key]);
+    if (!isVisible) return '';
     const isActive = activeUnit === key;
     const valueMarkup = formatRuntimePillNumber(valueMap[key] || 0);
     return `
-      <span class="runtime-pill runtime-pill-${key}${isVisible ? ' is-visible' : ''}${isActive ? ' is-active' : ''}">
+      <span class="runtime-pill runtime-pill-${key} is-visible${isActive ? ' is-active' : ''}">
         <span class="runtime-pill-value">${valueMarkup}</span>
         <span class="runtime-pill-label">${label}</span>
       </span>
     `;
-  }).join('');
+  }).filter(Boolean).join('');
   return `<span class="runtime-pill-row">${pills}</span>`;
 }
 
