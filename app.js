@@ -104,6 +104,7 @@ const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
+let combinedVirtualGrid = null;
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES),
@@ -907,6 +908,7 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywor
               overwrite: true,
               fallbackTitle: part.title,
               fallbackYear: part.year,
+              listType,
             });
             Object.assign(payload, updates);
           }
@@ -1500,6 +1502,7 @@ function renderUnifiedLibrary() {
   if (!combinedListEl) return;
   const hasLoadedAny = PRIMARY_LIST_TYPES.some(type => listCaches[type] !== undefined);
   if (!hasLoadedAny) {
+    disposeCombinedVirtualGrid();
     combinedListEl.innerHTML = '<div class="small">Loading your library...</div>';
     return;
   }
@@ -1525,18 +1528,35 @@ function renderUnifiedLibrary() {
     return idxA - idxB;
   });
 
-  combinedListEl.innerHTML = '';
   if (!filtered.length) {
+    disposeCombinedVirtualGrid();
     combinedListEl.innerHTML = '<div class="small">No entries match the current filters yet.</div>';
     return;
   }
 
-  const grid = createEl('div', 'movies-grid unified-grid');
-  filtered.forEach(entry => {
-    const card = buildUnifiedCard(entry);
-    if (card) grid.appendChild(card);
-  });
-  combinedListEl.appendChild(grid);
+  const grid = ensureCombinedVirtualGrid();
+  if (grid) {
+    grid.setEntries(filtered);
+  }
+}
+
+function ensureCombinedVirtualGrid() {
+  if (!combinedListEl) return null;
+  if (!combinedVirtualGrid) {
+    combinedVirtualGrid = new VirtualizedCardGrid(combinedListEl, {
+      estimatedItemHeight: 360,
+      overscan: 8,
+      renderItem: (entry) => buildUnifiedCard(entry),
+    });
+  }
+  return combinedVirtualGrid;
+}
+
+function disposeCombinedVirtualGrid() {
+  if (combinedVirtualGrid) {
+    combinedVirtualGrid.destroy();
+    combinedVirtualGrid = null;
+  }
 }
 
 function collectUnifiedEntries() {
@@ -1842,20 +1862,28 @@ function buildSeriesBadgeChips(listType, cardId, item) {
 
 function buildTvStatChips(item) {
   if (!item) return [];
+  if (Array.isArray(item.cachedTvBadges) && item.cachedTvBadges.length) {
+    return item.cachedTvBadges.slice();
+  }
+  return computeTvBadgeStrings(item);
+}
+
+function computeTvBadgeStrings(source) {
+  if (!source) return [];
   const chips = [];
-  const seasonCount = getTvSeasonCount(item);
+  const seasonCount = getTvSeasonCount(source);
   if (seasonCount > 0) {
     chips.push(`${seasonCount} season${seasonCount === 1 ? '' : 's'}`);
   }
-  const episodeCount = getTvEpisodeCount(item);
+  const episodeCount = getTvEpisodeCount(source);
   if (episodeCount > 0) {
     chips.push(`${episodeCount} episode${episodeCount === 1 ? '' : 's'}`);
   }
-  const runtimeLabel = formatTvRuntimeLabel(item);
+  const runtimeLabel = formatTvRuntimeLabel(source);
   if (runtimeLabel) {
     chips.push(runtimeLabel);
   }
-  const statusLabel = formatTvStatusLabel(item?.tvStatus || item?.status);
+  const statusLabel = formatTvStatusLabel(source?.tvStatus || source?.status);
   if (statusLabel) {
     chips.push(statusLabel);
   }
@@ -2658,6 +2686,7 @@ async function addItemFromForm(listType, form) {
           fallbackTitle: title,
           fallbackYear: year,
           alwaysAssign: ['year', 'imdbId', 'imdbUrl', 'imdbType'],
+          listType,
         });
         Object.assign(item, metadataUpdates);
       }
@@ -3055,6 +3084,7 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
     fallbackTitle = existing.title || '',
     fallbackYear = existing.year || '',
     alwaysAssign = [],
+    listType: targetListType = '',
   } = options;
   const updates = {};
   const forceKeys = new Set(['metadataVersion', ...(Array.isArray(alwaysAssign) ? alwaysAssign : [])]);
@@ -3128,6 +3158,8 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
   const revenueValue = metadata.Revenue && metadata.Revenue !== 'N/A' ? metadata.Revenue : '';
   setField('revenue', revenueValue);
 
+  const getEffectiveValue = (key) => (Object.prototype.hasOwnProperty.call(updates, key) ? updates[key] : existing[key]);
+
   if (metadata.TvSeasonCount !== undefined && metadata.TvSeasonCount !== null) {
     setField('tvSeasonCount', metadata.TvSeasonCount);
   }
@@ -3142,6 +3174,21 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
   }
   if (Array.isArray(metadata.TvSeasonSummaries) && metadata.TvSeasonSummaries.length) {
     setField('tvSeasonSummaries', metadata.TvSeasonSummaries);
+  }
+
+  if (targetListType === 'tvShows') {
+    const badgeSource = {
+      tvSeasonCount: getEffectiveValue('tvSeasonCount'),
+      tvEpisodeCount: getEffectiveValue('tvEpisodeCount'),
+      tvEpisodeRuntime: getEffectiveValue('tvEpisodeRuntime'),
+      tvStatus: getEffectiveValue('tvStatus'),
+      runtime: getEffectiveValue('runtime'),
+      tvSeasonSummaries: getEffectiveValue('tvSeasonSummaries'),
+    };
+    const tvBadges = computeTvBadgeStrings(badgeSource);
+    if (tvBadges.length) {
+      setField('cachedTvBadges', tvBadges);
+    }
   }
 
   if (metadata.AnimeEpisodes !== undefined && metadata.AnimeEpisodes !== null) {
@@ -3365,6 +3412,7 @@ function refreshTmdbMetadataForItem(listType, itemId, item, missingFields = []) 
       overwrite: false,
       fallbackTitle: item.title || '',
       fallbackYear: item.year || '',
+      listType,
     });
     if (Object.keys(updates).length === 0) return;
     console.debug('[Metadata] Applying updates for', `${listType}:${itemId}`, updates);
@@ -3392,6 +3440,7 @@ function refreshAniListMetadataForItem(itemId, item) {
       overwrite: false,
       fallbackTitle: item.title || '',
       fallbackYear: item.year || '',
+      listType,
     });
     if (Object.keys(updates).length === 0) return;
     console.debug('[MyAnimeList] Applying updates for', `${listType}:${itemId}`, updates);
@@ -4663,6 +4712,7 @@ async function refreshItemMetadata(listType, itemId, item, options = {}) {
       overwrite: true,
       fallbackTitle: lookupTitle,
       fallbackYear: lookupYear,
+      listType,
     });
 
     if (!updates || Object.keys(updates).length === 0) {
@@ -4811,6 +4861,82 @@ function buildRelatedModal(currentItem, related) {
       row.style.alignItems = 'center';
       row.style.gap = '.5rem';
       row.style.background = 'var(--card-bg)';
+
+class VirtualizedCardGrid {
+  constructor(container, options = {}) {
+    this.container = container;
+    this.options = Object.assign({ estimatedItemHeight: 360, overscan: 6, renderItem: () => null }, options);
+    this.entries = [];
+    this.rangeStart = 0;
+    this.rangeEnd = 0;
+    this.topSpacer = createEl('div', 'virtual-spacer');
+    this.viewport = createEl('div', 'virtualized-viewport movies-grid unified-grid');
+    this.bottomSpacer = createEl('div', 'virtual-spacer');
+    this.container.innerHTML = '';
+    this.container.classList.add('virtualized-container');
+    this.container.appendChild(this.topSpacer);
+    this.container.appendChild(this.viewport);
+    this.container.appendChild(this.bottomSpacer);
+    this.handleScroll = this.updateVisibleRange.bind(this);
+    window.addEventListener('scroll', this.handleScroll, { passive: true });
+    window.addEventListener('resize', this.handleScroll, { passive: true });
+  }
+
+  destroy() {
+    window.removeEventListener('scroll', this.handleScroll);
+    window.removeEventListener('resize', this.handleScroll);
+    if (this.container) {
+      this.container.classList.remove('virtualized-container');
+      this.container.innerHTML = '';
+    }
+    this.entries = [];
+  }
+
+  setEntries(entries) {
+    this.entries = Array.isArray(entries) ? entries : [];
+    this.rangeStart = 0;
+    this.rangeEnd = 0;
+    this.refreshSpacers();
+    this.updateVisibleRange(true);
+  }
+
+  refreshSpacers() {
+    const totalHeight = Math.max(0, this.entries.length * this.options.estimatedItemHeight);
+    this.topSpacer.style.height = '0px';
+    this.bottomSpacer.style.height = `${totalHeight}px`;
+  }
+
+  updateVisibleRange(force = false) {
+    if (!this.container || !this.entries.length) {
+      if (this.viewport) this.viewport.innerHTML = '';
+      this.refreshSpacers();
+      return;
+    }
+    const containerRect = this.container.getBoundingClientRect();
+    const containerTop = containerRect.top + window.scrollY;
+    const viewportHeight = window.innerHeight;
+    const scrollTop = Math.max(0, window.scrollY - containerTop);
+    const itemHeight = this.options.estimatedItemHeight;
+    const overscan = this.options.overscan;
+    const start = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
+    const end = Math.min(this.entries.length, Math.ceil((scrollTop + viewportHeight) / itemHeight) + overscan);
+    if (!force && start === this.rangeStart && end === this.rangeEnd) {
+      return;
+    }
+    this.rangeStart = start;
+    this.rangeEnd = end;
+    this.topSpacer.style.height = `${start * itemHeight}px`;
+    this.bottomSpacer.style.height = `${Math.max(0, (this.entries.length - end) * itemHeight)}px`;
+    this.viewport.innerHTML = '';
+    for (let i = start; i < end; i++) {
+      const entry = this.entries[i];
+      const node = this.options.renderItem(entry, i);
+      if (node) {
+        this.viewport.appendChild(node);
+      }
+    }
+  }
+}
       row.style.padding = '.5rem .75rem';
       row.style.borderRadius = '6px';
         const title = document.createElement('div');
@@ -5995,6 +6121,7 @@ async function autoAddTmdbKeywordEntries(franchiseLabel, keywordInfo, entries, o
           overwrite: true,
           fallbackTitle: entry.title,
           fallbackYear: entry.year,
+          listType: targetList,
         });
         Object.assign(payload, updates);
       }
