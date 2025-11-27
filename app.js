@@ -202,8 +202,8 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   const maxValues = {
     minutes: 60,
     hours: 24,
-    days: 30,
-    weeks: Math.ceil(breakdown.days / 7),
+    days: 7,
+    weeks: 4,
     months: 12,
     years: breakdown.years
   };
@@ -220,6 +220,7 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   let animationState = {
     years: 0,
     months: 0,
+    weeks: 0,
     days: 0,
     hours: 0,
     minutes: 0
@@ -228,6 +229,7 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   const increments = {
     years: breakdown.years / TOTAL_FRAMES,
     months: maxValues.months / TOTAL_FRAMES,
+    weeks: maxValues.weeks / TOTAL_FRAMES,
     days: maxValues.days / TOTAL_FRAMES,
     hours: maxValues.hours / TOTAL_FRAMES,
     minutes: maxValues.minutes / TOTAL_FRAMES
@@ -243,8 +245,12 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
       animationState.hours = 0;
       animationState.days += increments.days;
     }
-    if (animationState.days >= maxValues.days && breakdown.months > 0) {
+    if (animationState.days >= maxValues.days && (breakdown.days >= 7 || breakdown.weeks > 0)) {
       animationState.days = 0;
+      animationState.weeks += increments.weeks;
+    }
+    if (animationState.weeks >= maxValues.weeks && breakdown.months > 0) {
+      animationState.weeks = 0;
       animationState.months += increments.months;
     }
     if (animationState.months >= maxValues.months && breakdown.years > 0) {
@@ -255,6 +261,7 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
     const currentTotalMinutes = 
       animationState.years * 525600 +
       animationState.months * 43200 +
+      animationState.weeks * 10080 +
       animationState.days * 1440 +
       animationState.hours * 60 +
       animationState.minutes;
@@ -268,6 +275,7 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
     const displayBreakdown = {
       years: Math.floor(animationState.years),
       months: Math.floor(animationState.months),
+      weeks: Math.floor(animationState.weeks),
       days: Math.floor(animationState.days),
       hours: Math.floor(animationState.hours),
       minutes: Math.floor(animationState.minutes)
@@ -276,14 +284,16 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
     const parts = [];
     const hasYears = displayBreakdown.years > 0 || breakdown.years > 0;
     const hasMonths = displayBreakdown.months > 0 || breakdown.months > 0;
+    const hasWeeks = displayBreakdown.weeks > 0 || (breakdown.days >= 7);
     const hasDays = displayBreakdown.days > 0 || breakdown.days > 0;
     const hasHours = displayBreakdown.hours > 0 || breakdown.hours > 0;
     
     if (hasYears) parts.push(formatDurationUnit(displayBreakdown.years, 'year'));
     if (hasMonths) parts.push(formatDurationUnit(displayBreakdown.months, 'month', hasYears && displayBreakdown.years > 0));
-    if (hasDays) parts.push(formatDurationUnit(displayBreakdown.days, 'day', (hasMonths && displayBreakdown.months > 0) || (hasYears && displayBreakdown.years > 0)));
-    if (hasHours) parts.push(formatDurationUnit(displayBreakdown.hours, 'hour', (hasDays && displayBreakdown.days > 0) || (hasMonths && displayBreakdown.months > 0) || (hasYears && displayBreakdown.years > 0)));
-    parts.push(formatDurationUnit(displayBreakdown.minutes, 'minute', (hasHours && displayBreakdown.hours > 0) || (hasDays && displayBreakdown.days > 0) || (hasMonths && displayBreakdown.months > 0) || (hasYears && displayBreakdown.years > 0)));
+    if (hasWeeks) parts.push(formatDurationUnit(displayBreakdown.weeks, 'week', (hasMonths && displayBreakdown.months > 0) || (hasYears && displayBreakdown.years > 0)));
+    if (hasDays) parts.push(formatDurationUnit(displayBreakdown.days, 'day', (hasWeeks && displayBreakdown.weeks > 0) || (hasMonths && displayBreakdown.months > 0) || (hasYears && displayBreakdown.years > 0)));
+    if (hasHours) parts.push(formatDurationUnit(displayBreakdown.hours, 'hour', (hasDays && displayBreakdown.days > 0) || (hasWeeks && displayBreakdown.weeks > 0) || (hasMonths && displayBreakdown.months > 0) || (hasYears && displayBreakdown.years > 0)));
+    parts.push(formatDurationUnit(displayBreakdown.minutes, 'minute', (hasHours && displayBreakdown.hours > 0) || (hasDays && displayBreakdown.days > 0) || (hasWeeks && displayBreakdown.weeks > 0) || (hasMonths && displayBreakdown.months > 0) || (hasYears && displayBreakdown.years > 0)));
     
     valueEl.innerHTML = parts.join(', ');
     
