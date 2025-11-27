@@ -100,6 +100,7 @@ const actorFilters = { movies: '', tvShows: '', anime: '' };
 const expandedCards = { movies: new Set() };
 const sortModes = { movies: 'title', tvShows: 'title', anime: 'title', books: 'title' };
 const listCaches = {};
+const finishedCaches = {};
 const metadataRefreshInflight = new Set();
 const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
 const PRIMARY_LIST_TYPES = ['movies', 'tvShows', 'anime', 'books'];
@@ -116,6 +117,8 @@ let jikanQueueActive = false;
 let lastJikanRequestTime = 0;
 let persistedNotifications = [];
 let notificationSignatureCache = new Set();
+const finishedListeners = {};
+let showFinishedOnly = false;
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES),
@@ -126,6 +129,15 @@ const MEDIA_TYPE_LABELS = {
   anime: 'Anime',
   books: 'Books',
 };
+
+function getDisplayCacheMap() {
+  return showFinishedOnly ? finishedCaches : listCaches;
+}
+
+function getDisplayCache(listType) {
+  const map = getDisplayCacheMap();
+  return map[listType];
+}
 // ============================================================================
 // Feature Map (grouped by responsibilities)
 // 1. Auth & Session Flow
@@ -150,6 +162,7 @@ const combinedListEl = document.getElementById('combined-list');
 const libraryStatsSummaryEl = document.getElementById('library-stats-summary');
 const unifiedSearchInput = document.getElementById('library-search');
 const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
+const finishedFilterToggle = document.getElementById('finished-filter-toggle');
 const notificationCenter = document.getElementById('notification-center');
 const notificationShell = document.getElementById('notification-shell');
 const notificationBellBtn = document.getElementById('notification-bell');
@@ -1387,6 +1400,7 @@ function loadPrimaryLists() {
     if (index >= order.length) return;
     const listType = order[index++];
     loadList(listType);
+    loadFinishedList(listType);
     if (index < order.length) {
       setTimeout(loadNext, LIST_LOAD_STAGGER_MS);
     }
@@ -1405,6 +1419,14 @@ function initUnifiedLibraryControls() {
     const type = btn.dataset.typeToggle;
     btn.addEventListener('click', () => toggleUnifiedTypeFilter(type));
   });
+  if (finishedFilterToggle) {
+    finishedFilterToggle.checked = showFinishedOnly;
+    finishedFilterToggle.addEventListener('change', (ev) => {
+      showFinishedOnly = Boolean(ev.target.checked);
+      renderUnifiedLibrary();
+      updateLibraryRuntimeStats();
+    });
+  }
   updateUnifiedTypeControls();
 }
 
@@ -1511,6 +1533,10 @@ function detachAllListeners() {
     if (typeof listeners[k] === 'function') listeners[k]();
   }
   Object.keys(listeners).forEach(k => delete listeners[k]);
+  for (const k in finishedListeners) {
+    if (typeof finishedListeners[k] === 'function') finishedListeners[k]();
+  }
+  Object.keys(finishedListeners).forEach(k => delete finishedListeners[k]);
 }
 
 // Load list items in real-time
@@ -1545,6 +1571,25 @@ function loadList(listType) {
 
   // store unsubscribe
   listeners[listType] = off;
+}
+
+function loadFinishedList(listType) {
+  if (!currentUser) return;
+  if (finishedListeners[listType]) {
+    finishedListeners[listType]();
+    delete finishedListeners[listType];
+  }
+  const finishedRef = ref(db, `users/${currentUser.uid}/finished/${listType}`);
+  const off = onValue(finishedRef, (snap) => {
+    finishedCaches[listType] = snap.val() || {};
+    if (showFinishedOnly) {
+      renderUnifiedLibrary();
+      updateLibraryRuntimeStats();
+    }
+  }, (err) => {
+    console.error('Finished list read error', err);
+  });
+  finishedListeners[listType] = off;
 }
 
 function createEl(tag, classNames = '', options = {}) {
@@ -1645,9 +1690,11 @@ function renderList(listType, data) {
 function renderUnifiedLibrary() {
   updateLibraryRuntimeStats();
   if (!combinedListEl) return;
-  const hasLoadedAny = PRIMARY_LIST_TYPES.some(type => listCaches[type] !== undefined);
+  const displayCaches = getDisplayCacheMap();
+  const hasLoadedAny = PRIMARY_LIST_TYPES.some(type => displayCaches[type] !== undefined);
   if (!hasLoadedAny) {
-    combinedListEl.innerHTML = '<div class="small">Loading your library...</div>';
+    const message = showFinishedOnly ? 'Loading finished entries...' : 'Loading your library...';
+    combinedListEl.innerHTML = `<div class="small">${message}</div>`;
     return;
   }
 
@@ -1673,7 +1720,10 @@ function renderUnifiedLibrary() {
   });
 
   if (!filtered.length) {
-    combinedListEl.innerHTML = '<div class="small">No entries match the current filters yet.</div>';
+    const emptyMessage = showFinishedOnly
+      ? 'No finished entries match the current filters yet.'
+      : 'No entries match the current filters yet.';
+    combinedListEl.innerHTML = `<div class="small">${emptyMessage}</div>`;
     return;
   }
 
@@ -1691,7 +1741,7 @@ function renderUnifiedLibrary() {
 function collectUnifiedEntries() {
   const allEntries = [];
   PRIMARY_LIST_TYPES.forEach(listType => {
-    const cacheEntries = Object.entries(listCaches[listType] || {});
+    const cacheEntries = Object.entries(getDisplayCache(listType) || {});
     if (!cacheEntries.length) return;
     if (isCollapsibleList(listType)) {
       const { displayRecords } = prepareCollapsibleRecords(listType, cacheEntries);
@@ -1738,8 +1788,9 @@ function updateLibraryRuntimeStats() {
 }
 
 function computeLibraryRuntimeStats() {
+  const cacheMap = getDisplayCacheMap();
   const stats = {
-    hasAnyData: PRIMARY_LIST_TYPES.some(type => listCaches[type] !== undefined),
+    hasAnyData: PRIMARY_LIST_TYPES.some(type => cacheMap[type] !== undefined),
     movieCount: 0,
     episodeCount: 0,
     totalMinutes: 0,
@@ -1748,7 +1799,7 @@ function computeLibraryRuntimeStats() {
     return stats;
   }
 
-  Object.values(listCaches.movies || {}).forEach(item => {
+  Object.values(cacheMap.movies || {}).forEach(item => {
     if (!item) return;
     stats.movieCount += 1;
     const minutes = estimateMovieRuntimeMinutes(item);
@@ -1757,7 +1808,7 @@ function computeLibraryRuntimeStats() {
     }
   });
 
-  Object.values(listCaches.tvShows || {}).forEach(item => {
+  Object.values(cacheMap.tvShows || {}).forEach(item => {
     if (!item) return;
     const episodes = getTvEpisodeCount(item);
     if (episodes > 0) {
@@ -1769,7 +1820,7 @@ function computeLibraryRuntimeStats() {
     }
   });
 
-  Object.values(listCaches.anime || {}).forEach(item => {
+  Object.values(cacheMap.anime || {}).forEach(item => {
     if (!item) return;
     const episodes = getAnimeEpisodeCount(item);
     if (episodes > 0) {
@@ -3790,6 +3841,7 @@ function resetFilterState() {
     expandedCards[key] = new Set();
   });
   Object.keys(listCaches).forEach(key => delete listCaches[key]);
+  Object.keys(finishedCaches).forEach(key => delete finishedCaches[key]);
   document.querySelectorAll('[data-role="actor-filter"]').forEach(input => {
     input.value = '';
   });
@@ -3798,6 +3850,10 @@ function resetFilterState() {
     const mode = sortModes[listType] || 'title';
     sel.value = mode;
   });
+  showFinishedOnly = false;
+  if (finishedFilterToggle) {
+    finishedFilterToggle.checked = false;
+  }
   COLLAPSIBLE_LISTS.forEach(listType => updateCollapsibleCardStates(listType));
   resetUnifiedFilters();
   renderUnifiedLibrary();
