@@ -3493,12 +3493,12 @@ function formatRuntimeDurationDetailed(totalMinutes) {
   if (!totalMinutes || totalMinutes <= 0) return '';
   const breakdown = breakdownDurationMinutes(totalMinutes);
   const parts = [];
-  if (breakdown.years) parts.push(formatDurationUnit(breakdown.years, 'year'));
-  if (breakdown.months) parts.push(formatDurationUnit(breakdown.months, 'month'));
-  if (breakdown.days) parts.push(formatDurationUnit(breakdown.days, 'day'));
-  if (breakdown.hours) parts.push(formatDurationUnit(breakdown.hours, 'hour'));
+  if (breakdown.years) parts.push(formatDurationUnit(breakdown.years, 'year', parts.length === 0));
+  if (breakdown.months) parts.push(formatDurationUnit(breakdown.months, 'month', parts.length === 0));
+  if (breakdown.days) parts.push(formatDurationUnit(breakdown.days, 'day', parts.length === 0));
+  if (breakdown.hours) parts.push(formatDurationUnit(breakdown.hours, 'hour', parts.length === 0));
   if (breakdown.minutes) {
-    parts.push(formatDurationUnit(breakdown.minutes, 'minute'));
+    parts.push(formatDurationUnit(breakdown.minutes, 'minute', parts.length === 0));
   }
   if (!parts.length) {
     return 'Less than a minute';
@@ -3506,10 +3506,10 @@ function formatRuntimeDurationDetailed(totalMinutes) {
   return parts.join(', ');
 }
 
-function formatDurationUnit(value, unitLabel) {
+function formatDurationUnit(value, unitLabel, isFirst = false) {
   const amount = Math.floor(value);
   if (!amount) return '';
-  const formattedAmount = amount < 10 
+  const formattedAmount = isFirst && amount < 10 
     ? `<span style="opacity: 0;">0</span>${amount}` 
     : `${amount}`;
   return `${formattedAmount} ${unitLabel}${amount === 1 ? '' : 's'}`;
