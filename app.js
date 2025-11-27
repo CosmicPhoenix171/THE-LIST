@@ -171,25 +171,34 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   if (!valueEl) return;
   
   const thresholds = [
-    { max: 60, class: 'runtime-minutes' },
-    { max: 1440, class: 'runtime-hours' },
-    { max: 10080, class: 'runtime-days' },
-    { max: 43200, class: 'runtime-weeks' },
-    { max: 525600, class: 'runtime-months' },
-    { max: Infinity, class: 'runtime-years' }
+    { max: 60, class: 'runtime-minutes', speed: 1 },
+    { max: 1440, class: 'runtime-hours', speed: 1.5 },
+    { max: 10080, class: 'runtime-days', speed: 2.2 },
+    { max: 43200, class: 'runtime-weeks', speed: 3.2 },
+    { max: 525600, class: 'runtime-months', speed: 4.5 },
+    { max: Infinity, class: 'runtime-years', speed: 6 }
   ];
   
-  const duration = 5000;
-  const fps = 60;
-  const totalFrames = (duration / 1000) * fps;
-  const increment = finalMinutes / totalFrames;
+  const baseDuration = 5000;
   let currentMinutes = 0;
-  let frame = 0;
   let lastThresholdIndex = -1;
+  let currentSpeed = 1;
+  const startTime = performance.now();
   
-  function updateFrame() {
-    currentMinutes += increment;
-    frame++;
+  function updateFrame(timestamp) {
+    const elapsed = timestamp - startTime;
+    
+    const thresholdIndex = thresholds.findIndex(t => currentMinutes < t.max);
+    if (thresholdIndex >= 0 && thresholdIndex !== lastThresholdIndex) {
+      currentSpeed = thresholds[thresholdIndex].speed;
+      thresholds.forEach(t => chipElement.classList.remove(t.class));
+      chipElement.classList.add(thresholds[thresholdIndex].class);
+      lastThresholdIndex = thresholdIndex;
+    }
+    
+    const baseProgress = elapsed / baseDuration;
+    const acceleratedProgress = Math.pow(baseProgress, 0.85);
+    currentMinutes = finalMinutes * acceleratedProgress;
     
     if (currentMinutes >= finalMinutes) {
       currentMinutes = finalMinutes;
@@ -198,14 +207,7 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
     const displayText = formatRuntimeDurationDetailed(Math.floor(currentMinutes)) + ' to finish';
     valueEl.textContent = displayText;
     
-    const thresholdIndex = thresholds.findIndex(t => currentMinutes < t.max);
-    if (thresholdIndex !== lastThresholdIndex && thresholdIndex >= 0) {
-      thresholds.forEach(t => chipElement.classList.remove(t.class));
-      chipElement.classList.add(thresholds[thresholdIndex].class);
-      lastThresholdIndex = thresholdIndex;
-    }
-    
-    if (frame < totalFrames && currentMinutes < finalMinutes) {
+    if (elapsed < baseDuration && currentMinutes < finalMinutes) {
       requestAnimationFrame(updateFrame);
     } else {
       valueEl.textContent = formatRuntimeDurationDetailed(finalMinutes) + ' to finish';
