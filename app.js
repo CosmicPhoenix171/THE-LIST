@@ -87,6 +87,7 @@ const ANIME_STATUS_PRIORITY = {
 };
 const NOTIFICATION_STORAGE_KEY = '__THE_LIST_NOTIFICATIONS__';
 const MAX_PERSISTED_NOTIFICATIONS = 50;
+const NOTIFICATION_SEEN_KEY = '__THE_LIST_NOTIFICATIONS_SEEN__';
 
 // -----------------------
 // App state
@@ -114,6 +115,7 @@ const jikanRequestQueue = [];
 let jikanQueueActive = false;
 let lastJikanRequestTime = 0;
 let persistedNotifications = [];
+let notificationSignatureCache = new Set();
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES),
@@ -990,19 +992,24 @@ function pushNotification({ title, message } = {}) {
     if (fallbackText) alert(fallbackText);
     return;
   }
-  const record = createNotificationRecord({ title, message });
+  const signature = getNotificationSignature(title, message);
+  if (signature && notificationSignatureCache.has(signature)) {
+    return;
+  }
+  const record = createNotificationRecord({ title, message, signature });
   addPersistedNotification(record);
   renderNotificationCard(record);
   updateNotificationEmptyState();
   updateNotificationBadge();
 }
 
-function createNotificationRecord({ title = '', message = '' } = {}) {
+function createNotificationRecord({ title = '', message = '', signature = '' } = {}) {
   return {
     id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     title,
     message,
     createdAt: Date.now(),
+    signature: signature || getNotificationSignature(title, message),
   };
 }
 
@@ -1069,6 +1076,9 @@ function addPersistedNotification(record) {
     persistedNotifications = persistedNotifications.slice(-MAX_PERSISTED_NOTIFICATIONS);
   }
   persistNotificationsToStorage();
+  if (record.signature) {
+    markNotificationSignatureSeen(record.signature);
+  }
 }
 
 function removePersistedNotification(recordId) {
@@ -1091,6 +1101,7 @@ function loadStoredNotifications() {
         title: entry.title || '',
         message: entry.message || '',
         createdAt: Number(entry.createdAt) || Date.now(),
+        signature: entry.signature || getNotificationSignature(entry.title || '', entry.message || ''),
       }))
       .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   } catch (_) {
@@ -1108,6 +1119,44 @@ function persistNotificationsToStorage() {
   } catch (_) {
     /* ignore storage failures */
   }
+}
+
+function getNotificationSignature(title = '', message = '') {
+  const normalizedTitle = (title || '').trim().toLowerCase();
+  const normalizedMessage = (message || '').trim().toLowerCase();
+  if (!normalizedTitle && !normalizedMessage) return '';
+  return `${normalizedTitle}::${normalizedMessage}`;
+}
+
+function loadNotificationSignatures() {
+  const raw = safeLocalStorageGet(NOTIFICATION_SEEN_KEY);
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter(Boolean));
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function persistNotificationSignatures() {
+  try {
+    if (!notificationSignatureCache.size) {
+      safeLocalStorageRemove(NOTIFICATION_SEEN_KEY);
+      return;
+    }
+    safeLocalStorageSet(NOTIFICATION_SEEN_KEY, JSON.stringify(Array.from(notificationSignatureCache)));
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function markNotificationSignatureSeen(signature) {
+  if (!signature) return;
+  if (notificationSignatureCache.has(signature)) return;
+  notificationSignatureCache.add(signature);
+  persistNotificationSignatures();
 }
 
 function initNotificationBell() {
