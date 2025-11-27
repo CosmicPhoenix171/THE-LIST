@@ -164,28 +164,61 @@ function getRuntimeThresholdClass(totalMinutes) {
   return 'runtime-years';
 }
 
-function formatRuntimeForAnimation(totalMinutes) {
-  if (totalMinutes < 60) {
-    return `${Math.floor(totalMinutes).toString().padStart(2, ' ')} minutes`;
+function createRuntimePillValueMap() {
+  return {
+    minutes: 0,
+    hours: 0,
+    days: 0,
+    weeks: 0,
+    months: 0,
+    years: 0,
+  };
+}
+
+function formatRuntimePillNumber(value) {
+  const amount = Math.max(0, Math.floor(value));
+  if (amount === 0) {
+    return '00';
   }
-  if (totalMinutes < 1440) {
-    const hours = totalMinutes / 60;
-    return `${hours.toFixed(1).padStart(4, ' ')} hours`;
+  if (amount < 10) {
+    return `<span class="runtime-pill-leading-zero">0</span>${amount}`;
   }
-  if (totalMinutes < 10080) {
-    const days = totalMinutes / 1440;
-    return `${days.toFixed(1).padStart(4, ' ')} days`;
-  }
-  if (totalMinutes < 43200) {
-    const weeks = totalMinutes / 10080;
-    return `${weeks.toFixed(1).padStart(4, ' ')} weeks`;
-  }
-  if (totalMinutes < 525600) {
-    const months = totalMinutes / 43200;
-    return `${months.toFixed(1).padStart(4, ' ')} months`;
-  }
-  const years = totalMinutes / 525600;
-  return `${years.toFixed(1).padStart(4, ' ')} years`;
+  return amount.toString().padStart(2, '0');
+}
+
+function getRuntimeUnitBreakdown(totalMinutes) {
+  const minutesPerHour = 60;
+  const minutesPerDay = minutesPerHour * 24;
+  const minutesPerWeek = minutesPerDay * 7;
+  const minutesPerMonth = minutesPerDay * 30;
+  const minutesPerYear = minutesPerDay * 365;
+  let remaining = Math.max(0, Math.floor(totalMinutes));
+  const years = Math.floor(remaining / minutesPerYear);
+  remaining -= years * minutesPerYear;
+  const months = Math.floor(remaining / minutesPerMonth);
+  remaining -= months * minutesPerMonth;
+  const weeks = Math.floor(remaining / minutesPerWeek);
+  remaining -= weeks * minutesPerWeek;
+  const days = Math.floor(remaining / minutesPerDay);
+  remaining -= days * minutesPerDay;
+  const hours = Math.floor(remaining / minutesPerHour);
+  remaining -= hours * minutesPerHour;
+  const minutes = remaining;
+  return { minutes, hours, days, weeks, months, years };
+}
+
+function renderRuntimePillsDisplay(valueMap = createRuntimePillValueMap(), visibilityMap = {}) {
+  const pills = RUNTIME_PILL_UNITS.map(({ key, label }) => {
+    const isVisible = Boolean(visibilityMap[key]);
+    const valueMarkup = formatRuntimePillNumber(valueMap[key] || 0);
+    return `
+      <span class="runtime-pill runtime-pill-${key}${isVisible ? ' is-visible' : ''}">
+        <span class="runtime-pill-value">${valueMarkup}</span>
+        <span class="runtime-pill-label">${label}</span>
+      </span>
+    `;
+  }).join('');
+  return `<span class="runtime-pill-row">${pills}</span>`;
 }
 
 function animateRuntimeProgression(chipElement, finalMinutes) {
@@ -197,93 +230,87 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   const TARGET_SECTION_DURATION_MS = 5000;
   const FPS = 60;
   const FRAMES_PER_SECTION = (TARGET_SECTION_DURATION_MS / 1000) * FPS;
+  const finalUnitValues = getRuntimeUnitBreakdown(finalMinutes);
   
-  // Calculate breakdown for final value
-  const breakdown = breakdownDurationMinutes(finalMinutes);
-  let { years, months, days, hours, minutes } = breakdown;
-  let weeks = 0;
-  if (days >= 7) {
-    weeks = Math.floor(days / 7);
-    days = days % 7;
-  }
-
   const definitions = [
-    { unit: 'minutes', threshold: 0, divisor: 1, max: 60, class: 'runtime-minutes' },
-    { unit: 'hours', threshold: 60, divisor: 60, max: 24, class: 'runtime-hours' },
-    { unit: 'days', threshold: 1440, divisor: 1440, max: 7, class: 'runtime-days' },
-    { unit: 'weeks', threshold: 10080, divisor: 10080, max: 4, class: 'runtime-weeks' },
-    { unit: 'months', threshold: 43200, divisor: 43200, max: 12, class: 'runtime-months' },
-    { unit: 'years', threshold: 525600, divisor: 525600, max: Infinity, class: 'runtime-years' }
+    { unit: 'minutes', threshold: 0, divisor: 1, max: 60, className: 'runtime-minutes' },
+    { unit: 'hours', threshold: 60, divisor: 60, max: 24, className: 'runtime-hours' },
+    { unit: 'days', threshold: 1440, divisor: 1440, max: 7, className: 'runtime-days' },
+    { unit: 'weeks', threshold: 10080, divisor: 10080, max: 4, className: 'runtime-weeks' },
+    { unit: 'months', threshold: 43200, divisor: 43200, max: 12, className: 'runtime-months' },
+    { unit: 'years', threshold: 525600, divisor: 525600, max: Infinity, className: 'runtime-years' }
   ];
 
   const sequence = [];
+  let stageStartMinutes = 0;
   for (let i = 0; i < definitions.length; i++) {
     const def = definitions[i];
-    if (finalMinutes >= def.threshold) {
-       const nextDef = definitions[i+1];
-       const isLast = !nextDef || finalMinutes < nextDef.threshold;
-       
-       sequence.push({
-         unit: def.unit,
-         max: def.max,
-         divisor: def.divisor,
-         class: def.class,
-         target: isLast ? (finalMinutes / def.divisor) : def.max
-       });
-       
-       if (isLast) break;
-    }
+    if (finalMinutes < def.threshold && i !== 0) break;
+    const nextDef = definitions[i + 1];
+    const isLastStage = !nextDef || finalMinutes < nextDef.threshold;
+    const plannedRange = isLastStage
+      ? Math.max(finalMinutes - stageStartMinutes, 0)
+      : def.max * def.divisor;
+    const stageEndMinutes = stageStartMinutes + plannedRange;
+    const rangeMinutes = stageEndMinutes - stageStartMinutes;
+    sequence.push({
+      unit: def.unit,
+      className: def.className,
+      startMinutes: stageStartMinutes,
+      endMinutes: stageEndMinutes,
+      rangeMinutes,
+      finalValue: finalUnitValues[def.unit] || 0,
+    });
+    stageStartMinutes = stageEndMinutes;
+    if (isLastStage) break;
+  }
+
+  if (!sequence.length) {
+    valueEl.innerHTML = renderRuntimePillsDisplay(finalUnitValues, { minutes: true });
+    return;
   }
   
   let activeStageIndex = 0;
   let currentFrame = 0;
-  let currentStageValue = 0;
 
   function updateFrame() {
     if (activeStageIndex >= sequence.length) {
-      // Final state: show everything based on actual values
-      // We construct a forceShow that mimics the final state of the animation
-      // to prevent layout shifts if some values are 0 in the final result
-      const finalForceShow = {};
-      sequence.forEach(s => finalForceShow[s.unit] = true);
-      
-      valueEl.innerHTML = formatRuntimeDurationDetailed(finalMinutes, finalForceShow);
-      definitions.forEach(d => chipElement.classList.remove(d.class));
+      const visibilityMap = sequence.reduce((acc, stage) => {
+        acc[stage.unit] = true;
+        return acc;
+      }, {});
+      valueEl.innerHTML = renderRuntimePillsDisplay(finalUnitValues, visibilityMap);
+      definitions.forEach(d => chipElement.classList.remove(d.className));
       chipElement.classList.add(getRuntimeThresholdClass(finalMinutes));
       return;
     }
     
     const stage = sequence[activeStageIndex];
+    if (stage.rangeMinutes <= 0) {
+      activeStageIndex++;
+      requestAnimationFrame(updateFrame);
+      return;
+    }
+
     currentFrame++;
     const progress = Math.min(currentFrame / FRAMES_PER_SECTION, 1);
-    
-    // Calculate current value for this stage
-    currentStageValue = progress * stage.target;
-    
-    // Convert to total minutes. 
-    // Since we want "separate" zones, we only calculate the minutes for the CURRENT unit.
-    // Lower units will be 0 (and thus display as 00 due to forceShow).
-    const currentTotalMinutes = currentStageValue * stage.divisor;
-    
-    // Update color
-    definitions.forEach(d => chipElement.classList.remove(d.class));
-    chipElement.classList.add(stage.class);
-    
-    // Determine visible units: Current stage + all previous stages
-    const visibleUnits = {};
+    const currentTotalMinutes = stage.startMinutes + (stage.rangeMinutes * progress);
+    const displayValues = getRuntimeUnitBreakdown(currentTotalMinutes);
+    const visibilityMap = {};
     for (let i = 0; i <= activeStageIndex; i++) {
-        visibleUnits[sequence[i].unit] = true;
+      visibilityMap[sequence[i].unit] = true;
     }
-    
-    // Render
-    valueEl.innerHTML = formatRuntimeDurationDetailed(currentTotalMinutes, visibleUnits);
-    
+
+    definitions.forEach(d => chipElement.classList.remove(d.className));
+    chipElement.classList.add(stage.className);
+
+    valueEl.innerHTML = renderRuntimePillsDisplay(displayValues, visibilityMap);
+
     if (progress >= 1) {
       activeStageIndex++;
       currentFrame = 0;
-      currentStageValue = 0;
     }
-    
+
     requestAnimationFrame(updateFrame);
   }
   
@@ -1958,13 +1985,17 @@ function updateLibraryRuntimeStats() {
   libraryStatsSummaryEl.innerHTML = '';
   const movieLabel = stats.movieCount === 1 ? 'Movie' : 'Movies';
   const episodeLabel = stats.episodeCount === 1 ? 'Episode' : 'Episodes';
-  const runtimeText = '0 minutes to finish';
+  const runtimePlaceholder = renderRuntimePillsDisplay();
 
   const movieChip = buildLibraryStatChip(movieLabel, formatLibraryStatNumber(stats.movieCount));
   const episodeChip = buildLibraryStatChip(episodeLabel, formatLibraryStatNumber(stats.episodeCount));
-  const runtimeChip = buildLibraryStatChip('Finish Time', runtimeText, { 
+  const runtimeChip = buildLibraryStatChip('Finish Time', '', { 
     modifier: 'runtime runtime-minutes' 
   });
+  const runtimeValueEl = runtimeChip.querySelector('.library-stat-value');
+  if (runtimeValueEl) {
+    runtimeValueEl.innerHTML = runtimePlaceholder;
+  }
 
   libraryStatsSummaryEl.appendChild(movieChip);
   libraryStatsSummaryEl.appendChild(episodeChip);
@@ -1977,7 +2008,10 @@ function updateLibraryRuntimeStats() {
     if (valueEl) valueEl.textContent = 'Runtime info unavailable';
   }
 
-  const spokenSummary = `${stats.movieCount} ${movieLabel}, ${stats.episodeCount} ${episodeLabel}, ${runtimeText}`;
+  const runtimeSummaryText = stats.totalMinutes > 0
+    ? (formatRuntimeDuration(stats.totalMinutes) || 'Runtime info unavailable')
+    : 'Runtime info unavailable';
+  const spokenSummary = `${stats.movieCount} ${movieLabel}, ${stats.episodeCount} ${episodeLabel}, ${runtimeSummaryText}`;
   libraryStatsSummaryEl.setAttribute('aria-label', spokenSummary);
 }
 
