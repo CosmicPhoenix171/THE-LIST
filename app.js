@@ -229,10 +229,20 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   let activeStageIndex = 0;
   let currentFrame = 0;
   let currentStageValue = 0;
+  
+  // Determine which units should be forced visible based on final value
+  const forceShow = {
+    years: years > 0,
+    months: months > 0 || years > 0,
+    weeks: weeks > 0 || months > 0 || years > 0,
+    days: days > 0 || weeks > 0 || months > 0 || years > 0,
+    hours: hours > 0 || days > 0 || weeks > 0 || months > 0 || years > 0,
+    minutes: true
+  };
 
   function updateFrame() {
     if (activeStageIndex >= sequence.length) {
-      valueEl.innerHTML = formatRuntimeDurationDetailed(finalMinutes);
+      valueEl.innerHTML = formatRuntimeDurationDetailed(finalMinutes, forceShow);
       definitions.forEach(d => chipElement.classList.remove(d.class));
       chipElement.classList.add(getRuntimeThresholdClass(finalMinutes));
       return;
@@ -252,8 +262,8 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
     definitions.forEach(d => chipElement.classList.remove(d.class));
     chipElement.classList.add(stage.class);
     
-    // Render full breakdown
-    valueEl.innerHTML = formatRuntimeDurationDetailed(currentTotalMinutes);
+    // Render full breakdown with forced units
+    valueEl.innerHTML = formatRuntimeDurationDetailed(currentTotalMinutes, forceShow);
     
     if (progress >= 1) {
       activeStageIndex++;
@@ -3510,8 +3520,8 @@ function formatRuntimeDuration(totalMinutes) {
   return parts.join(' ');
 }
 
-function formatRuntimeDurationDetailed(totalMinutes) {
-  if (!totalMinutes || totalMinutes <= 0) return '';
+function formatRuntimeDurationDetailed(totalMinutes, forceShow = {}) {
+  if ((!totalMinutes || totalMinutes <= 0) && Object.keys(forceShow).length === 0) return '';
   const breakdown = breakdownDurationMinutes(totalMinutes);
   
   // Extract weeks from days
@@ -3523,23 +3533,26 @@ function formatRuntimeDurationDetailed(totalMinutes) {
   breakdown.weeks = weeks;
 
   const parts = [];
-  const hasYears = breakdown.years > 0;
-  const hasMonths = breakdown.months > 0;
-  const hasWeeks = breakdown.weeks > 0;
-  const hasDays = breakdown.days > 0;
-  const hasHours = breakdown.hours > 0;
+  const hasYears = breakdown.years > 0 || forceShow.years;
+  const hasMonths = breakdown.months > 0 || forceShow.months;
+  const hasWeeks = breakdown.weeks > 0 || forceShow.weeks;
+  const hasDays = breakdown.days > 0 || forceShow.days;
+  const hasHours = breakdown.hours > 0 || forceShow.hours;
+  const hasMinutes = true; // Always show minutes if we are showing anything
   
-  if (hasYears) parts.push(formatDurationUnit(breakdown.years, 'year'));
-  if (hasMonths || hasYears) parts.push(formatDurationUnit(breakdown.months, 'month', hasYears));
-  if (hasWeeks || hasMonths || hasYears) parts.push(formatDurationUnit(breakdown.weeks, 'week', hasMonths || hasYears));
-  if (hasDays || hasWeeks || hasMonths || hasYears) parts.push(formatDurationUnit(breakdown.days, 'day', hasWeeks || hasMonths || hasYears));
-  if (hasHours || hasDays || hasWeeks || hasMonths || hasYears) parts.push(formatDurationUnit(breakdown.hours, 'hour', hasDays || hasWeeks || hasMonths || hasYears));
-  parts.push(formatDurationUnit(breakdown.minutes, 'minute', hasHours || hasDays || hasWeeks || hasMonths || hasYears));
+  if (hasYears) parts.push(formatDurationUnit(breakdown.years, 'year', true));
+  if (hasMonths) parts.push(formatDurationUnit(breakdown.months, 'month', true));
+  if (hasWeeks) parts.push(formatDurationUnit(breakdown.weeks, 'week', true));
+  if (hasDays) parts.push(formatDurationUnit(breakdown.days, 'day', true));
+  if (hasHours) parts.push(formatDurationUnit(breakdown.hours, 'hour', true));
+  if (hasMinutes) parts.push(formatDurationUnit(breakdown.minutes, 'minute', true));
   
   if (!parts.length) {
     return 'Less than a minute';
   }
-  return parts.join(', ');
+  
+  // Wrap each part in a span for stability
+  return parts.map(p => `<span class="runtime-part">${p}</span>`).join(', ');
 }
 
 function formatDurationUnit(value, unitLabel, keepZero = false) {
