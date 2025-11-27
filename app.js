@@ -2558,6 +2558,11 @@ function buildMovieCardActions(listType, id, item) {
       label: 'Edit',
       handler: () => openEditModal(listType, id, item)
     },
+    {
+      className: 'btn success',
+      label: 'Finished',
+      handler: () => finishItem(listType, id)
+    },
     ...(SERIES_BULK_DELETE_LISTS.has(listType) && item?.seriesName ? [{
       className: 'btn danger',
       label: 'Delete Series',
@@ -2680,6 +2685,13 @@ function buildStandardCardActions(listType, id, item) {
   const editBtn = createEl('button', 'btn secondary', { text: 'Edit' });
   editBtn.addEventListener('click', () => openEditModal(listType, id, item));
   actions.appendChild(editBtn);
+
+  const finishBtn = createEl('button', 'btn success', { text: 'Finished' });
+  finishBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    finishItem(listType, id);
+  });
+  actions.appendChild(finishBtn);
 
   if (SERIES_BULK_DELETE_LISTS.has(listType) && item?.seriesName) {
     const deleteSeriesBtn = createEl('button', 'btn danger', { text: 'Delete Series' });
@@ -4678,6 +4690,44 @@ async function moveItemBetweenLists(sourceListType, targetListType, itemId, item
   await set(targetRef, cleaned);
   const sourceRef = ref(db, `users/${currentUser.uid}/${sourceListType}/${itemId}`);
   await remove(sourceRef);
+}
+
+async function finishItem(listType, itemId) {
+  if (!currentUser) {
+    alert('Not signed in');
+    return;
+  }
+  const cache = listCaches[listType] || {};
+  const item = cache[itemId];
+  if (!item) {
+    alert('Unable to find this entry. Refresh and try again.');
+    return;
+  }
+  const confirmed = confirm('Mark this item as finished? It will be removed from your main list but kept in your Finished library.');
+  if (!confirmed) return;
+
+  const payload = { ...item };
+  delete payload.__id;
+  delete payload.__type;
+  delete payload.__source;
+  payload.finishedAt = Date.now();
+
+  const finishedRef = ref(db, `users/${currentUser.uid}/finished/${listType}/${itemId}`);
+  const sourceRef = ref(db, `users/${currentUser.uid}/${listType}/${itemId}`);
+  try {
+    await set(finishedRef, payload);
+    await remove(sourceRef);
+    pushNotification({
+      title: 'Moved to Finished',
+      message: `${item.title || 'Entry'} now lives in your Finished list.`
+    });
+  } catch (err) {
+    console.error('finishItem failed', err);
+    pushNotification({
+      title: 'Could not finish item',
+      message: 'Something went wrong while filing this entry. Please try again.'
+    });
+  }
 }
 
 // Delete an item
