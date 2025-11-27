@@ -1487,8 +1487,10 @@ function loadPrimaryLists() {
   let index = 0;
   const loadNext = () => {
     if (index >= order.length) {
-      libraryFullyLoaded = true;
-      renderUnifiedLibrary();
+      setTimeout(() => {
+        libraryFullyLoaded = true;
+        renderUnifiedLibrary();
+      }, LIST_LOAD_STAGGER_MS + 100);
       return;
     }
     const listType = order[index++];
@@ -1496,6 +1498,11 @@ function loadPrimaryLists() {
     loadFinishedList(listType);
     if (index < order.length) {
       setTimeout(loadNext, LIST_LOAD_STAGGER_MS);
+    } else {
+      setTimeout(() => {
+        libraryFullyLoaded = true;
+        renderUnifiedLibrary();
+      }, LIST_LOAD_STAGGER_MS + 100);
     }
   };
   loadNext();
