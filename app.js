@@ -3493,22 +3493,26 @@ function formatRuntimeDurationDetailed(totalMinutes) {
   if (!totalMinutes || totalMinutes <= 0) return '';
   const breakdown = breakdownDurationMinutes(totalMinutes);
   const parts = [];
-  if (breakdown.years) parts.push(formatDurationUnit(breakdown.years, 'year'));
-  if (breakdown.months) parts.push(formatDurationUnit(breakdown.months, 'month'));
-  if (breakdown.days) parts.push(formatDurationUnit(breakdown.days, 'day'));
-  if (breakdown.hours) parts.push(formatDurationUnit(breakdown.hours, 'hour'));
-  if (breakdown.minutes) {
-    parts.push(formatDurationUnit(breakdown.minutes, 'minute'));
-  }
+  const hasYears = breakdown.years > 0;
+  const hasMonths = breakdown.months > 0;
+  const hasDays = breakdown.days > 0;
+  const hasHours = breakdown.hours > 0;
+  
+  if (hasYears) parts.push(formatDurationUnit(breakdown.years, 'year'));
+  if (hasMonths || hasYears) parts.push(formatDurationUnit(breakdown.months, 'month', hasYears));
+  if (hasDays || hasMonths || hasYears) parts.push(formatDurationUnit(breakdown.days, 'day', hasMonths || hasYears));
+  if (hasHours || hasDays || hasMonths || hasYears) parts.push(formatDurationUnit(breakdown.hours, 'hour', hasDays || hasMonths || hasYears));
+  parts.push(formatDurationUnit(breakdown.minutes, 'minute', hasHours || hasDays || hasMonths || hasYears));
+  
   if (!parts.length) {
     return 'Less than a minute';
   }
   return parts.join(', ');
 }
 
-function formatDurationUnit(value, unitLabel) {
+function formatDurationUnit(value, unitLabel, keepZero = false) {
   const amount = Math.floor(value);
-  if (!amount) return '';
+  if (!amount && !keepZero) return '';
   const formattedAmount = amount < 10 
     ? `<span style="opacity: 0;">0</span>${amount}` 
     : `${amount}`;
