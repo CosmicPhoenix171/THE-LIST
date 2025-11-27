@@ -198,6 +198,15 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   const FPS = 60;
   const FRAMES_PER_SECTION = (TARGET_SECTION_DURATION_MS / 1000) * FPS;
   
+  // Calculate breakdown for forceShow logic
+  const breakdown = breakdownDurationMinutes(finalMinutes);
+  let { years, months, days, hours, minutes } = breakdown;
+  let weeks = 0;
+  if (days >= 7) {
+    weeks = Math.floor(days / 7);
+    days = days % 7;
+  }
+
   const definitions = [
     { unit: 'minutes', threshold: 0, divisor: 1, max: 60, class: 'runtime-minutes' },
     { unit: 'hours', threshold: 60, divisor: 60, max: 24, class: 'runtime-hours' },
