@@ -142,6 +142,7 @@ const signOutBtn = document.getElementById('sign-out');
 const backToTopBtn = document.getElementById('back-to-top');
 const modalRoot = document.getElementById('modal-root');
 const combinedListEl = document.getElementById('combined-list');
+const libraryStatsSummaryEl = document.getElementById('library-stats-summary');
 const unifiedSearchInput = document.getElementById('library-search');
 const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
 const notificationCenter = document.getElementById('notification-center');

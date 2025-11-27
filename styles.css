@@ -74,6 +74,13 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .main{padding:1.25rem 1.5rem 2rem;max-width:1100px;margin:0 auto}
 .section{padding:1.25rem 0}
 .section h2{font-size:1.35rem;font-weight:700;margin:0 0 .9rem;letter-spacing:.25px}
+.library-header{display:flex;flex-direction:column;gap:.25rem;margin-bottom:.9rem}
+@media (min-width:640px){
+  .library-header{flex-direction:row;align-items:flex-end;justify-content:space-between}
+  .library-header h2{margin:0}
+}
+.library-stats-line{color:var(--text-300);font-size:.92rem}
+.library-stats-line strong{color:var(--text-100)}
 .section-content{display:flex;flex-direction:column;gap:1.25rem}
 
 .add-form{
