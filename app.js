@@ -44,8 +44,12 @@ const TMDB_KEYWORD_DISCOVER_MAX_RESULTS = 40;
 const GOOGLE_BOOKS_API_KEY = '';
 const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
 const JIKAN_API_BASE_URL = 'https://api.jikan.moe/v4';
+const LIST_LOAD_STAGGER_MS = 600;
+const JIKAN_REQUEST_MIN_DELAY_MS = 500;
+const JIKAN_RETRY_BASE_DELAY_MS = 1500;
+const JIKAN_MAX_RETRIES = 2;
 const MYANIMELIST_ANIME_URL = 'https://myanimelist.net/anime';
-const METADATA_SCHEMA_VERSION = 3;
+const METADATA_SCHEMA_VERSION = 4;
 const APP_VERSION = 'test-pages-2025.11.15';
 const ANIME_FRANCHISE_RELATION_TYPES = new Set([
   'SEQUEL',
@@ -81,6 +85,9 @@ const ANIME_STATUS_PRIORITY = {
   FINISHED: 2,
   UNKNOWN: 1,
 };
+const NOTIFICATION_STORAGE_KEY = '__THE_LIST_NOTIFICATIONS__';
+const MAX_PERSISTED_NOTIFICATIONS = 50;
+const NOTIFICATION_SEEN_KEY = '__THE_LIST_NOTIFICATIONS_SEEN__';
 
 // -----------------------
 // App state
@@ -104,6 +111,11 @@ const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
+const jikanRequestQueue = [];
+let jikanQueueActive = false;
+let lastJikanRequestTime = 0;
+let persistedNotifications = [];
+let notificationSignatureCache = new Set();
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES),
@@ -114,6 +126,17 @@ const MEDIA_TYPE_LABELS = {
   anime: 'Anime',
   books: 'Books',
 };
+// ============================================================================
+// Feature Map (grouped by responsibilities)
+// 1. Auth & Session Flow
+// 2. Add Modal & Item Management
+// 3. List Loading & Collapsible Cards
+// 4. Unified Library
+// 5. Metadata & External API Pipelines
+// 6. Spinner / Wheel Experience
+// 7. Anime Franchise Automations
+// 8. Utility Helpers & Shared Formatters
+// ============================================================================
 
 // DOM references
 const loginScreen = document.getElementById('login-screen');
@@ -124,15 +147,21 @@ const signOutBtn = document.getElementById('sign-out');
 const backToTopBtn = document.getElementById('back-to-top');
 const modalRoot = document.getElementById('modal-root');
 const combinedListEl = document.getElementById('combined-list');
+const libraryStatsSummaryEl = document.getElementById('library-stats-summary');
 const unifiedSearchInput = document.getElementById('library-search');
 const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
 const notificationCenter = document.getElementById('notification-center');
+const notificationShell = document.getElementById('notification-shell');
+const notificationBellBtn = document.getElementById('notification-bell');
+const notificationBadgeEl = document.getElementById('notification-count');
+const notificationEmptyStateEl = document.getElementById('notification-empty-state');
 const wheelModalTrigger = document.getElementById('open-wheel-modal');
 const wheelModalTemplate = document.getElementById('wheel-modal-template');
 let wheelSourceSelect = null;
 let wheelSpinnerEl = null;
 let wheelResultEl = null;
 let wheelModalState = null;
+let notificationPopoverOpen = false;
 const addModalTrigger = document.getElementById('open-add-modal');
 const addFormTemplatesContainer = document.getElementById('add-form-templates');
 const addFormTemplateMap = {};
@@ -408,6 +437,10 @@ let auth = null;
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
+// ============================================================================
+// Feature 1: Auth & Session Flow
+// ============================================================================
+
 // Initialize Firebase and services
 function initFirebase() {
   if (appInitialized) return;
@@ -459,6 +492,10 @@ function initFirebase() {
     updateBackToTopVisibility();
   }
 }
+
+// ============================================================================
+// Feature 2: Add Modal & Item Management
+// ============================================================================
 
 function setupAddModal() {
   if (!addModalTrigger || !modalRoot) return;
@@ -600,107 +637,6 @@ function setActiveAddModalType(listType) {
       button.setAttribute('aria-pressed', 'false');
     }
   });
-}
-
-function setupWheelModal() {
-  if (!wheelModalTrigger || !wheelModalTemplate || !modalRoot) return;
-  wheelModalTrigger.addEventListener('click', () => openWheelModal());
-}
-
-function openWheelModal() {
-  if (!wheelModalTemplate || !modalRoot) return;
-  closeAddModal();
-  closeWheelModal();
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop wheel-modal-backdrop';
-  const modal = document.createElement('div');
-  modal.className = 'modal wheel-modal';
-  const fragment = wheelModalTemplate.content.cloneNode(true);
-  modal.appendChild(fragment);
-  backdrop.appendChild(modal);
-  modalRoot.innerHTML = '';
-  modalRoot.appendChild(backdrop);
-
-  const sourceSelect = modal.querySelector('[data-wheel-source]');
-  const spinButton = modal.querySelector('[data-wheel-spin]');
-  const spinnerEl = modal.querySelector('[data-wheel-spinner]');
-  const resultEl = modal.querySelector('[data-wheel-result]');
-  const closeBtn = modal.querySelector('[data-wheel-close]');
-
-  wheelSourceSelect = sourceSelect || null;
-  wheelSpinnerEl = spinnerEl || null;
-  wheelResultEl = resultEl || null;
-  if (wheelSpinnerEl) {
-    wheelSpinnerEl.classList.add('hidden');
-    wheelSpinnerEl.classList.remove('spinning');
-    wheelSpinnerEl.innerHTML = '';
-  }
-  if (wheelResultEl) {
-    wheelResultEl.innerHTML = '';
-  }
-
-  const spinHandler = () => {
-    if (!wheelSourceSelect) return;
-    spinWheel(wheelSourceSelect.value);
-  };
-  if (spinButton) {
-    spinButton.addEventListener('click', spinHandler);
-  }
-
-  const closeHandler = () => closeWheelModal();
-  if (closeBtn) {
-    closeBtn.addEventListener('click', closeHandler);
-  }
-
-  const backdropHandler = (event) => {
-    if (event.target === backdrop) {
-      closeWheelModal();
-    }
-  };
-  backdrop.addEventListener('click', backdropHandler);
-
-  const keyHandler = (event) => {
-    if (event.key === 'Escape') {
-      closeWheelModal();
-    }
-  };
-  document.addEventListener('keydown', keyHandler);
-
-  wheelModalState = {
-    backdrop,
-    modal,
-    spinButton,
-    spinHandler,
-    closeBtn,
-    closeHandler,
-    backdropHandler,
-    keyHandler,
-  };
-}
-
-function closeWheelModal() {
-  if (wheelModalState) {
-    if (wheelModalState.spinButton && wheelModalState.spinHandler) {
-      wheelModalState.spinButton.removeEventListener('click', wheelModalState.spinHandler);
-    }
-    if (wheelModalState.closeBtn && wheelModalState.closeHandler) {
-      wheelModalState.closeBtn.removeEventListener('click', wheelModalState.closeHandler);
-    }
-    if (wheelModalState.backdrop && wheelModalState.backdropHandler) {
-      wheelModalState.backdrop.removeEventListener('click', wheelModalState.backdropHandler);
-    }
-    if (wheelModalState.keyHandler) {
-      document.removeEventListener('keydown', wheelModalState.keyHandler);
-    }
-    if (wheelModalState.backdrop && wheelModalState.backdrop.parentNode) {
-      wheelModalState.backdrop.parentNode.removeChild(wheelModalState.backdrop);
-    }
-  }
-  clearWheelAnimation();
-  wheelModalState = null;
-  wheelSourceSelect = null;
-  wheelSpinnerEl = null;
-  wheelResultEl = null;
 }
 
 // Prompt user to add missing collection parts
@@ -907,6 +843,7 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywor
               overwrite: true,
               fallbackTitle: part.title,
               fallbackYear: part.year,
+              listType,
             });
             Object.assign(payload, updates);
           }
@@ -943,6 +880,10 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywor
     modalRoot.appendChild(backdrop);
   });
 }
+
+// ============================================================================
+// Feature 7: Anime Franchise Automations
+// ============================================================================
 
 function formatAnimeFranchiseEntryLabel(entry) {
   if (!entry) return 'Untitled entry';
@@ -1044,25 +985,49 @@ function promptAnimeFranchiseSelection(plan, { rootAniListId, title } = {}) {
   });
 }
 
-function pushNotification({ title, message, duration = 9000 } = {}) {
+function pushNotification({ title, message } = {}) {
   if (!title && !message) return;
   if (!notificationCenter) {
     const fallbackText = [title, message].filter(Boolean).join('\n');
     if (fallbackText) alert(fallbackText);
     return;
   }
+  const signature = getNotificationSignature(title, message);
+  if (signature && notificationSignatureCache.has(signature)) {
+    return;
+  }
+  const record = createNotificationRecord({ title, message, signature });
+  addPersistedNotification(record);
+  renderNotificationCard(record);
+  updateNotificationEmptyState();
+  updateNotificationBadge();
+}
+
+function createNotificationRecord({ title = '', message = '', signature = '' } = {}) {
+  return {
+    id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    title,
+    message,
+    createdAt: Date.now(),
+    signature: signature || getNotificationSignature(title, message),
+  };
+}
+
+function renderNotificationCard(record) {
+  if (!notificationCenter || !record) return null;
   const card = document.createElement('div');
   card.className = 'notification-card';
-  if (title) {
+  card.dataset.notificationId = record.id;
+  if (record.title) {
     const titleEl = document.createElement('div');
     titleEl.className = 'notification-title';
-    titleEl.textContent = title;
+    titleEl.textContent = record.title;
     card.appendChild(titleEl);
   }
-  if (message) {
+  if (record.message) {
     const bodyEl = document.createElement('div');
     bodyEl.className = 'notification-body';
-    bodyEl.textContent = message;
+    bodyEl.textContent = record.message;
     card.appendChild(bodyEl);
   }
   const footer = document.createElement('div');
@@ -1073,37 +1038,200 @@ function pushNotification({ title, message, duration = 9000 } = {}) {
   closeBtn.textContent = 'Dismiss';
   footer.appendChild(closeBtn);
   card.appendChild(footer);
-
+  closeBtn.addEventListener('click', () => dismissNotification(record.id));
   notificationCenter.appendChild(card);
   requestAnimationFrame(() => card.classList.add('visible'));
+  return card;
+}
 
-  let dismissed = false;
-  let timerId = null;
-
-  const dismiss = () => {
-    if (dismissed) return;
-    dismissed = true;
-    card.classList.remove('visible');
-    setTimeout(() => {
-      if (card.parentNode) card.parentNode.removeChild(card);
-    }, 240);
+function dismissNotification(recordId) {
+  removePersistedNotification(recordId);
+  if (!notificationCenter) {
+    updateNotificationEmptyState();
+    updateNotificationBadge();
+    return;
+  }
+  const card = notificationCenter.querySelector(`[data-notification-id="${recordId}"]`);
+  const finalize = () => {
+    if (card && card.parentNode) {
+      card.parentNode.removeChild(card);
+    }
+    updateNotificationEmptyState();
+    updateNotificationBadge();
   };
+  if (!card) {
+    finalize();
+    return;
+  }
+  card.classList.remove('visible');
+  setTimeout(finalize, 240);
+}
 
-  timerId = setTimeout(dismiss, Math.max(4000, duration));
+function addPersistedNotification(record) {
+  if (!record) return;
+  const duplicate = persistedNotifications.some(existing => existing.title === record.title && existing.message === record.message);
+  if (duplicate) return;
+  persistedNotifications = [...persistedNotifications, record];
+  if (persistedNotifications.length > MAX_PERSISTED_NOTIFICATIONS) {
+    persistedNotifications = persistedNotifications.slice(-MAX_PERSISTED_NOTIFICATIONS);
+  }
+  persistNotificationsToStorage();
+  if (record.signature) {
+    markNotificationSignatureSeen(record.signature);
+  }
+}
 
-  card.addEventListener('mouseenter', () => {
-    if (timerId) {
-      clearTimeout(timerId);
-      timerId = null;
+function removePersistedNotification(recordId) {
+  if (!recordId) return;
+  const next = persistedNotifications.filter(record => record.id !== recordId);
+  if (next.length === persistedNotifications.length) return;
+  persistedNotifications = next;
+  persistNotificationsToStorage();
+}
+
+function loadStoredNotifications() {
+  const raw = safeLocalStorageGet(NOTIFICATION_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(entry => ({
+        id: entry.id || `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        title: entry.title || '',
+        message: entry.message || '',
+        createdAt: Number(entry.createdAt) || Date.now(),
+        signature: entry.signature || getNotificationSignature(entry.title || '', entry.message || ''),
+      }))
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  } catch (_) {
+    return [];
+  }
+}
+
+function persistNotificationsToStorage() {
+  if (!persistedNotifications.length) {
+    safeLocalStorageRemove(NOTIFICATION_STORAGE_KEY);
+    return;
+  }
+  try {
+    safeLocalStorageSet(NOTIFICATION_STORAGE_KEY, JSON.stringify(persistedNotifications));
+  } catch (_) {
+    /* ignore storage failures */
+  }
+}
+
+function getNotificationSignature(title = '', message = '') {
+  const normalizedTitle = (title || '').trim().toLowerCase();
+  const normalizedMessage = (message || '').trim().toLowerCase();
+  if (!normalizedTitle && !normalizedMessage) return '';
+  return `${normalizedTitle}::${normalizedMessage}`;
+}
+
+function loadNotificationSignatures() {
+  const raw = safeLocalStorageGet(NOTIFICATION_SEEN_KEY);
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter(Boolean));
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function persistNotificationSignatures() {
+  try {
+    if (!notificationSignatureCache.size) {
+      safeLocalStorageRemove(NOTIFICATION_SEEN_KEY);
+      return;
+    }
+    safeLocalStorageSet(NOTIFICATION_SEEN_KEY, JSON.stringify(Array.from(notificationSignatureCache)));
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function markNotificationSignatureSeen(signature) {
+  if (!signature) return;
+  if (notificationSignatureCache.has(signature)) return;
+  notificationSignatureCache.add(signature);
+  persistNotificationSignatures();
+}
+
+function initNotificationBell() {
+  if (!notificationBellBtn || !notificationCenter) return;
+  notificationSignatureCache = loadNotificationSignatures();
+  persistedNotifications = loadStoredNotifications();
+  persistedNotifications.forEach(record => renderNotificationCard(record));
+  let signatureAdded = false;
+  persistedNotifications.forEach(record => {
+    if (record.signature && !notificationSignatureCache.has(record.signature)) {
+      notificationSignatureCache.add(record.signature);
+      signatureAdded = true;
     }
   });
-  card.addEventListener('mouseleave', () => {
-    if (!dismissed && !timerId) {
-      timerId = setTimeout(dismiss, 2500);
-    }
+  if (signatureAdded) {
+    persistNotificationSignatures();
+  }
+  notificationBellBtn.addEventListener('click', () => {
+    toggleNotificationPopover();
   });
+  document.addEventListener('click', handleNotificationDocumentClick);
+  document.addEventListener('keydown', handleNotificationKeydown);
+  updateNotificationBadge();
+  updateNotificationEmptyState();
+}
 
-  closeBtn.addEventListener('click', dismiss);
+function toggleNotificationPopover(forceState) {
+  const targetState = typeof forceState === 'boolean' ? forceState : !notificationPopoverOpen;
+  setNotificationPopoverState(targetState);
+}
+
+function closeNotificationPopover() {
+  setNotificationPopoverState(false);
+}
+
+function setNotificationPopoverState(isOpen) {
+  if (!notificationCenter || !notificationBellBtn) return;
+  notificationPopoverOpen = Boolean(isOpen);
+  notificationCenter.classList.toggle('hidden', !notificationPopoverOpen);
+  notificationBellBtn.setAttribute('aria-expanded', notificationPopoverOpen ? 'true' : 'false');
+  if (notificationPopoverOpen) {
+    notificationCenter.focus();
+  }
+}
+
+function handleNotificationDocumentClick(event) {
+  if (!notificationPopoverOpen) return;
+  if (notificationShell && notificationShell.contains(event.target)) return;
+  closeNotificationPopover();
+}
+
+function handleNotificationKeydown(event) {
+  if (event.key !== 'Escape') return;
+  if (!notificationPopoverOpen) return;
+  closeNotificationPopover();
+  if (notificationBellBtn) {
+    notificationBellBtn.focus();
+  }
+}
+
+function updateNotificationBadge() {
+  if (!notificationBadgeEl) return;
+  const count = notificationCenter ? notificationCenter.querySelectorAll('.notification-card').length : 0;
+  notificationBadgeEl.textContent = count;
+  notificationBadgeEl.classList.toggle('hidden', count === 0);
+  if (notificationBellBtn) {
+    const label = count === 0 ? 'Notifications' : `${count} notification${count === 1 ? '' : 's'}`;
+    notificationBellBtn.setAttribute('aria-label', label);
+  }
+}
+
+function updateNotificationEmptyState() {
+  if (!notificationEmptyStateEl || !notificationCenter) return;
+  const hasNotifications = Boolean(notificationCenter.querySelector('.notification-card'));
+  notificationEmptyStateEl.classList.toggle('hidden', hasNotifications);
 }
 
 function showAnimeFranchiseNotification(seriesName, missingEntries) {
@@ -1253,7 +1381,17 @@ function showAppForUser(user) {
 }
 
 function loadPrimaryLists() {
-  PRIMARY_LIST_TYPES.forEach(listType => loadList(listType));
+  const order = [...PRIMARY_LIST_TYPES];
+  let index = 0;
+  const loadNext = () => {
+    if (index >= order.length) return;
+    const listType = order[index++];
+    loadList(listType);
+    if (index < order.length) {
+      setTimeout(loadNext, LIST_LOAD_STAGGER_MS);
+    }
+  };
+  loadNext();
 }
 
 function initUnifiedLibraryControls() {
@@ -1362,6 +1500,10 @@ function updateBackToTopVisibility() {
   const shouldShow = window.scrollY > 320 && appRoot && !appRoot.classList.contains('hidden');
   backToTopBtn.classList.toggle('hidden', !shouldShow);
 }
+
+// ============================================================================
+// Feature 3: List Loading & Collapsible Cards
+// ============================================================================
 
 // Detach all DB listeners
 function detachAllListeners() {
@@ -1496,7 +1638,12 @@ function renderList(listType, data) {
   renderUnifiedLibrary();
 }
 
+// ============================================================================
+// Feature 4: Unified Library
+// ============================================================================
+
 function renderUnifiedLibrary() {
+  updateLibraryRuntimeStats();
   if (!combinedListEl) return;
   const hasLoadedAny = PRIMARY_LIST_TYPES.some(type => listCaches[type] !== undefined);
   if (!hasLoadedAny) {
@@ -1525,16 +1672,18 @@ function renderUnifiedLibrary() {
     return idxA - idxB;
   });
 
-  combinedListEl.innerHTML = '';
   if (!filtered.length) {
     combinedListEl.innerHTML = '<div class="small">No entries match the current filters yet.</div>';
     return;
   }
 
+  combinedListEl.innerHTML = '';
   const grid = createEl('div', 'movies-grid unified-grid');
   filtered.forEach(entry => {
-    const card = buildUnifiedCard(entry);
-    if (card) grid.appendChild(card);
+    const node = buildUnifiedCard(entry);
+    if (node) {
+      grid.appendChild(node);
+    }
   });
   combinedListEl.appendChild(grid);
 }
@@ -1573,6 +1722,119 @@ function collectUnifiedEntries() {
   return allEntries;
 }
 
+function updateLibraryRuntimeStats() {
+  if (!libraryStatsSummaryEl) return;
+  const stats = computeLibraryRuntimeStats();
+  if (!stats.hasAnyData) {
+    libraryStatsSummaryEl.textContent = 'Totals update once your lists load.';
+    return;
+  }
+  const movieLabel = `${stats.movieCount} movie${stats.movieCount === 1 ? '' : 's'}`;
+  const episodeLabel = `${stats.episodeCount} episode${stats.episodeCount === 1 ? '' : 's'}`;
+  const runtimeLabel = stats.totalMinutes > 0
+    ? `${formatRuntimeDurationDetailed(stats.totalMinutes)} to finish`
+    : 'Runtime info unavailable';
+  libraryStatsSummaryEl.textContent = `${movieLabel} • ${episodeLabel} • ${runtimeLabel}`;
+}
+
+function computeLibraryRuntimeStats() {
+  const stats = {
+    hasAnyData: PRIMARY_LIST_TYPES.some(type => listCaches[type] !== undefined),
+    movieCount: 0,
+    episodeCount: 0,
+    totalMinutes: 0,
+  };
+  if (!stats.hasAnyData) {
+    return stats;
+  }
+
+  Object.values(listCaches.movies || {}).forEach(item => {
+    if (!item) return;
+    stats.movieCount += 1;
+    const minutes = estimateMovieRuntimeMinutes(item);
+    if (minutes > 0) {
+      stats.totalMinutes += minutes;
+    }
+  });
+
+  Object.values(listCaches.tvShows || {}).forEach(item => {
+    if (!item) return;
+    const episodes = getTvEpisodeCount(item);
+    if (episodes > 0) {
+      stats.episodeCount += episodes;
+      const runtimePerEpisode = estimateTvEpisodeRuntimeMinutes(item);
+      if (runtimePerEpisode > 0) {
+        stats.totalMinutes += runtimePerEpisode * episodes;
+      }
+    }
+  });
+
+  Object.values(listCaches.anime || {}).forEach(item => {
+    if (!item) return;
+    const episodes = getAnimeEpisodeCount(item);
+    if (episodes > 0) {
+      stats.episodeCount += episodes;
+    }
+    const runtimePerEpisode = estimateAnimeEpisodeRuntimeMinutes(item);
+    if (runtimePerEpisode > 0) {
+      const multiplier = episodes > 0 ? episodes : (isAnimeMovieEntry(item) ? 1 : 0);
+      if (multiplier > 0) {
+        stats.totalMinutes += runtimePerEpisode * multiplier;
+      }
+    }
+  });
+
+  return stats;
+}
+
+function estimateMovieRuntimeMinutes(item) {
+  if (!item) return 0;
+  const candidates = [item.runtimeMinutes, item.runtime, item.Runtime, item.duration];
+  for (const value of candidates) {
+    const minutes = parseRuntimeMinutes(value);
+    if (minutes > 0) {
+      return minutes;
+    }
+  }
+  return 0;
+}
+
+function estimateTvEpisodeRuntimeMinutes(item) {
+  if (!item) return 0;
+  const candidates = [item.tvEpisodeRuntime, item.tvRuntime, item.runtime];
+  for (const value of candidates) {
+    const minutes = parseRuntimeMinutes(value);
+    if (minutes > 0) {
+      return minutes;
+    }
+  }
+  return 0;
+}
+
+function getAnimeEpisodeCount(item) {
+  if (!item) return 0;
+  const count = Number(item.animeEpisodes || item.episodes || item.totalEpisodes);
+  return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+function estimateAnimeEpisodeRuntimeMinutes(item) {
+  if (!item) return 0;
+  const candidates = [item.animeDuration, item.duration, item.runtime];
+  for (const value of candidates) {
+    const minutes = parseRuntimeMinutes(value);
+    if (minutes > 0) {
+      return minutes;
+    }
+  }
+  return 0;
+}
+
+function isAnimeMovieEntry(item) {
+  if (!item) return false;
+  const format = String(item.animeFormat || item.format || '').trim().toUpperCase();
+  return format === 'MOVIE' || format === 'FILM';
+}
+
 function matchesUnifiedSearch(item, query) {
   if (!query) return true;
   if (!item) return false;
@@ -1588,6 +1850,7 @@ function matchesUnifiedSearch(item, query) {
   ];
   return fields.some(field => field && String(field).toLowerCase().includes(query));
 }
+
 
 function buildUnifiedCard(entry) {
   const { listType, id, displayItem, displayEntryId, positionIndex } = entry;
@@ -1792,18 +2055,38 @@ function buildMovieCardInfo(listType, item, context = {}) {
   info.appendChild(header);
 
   if (isCollapsibleList(listType)) {
-    const badges = buildAnimeSummaryBadges(item, { ...context, listType });
+    const badges = buildMediaSummaryBadges(listType, item, context);
     if (badges) info.appendChild(badges);
   }
 
   return info;
 }
 
-function buildAnimeSummaryBadges(item, context = {}) {
+function buildMediaSummaryBadges(listType, item, context = {}) {
   if (!item) return null;
-  const listType = context.listType || 'anime';
-  const metrics = deriveAnimeSeriesMetrics(listType, context.cardId, item);
-  if (!metrics) return null;
+  const chips = collectMediaBadgeChips(listType, item, context);
+  if (!chips.length) return null;
+  const isTv = listType === 'tvShows';
+  const rowClass = isTv ? 'tv-summary-badges' : 'anime-summary-badges';
+  const chipClass = isTv ? 'tv-chip' : 'anime-chip';
+  const row = createEl('div', rowClass);
+  chips.forEach(text => row.appendChild(createEl('span', chipClass, { text })));
+  return row;
+}
+
+function collectMediaBadgeChips(listType, item, context = {}) {
+  if (listType === 'tvShows') {
+    return buildTvStatChips(item);
+  }
+  if (listType === 'movies' || listType === 'anime') {
+    return buildSeriesBadgeChips(listType, context.cardId, item);
+  }
+  return [];
+}
+
+function buildSeriesBadgeChips(listType, cardId, item) {
+  const metrics = deriveSeriesBadgeMetrics(listType, cardId, item);
+  if (!metrics) return [];
   const chips = [];
   if (metrics.formatLabels.length) {
     chips.push(metrics.formatLabels.join(' / '));
@@ -1817,10 +2100,87 @@ function buildAnimeSummaryBadges(item, context = {}) {
   if (metrics.statusLabel) {
     chips.push(formatAnimeStatusLabel(metrics.statusLabel));
   }
-  if (!chips.length) return null;
-  const row = createEl('div', 'anime-summary-badges');
-  chips.forEach(text => row.appendChild(createEl('span', 'anime-chip', { text })));
-  return row;
+  return chips;
+}
+
+function buildTvStatChips(item) {
+  if (!item) return [];
+  if (Array.isArray(item.cachedTvBadges) && item.cachedTvBadges.length) {
+    return item.cachedTvBadges.slice();
+  }
+  return computeTvBadgeStrings(item);
+}
+
+function computeTvBadgeStrings(source) {
+  if (!source) return [];
+  const chips = [];
+  const seasonCount = getTvSeasonCount(source);
+  if (seasonCount > 0) {
+    chips.push(`${seasonCount} season${seasonCount === 1 ? '' : 's'}`);
+  }
+  const episodeCount = getTvEpisodeCount(source);
+  if (episodeCount > 0) {
+    chips.push(`${episodeCount} episode${episodeCount === 1 ? '' : 's'}`);
+  }
+  const runtimeLabel = formatTvRuntimeLabel(source);
+  if (runtimeLabel) {
+    chips.push(runtimeLabel);
+  }
+  const statusLabel = formatTvStatusLabel(source?.tvStatus || source?.status);
+  if (statusLabel) {
+    chips.push(statusLabel);
+  }
+  return chips;
+}
+
+function getTvSeasonCount(item) {
+  if (!item) return 0;
+  const direct = Number(item.tvSeasonCount);
+  if (Number.isFinite(direct) && direct > 0) {
+    return direct;
+  }
+  if (Array.isArray(item.tvSeasonSummaries)) {
+    return item.tvSeasonSummaries.filter(season => season && (season.seasonNumber !== undefined && season.seasonNumber !== null)).length;
+  }
+  return 0;
+}
+
+function getTvEpisodeCount(item) {
+  if (!item) return 0;
+  const direct = Number(item.tvEpisodeCount);
+  if (Number.isFinite(direct) && direct > 0) {
+    return direct;
+  }
+  if (Array.isArray(item.tvSeasonSummaries)) {
+    return item.tvSeasonSummaries.reduce((total, season) => {
+      const count = Number(season?.episodeCount);
+      return Number.isFinite(count) && count > 0 ? total + count : total;
+    }, 0);
+  }
+  return 0;
+}
+
+function formatTvRuntimeLabel(item) {
+  if (!item) return '';
+  const runtime = Number(item.tvEpisodeRuntime);
+  if (Number.isFinite(runtime) && runtime > 0) {
+    return `${runtime} min/ep`;
+  }
+  if (typeof item.runtime === 'string') {
+    const match = item.runtime.match(/(\d+)\s*min/);
+    if (match) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value)) {
+        return item.runtime.includes('/ep') ? `${value} min/ep` : `${value} min`;
+      }
+    }
+  }
+  return '';
+}
+
+function formatTvStatusLabel(value) {
+  if (!value) return '';
+  return value.toString().replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
 }
 
 function formatAnimeFormatLabel(value) {
@@ -1828,7 +2188,7 @@ function formatAnimeFormatLabel(value) {
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
 }
 
-function deriveAnimeSeriesMetrics(listType, cardId, fallbackItem) {
+function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem) {
   const normalizedListType = listType || 'anime';
   let entries = [];
   if (cardId && isCollapsibleList(normalizedListType)) {
@@ -1929,6 +2289,13 @@ function buildMovieCardDetails(listType, cardId, entryId, item) {
     }
   }
 
+  if (listType === 'tvShows') {
+    const tvBlock = buildTvDetailBlock(item);
+    if (tvBlock) {
+      details.appendChild(tvBlock);
+    }
+  }
+
   if (isCollapsibleList(listType)) {
     const seriesBlock = buildSeriesCarouselBlock(listType, cardId);
     if (seriesBlock) {
@@ -1965,6 +2332,53 @@ function buildAnimeDetailBlock(item) {
     block.appendChild(link);
   }
   return block.children.length ? block : null;
+}
+
+function buildTvDetailBlock(item) {
+  if (!item) return null;
+  const chips = buildTvStatChips(item);
+  const hasChips = chips.length > 0;
+  const seasonSummaries = Array.isArray(item.tvSeasonSummaries)
+    ? item.tvSeasonSummaries
+        .filter(season => season && (season.seasonNumber !== undefined && season.seasonNumber !== null))
+        .sort((a, b) => {
+          const seasonA = Number(a.seasonNumber);
+          const seasonB = Number(b.seasonNumber);
+          if (Number.isFinite(seasonA) && Number.isFinite(seasonB)) return seasonA - seasonB;
+          if (Number.isFinite(seasonA)) return -1;
+          if (Number.isFinite(seasonB)) return 1;
+          return 0;
+        })
+    : [];
+  if (!hasChips && !seasonSummaries.length) return null;
+  const block = createEl('div', 'detail-block tv-detail-block');
+  if (hasChips) {
+    const row = createEl('div', 'tv-stats-row');
+    chips.forEach(text => row.appendChild(createEl('span', 'tv-chip', { text })));
+    block.appendChild(row);
+  }
+  if (seasonSummaries.length) {
+    const breakdown = createEl('div', 'tv-season-breakdown');
+    seasonSummaries.forEach(season => {
+      const segments = [];
+      if (season.title) {
+        segments.push(season.title);
+      } else if (season.seasonNumber !== undefined && season.seasonNumber !== null) {
+        segments.push(`Season ${season.seasonNumber}`);
+      }
+      const count = Number(season.episodeCount);
+      if (Number.isFinite(count) && count > 0) {
+        segments.push(`${count} episode${count === 1 ? '' : 's'}`);
+      }
+      if (season.year) {
+        segments.push(`(${season.year})`);
+      }
+      if (!segments.length) return;
+      breakdown.appendChild(createEl('div', 'tv-season-line', { text: segments.join(' • ') }));
+    });
+    block.appendChild(breakdown);
+  }
+  return block;
 }
 
 function formatAnimeEpisodesLabel(value) {
@@ -2073,11 +2487,7 @@ function buildMovieMetaText(item) {
 function buildMovieExtendedMeta(item) {
   const parts = [];
   if (item.originalLanguage) {
-    let label = `Original Language: ${item.originalLanguage}`;
-    if (!itemIsOriginallyEnglish(item)) {
-      label += ` (Dub: ${hasEnglishDubFlag(item) ? 'Yes' : 'No'})`;
-    }
-    parts.push(label);
+    parts.push(`Original Language: ${item.originalLanguage}`);
   }
   if (item.budget) parts.push(`Budget: ${item.budget}`);
   if (item.revenue) parts.push(`Revenue: ${item.revenue}`);
@@ -2515,6 +2925,7 @@ async function addItemFromForm(listType, form) {
           fallbackTitle: title,
           fallbackYear: year,
           alwaysAssign: ['year', 'imdbId', 'imdbUrl', 'imdbType'],
+          listType,
         });
         Object.assign(item, metadataUpdates);
       }
@@ -2823,12 +3234,45 @@ function parseRuntimeMinutes(value) {
 
 function formatRuntimeDuration(totalMinutes) {
   if (!totalMinutes || totalMinutes <= 0) return '';
+  const breakdown = breakdownDurationMinutes(totalMinutes);
+  const parts = [];
+  if (breakdown.years) parts.push(`${breakdown.years}y`);
+  if (breakdown.months) parts.push(`${breakdown.months}mth`);
+  if (breakdown.days) parts.push(`${breakdown.days}d`);
+  if (breakdown.hours) parts.push(`${breakdown.hours}h`);
+  if (breakdown.minutes) parts.push(`${breakdown.minutes}m`);
+  return parts.join(' ');
+}
+
+function formatRuntimeDurationDetailed(totalMinutes) {
+  if (!totalMinutes || totalMinutes <= 0) return '';
+  const breakdown = breakdownDurationMinutes(totalMinutes);
+  const parts = [];
+  if (breakdown.years) parts.push(formatDurationUnit(breakdown.years, 'year'));
+  if (breakdown.months) parts.push(formatDurationUnit(breakdown.months, 'month'));
+  if (breakdown.days) parts.push(formatDurationUnit(breakdown.days, 'day'));
+  if (breakdown.hours) parts.push(formatDurationUnit(breakdown.hours, 'hour'));
+  if (breakdown.minutes) {
+    parts.push(formatDurationUnit(breakdown.minutes, 'minute'));
+  }
+  if (!parts.length) {
+    return 'Less than a minute';
+  }
+  return parts.join(', ');
+}
+
+function formatDurationUnit(value, unitLabel) {
+  const amount = Math.floor(value);
+  if (!amount) return '';
+  return `${amount} ${unitLabel}${amount === 1 ? '' : 's'}`;
+}
+
+function breakdownDurationMinutes(totalMinutes) {
   const minutesPerHour = 60;
   const minutesPerDay = minutesPerHour * 24;
   const minutesPerMonth = minutesPerDay * 30;
   const minutesPerYear = minutesPerDay * 365;
-
-  let remaining = totalMinutes;
+  let remaining = Math.max(0, Math.floor(totalMinutes));
   const years = Math.floor(remaining / minutesPerYear);
   remaining -= years * minutesPerYear;
   const months = Math.floor(remaining / minutesPerMonth);
@@ -2838,14 +3282,7 @@ function formatRuntimeDuration(totalMinutes) {
   const hours = Math.floor(remaining / minutesPerHour);
   remaining -= hours * minutesPerHour;
   const minutes = remaining;
-
-  const parts = [];
-  if (years) parts.push(`${years}y`);
-  if (months) parts.push(`${months}mth`);
-  if (days) parts.push(`${days}d`);
-  if (hours) parts.push(`${hours}h`);
-  if (minutes) parts.push(`${minutes}m`);
-  return parts.join(' ');
+  return { years, months, days, hours, minutes };
 }
 
 function formatCurrencyShort(value) {
@@ -2865,15 +3302,6 @@ function resolveLanguageName(isoCode, spokenLanguages) {
   return name || isoCode.toUpperCase();
 }
 
-function hasEnglishSpokenLanguage(spokenLanguages) {
-  return (Array.isArray(spokenLanguages) ? spokenLanguages : []).some(lang => {
-    const iso = (lang?.iso_639_1 || '').toLowerCase();
-    if (iso === 'en') return true;
-    const name = (lang?.english_name || lang?.name || '').toLowerCase();
-    return name.includes('english');
-  });
-}
-
 function isEnglishLanguageValue(labelOrIso) {
   if (!labelOrIso) return false;
   const value = String(labelOrIso).trim().toLowerCase();
@@ -2884,17 +3312,6 @@ function itemIsOriginallyEnglish(item) {
   if (!item) return false;
   if (item.originalLanguageIso && isEnglishLanguageValue(item.originalLanguageIso)) return true;
   if (item.originalLanguage && isEnglishLanguageValue(item.originalLanguage)) return true;
-  return false;
-}
-
-function hasEnglishDubFlag(item) {
-  if (!item) return false;
-  const value = item.englishDubAvailable;
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    return normalized === 'yes' || normalized === 'true';
-  }
   return false;
 }
 
@@ -2912,6 +3329,7 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
     fallbackTitle = existing.title || '',
     fallbackYear = existing.year || '',
     alwaysAssign = [],
+    listType: targetListType = '',
   } = options;
   const updates = {};
   const forceKeys = new Set(['metadataVersion', ...(Array.isArray(alwaysAssign) ? alwaysAssign : [])]);
@@ -2970,20 +3388,44 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
     : '';
   setField('originalLanguageIso', originalLanguageIso);
 
-  if (metadata.EnglishDubAvailable !== undefined && metadata.EnglishDubAvailable !== null) {
-    if (typeof metadata.EnglishDubAvailable === 'boolean') {
-      setField('englishDubAvailable', metadata.EnglishDubAvailable);
-    } else {
-      const normalized = String(metadata.EnglishDubAvailable).trim().toLowerCase();
-      setField('englishDubAvailable', normalized === 'yes' || normalized === 'true');
-    }
-  }
-
   const budgetValue = metadata.Budget && metadata.Budget !== 'N/A' ? metadata.Budget : '';
   setField('budget', budgetValue);
 
   const revenueValue = metadata.Revenue && metadata.Revenue !== 'N/A' ? metadata.Revenue : '';
   setField('revenue', revenueValue);
+
+  const getEffectiveValue = (key) => (Object.prototype.hasOwnProperty.call(updates, key) ? updates[key] : existing[key]);
+
+  if (metadata.TvSeasonCount !== undefined && metadata.TvSeasonCount !== null) {
+    setField('tvSeasonCount', metadata.TvSeasonCount);
+  }
+  if (metadata.TvEpisodeCount !== undefined && metadata.TvEpisodeCount !== null) {
+    setField('tvEpisodeCount', metadata.TvEpisodeCount);
+  }
+  if (metadata.TvEpisodeRuntime !== undefined && metadata.TvEpisodeRuntime !== null) {
+    setField('tvEpisodeRuntime', metadata.TvEpisodeRuntime);
+  }
+  if (metadata.TvStatus) {
+    setField('tvStatus', metadata.TvStatus);
+  }
+  if (Array.isArray(metadata.TvSeasonSummaries) && metadata.TvSeasonSummaries.length) {
+    setField('tvSeasonSummaries', metadata.TvSeasonSummaries);
+  }
+
+  if (targetListType === 'tvShows') {
+    const badgeSource = {
+      tvSeasonCount: getEffectiveValue('tvSeasonCount'),
+      tvEpisodeCount: getEffectiveValue('tvEpisodeCount'),
+      tvEpisodeRuntime: getEffectiveValue('tvEpisodeRuntime'),
+      tvStatus: getEffectiveValue('tvStatus'),
+      runtime: getEffectiveValue('runtime'),
+      tvSeasonSummaries: getEffectiveValue('tvSeasonSummaries'),
+    };
+    const tvBadges = computeTvBadgeStrings(badgeSource);
+    if (tvBadges.length) {
+      setField('cachedTvBadges', tvBadges);
+    }
+  }
 
   if (metadata.AnimeEpisodes !== undefined && metadata.AnimeEpisodes !== null) {
     setField('animeEpisodes', metadata.AnimeEpisodes);
@@ -3088,64 +3530,79 @@ function parseSeriesOrder(value) {
 
 function buildSpinnerCandidates(listType, rawData) {
   const entries = Object.entries(rawData || {});
-  if (!entries.length) return [];
+  if (!entries.length) {
+    return { displayCandidates: [], candidateMap: new Map() };
+  }
 
-  const mapped = entries
+  const normalized = entries
     .map(([id, item]) => {
       if (!item) return null;
       return item.__id ? item : Object.assign({ __id: id }, item);
     })
     .filter(Boolean);
 
-  const eligibleItems = mapped.filter((item) => isSpinnerStatusEligible(item));
-  if (!eligibleItems.length) return [];
-
-  const shouldApplySeriesLogic = ['movies', 'tvShows', 'anime'].includes(listType);
-  if (!shouldApplySeriesLogic) {
-    return eligibleItems.filter(item => !isItemWatched(item));
+  const eligibleItems = normalized.filter(isSpinnerStatusEligible);
+  if (!eligibleItems.length) {
+    return { displayCandidates: [], candidateMap: new Map() };
   }
 
-  const standalone = [];
-  const seriesMap = new Map();
+  const shouldApplySeriesLogic = ['movies', 'tvShows', 'anime'].includes(listType);
+  const selectedItems = [];
 
-  eligibleItems.forEach(item => {
-    const seriesNameRaw = typeof item.seriesName === 'string' ? item.seriesName.trim() : '';
-    if (seriesNameRaw) {
-      const key = seriesNameRaw.toLowerCase();
-      if (!seriesMap.has(key)) {
-        seriesMap.set(key, []);
+  if (shouldApplySeriesLogic) {
+    const seriesBuckets = new Map();
+    eligibleItems.forEach(item => {
+      const key = (item.seriesName || item.series?.name || '').trim().toLowerCase();
+      if (!key) {
+        selectedItems.push(item);
+        return;
       }
-      seriesMap.get(key).push({ order: parseSeriesOrder(item.seriesOrder), item });
-    } else {
-      if (!isItemWatched(item)) {
-        standalone.push(item);
+      if (!seriesBuckets.has(key)) {
+        seriesBuckets.set(key, []);
       }
-    }
-  });
-
-  seriesMap.forEach(entries => {
-    if (!entries || !entries.length) return;
-    entries.sort((a, b) => {
-      if (a.order !== b.order) return a.order - b.order;
-      const titleA = (a.item && a.item.title ? a.item.title : '').toLowerCase();
-      const titleB = (b.item && b.item.title ? b.item.title : '').toLowerCase();
-      if (titleA < titleB) return -1;
-      if (titleA > titleB) return 1;
-      return 0;
+      seriesBuckets.get(key).push(item);
     });
-    const firstUnwatched = entries.find(entry => entry && entry.item && !isItemWatched(entry.item));
-    if (firstUnwatched && firstUnwatched.item) {
-      standalone.push(firstUnwatched.item);
-    }
+
+    seriesBuckets.forEach(items => {
+      const sorted = items.slice().sort((a, b) => {
+        const orderDiff = parseSeriesOrder(a.seriesOrder) - parseSeriesOrder(b.seriesOrder);
+        if (orderDiff !== 0) return orderDiff;
+        const titleA = (a.title || '').toLowerCase();
+        const titleB = (b.title || '').toLowerCase();
+        if (titleA < titleB) return -1;
+        if (titleA > titleB) return 1;
+        return 0;
+      });
+      const firstUnwatched = sorted.find(item => !isItemWatched(item));
+      selectedItems.push(firstUnwatched || sorted[0]);
+    });
+  } else {
+    selectedItems.push(...eligibleItems);
+  }
+
+  const candidateMap = new Map();
+  const displayCandidates = [];
+
+  selectedItems.forEach(item => {
+    if (!item) return;
+    const id = item.__id || item.id;
+    if (!id || candidateMap.has(id)) return;
+    candidateMap.set(id, item);
+    displayCandidates.push({
+      id,
+      title: item.title || '(no title)'
+    });
   });
 
-  return standalone.sort((a, b) => {
-    const titleA = (a && a.title ? a.title : '').toLowerCase();
-    const titleB = (b && b.title ? b.title : '').toLowerCase();
+  displayCandidates.sort((a, b) => {
+    const titleA = (a.title || '').toLowerCase();
+    const titleB = (b.title || '').toLowerCase();
     if (titleA < titleB) return -1;
     if (titleA > titleB) return 1;
     return 0;
   });
+
+  return { displayCandidates, candidateMap };
 }
 
 function getMissingMetadataFields(item, listType) {
@@ -3158,6 +3615,10 @@ function getMissingMetadataFields(item, listType) {
   }
   return criticalFields.filter(field => !hasMeaningfulValue(item[field]));
 }
+
+// ============================================================================
+// Feature 5: Metadata Refresh & External API Pipelines
+// ============================================================================
 
 function needsMetadataRefresh(listType, item) {
   if (!item || !item.title) return false;
@@ -3192,6 +3653,7 @@ function refreshTmdbMetadataForItem(listType, itemId, item, missingFields = []) 
       overwrite: false,
       fallbackTitle: item.title || '',
       fallbackYear: item.year || '',
+      listType,
     });
     if (Object.keys(updates).length === 0) return;
     console.debug('[Metadata] Applying updates for', `${listType}:${itemId}`, updates);
@@ -3219,6 +3681,7 @@ function refreshAniListMetadataForItem(itemId, item) {
       overwrite: false,
       fallbackTitle: item.title || '',
       fallbackYear: item.year || '',
+      listType,
     });
     if (Object.keys(updates).length === 0) return;
     console.debug('[MyAnimeList] Applying updates for', `${listType}:${itemId}`, updates);
@@ -3252,6 +3715,10 @@ function maybeRefreshMetadata(listType, data) {
   });
 }
 
+// ============================================================================
+// Feature 8: Utility Helpers & Shared Formatters
+// ============================================================================
+
 function buildTrailerUrl(title, year) {
   if (!title) return '';
   const query = `${title} ${year ? year + ' ' : ''}trailer`.trim();
@@ -3264,6 +3731,11 @@ function debounce(fn, wait = 250) {
     clearTimeout(timeoutId);
     timeoutId = setTimeout(() => fn.apply(this, args), wait);
   };
+}
+
+function delay(ms) {
+  const duration = Math.max(0, Number(ms) || 0);
+  return new Promise(resolve => setTimeout(resolve, duration));
 }
 
 function setButtonBusy(button, isBusy) {
@@ -3668,6 +4140,12 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
   const runtimeMinutes = mediaType === 'movie'
     ? detail.runtime
     : (Array.isArray(detail.episode_run_time) && detail.episode_run_time.length ? detail.episode_run_time[0] : null);
+  const normalizedRuntime = typeof runtimeMinutes === 'number' && Number.isFinite(runtimeMinutes)
+    ? runtimeMinutes
+    : null;
+  const runtimeLabel = normalizedRuntime
+    ? `${normalizedRuntime} min${mediaType === 'tv' ? '/ep' : ''}`
+    : '';
   const crew = Array.isArray(detail.credits?.crew) ? detail.credits.crew : [];
   const directorCrew = crew.find(member => member && member.job === 'Director');
   const director = directorCrew?.name
@@ -3680,13 +4158,29 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
   const revenue = formatCurrencyShort(detail.revenue);
   const originalLanguage = resolveLanguageName(detail.original_language, detail.spoken_languages);
   const tmdbId = detail.id || '';
-  const englishDubAvailable = hasEnglishSpokenLanguage(detail.spoken_languages);
+  const tvSeasonCount = mediaType === 'tv'
+    ? (Number(detail.number_of_seasons) || (Array.isArray(detail.seasons) ? detail.seasons.length : 0))
+    : null;
+  const tvEpisodeCount = mediaType === 'tv' ? Number(detail.number_of_episodes) || null : null;
+  const tvStatus = mediaType === 'tv' ? (detail.status || '') : '';
+  const tvEpisodeRuntime = mediaType === 'tv' ? normalizedRuntime : null;
+  const tvSeasonSummaries = mediaType === 'tv' && Array.isArray(detail.seasons)
+    ? detail.seasons
+        .filter(season => season && typeof season.season_number === 'number')
+        .map(season => ({
+          seasonNumber: season.season_number,
+          episodeCount: typeof season.episode_count === 'number' ? season.episode_count : null,
+          title: season.name || `Season ${season.season_number}`,
+          year: extractPrimaryYear(season.air_date || ''),
+          airDate: season.air_date || '',
+        }))
+    : [];
 
   return {
     Title: detail.title || detail.name || '',
     Year: releaseDate ? String(releaseDate).slice(0, 4) : '',
     Director: director,
-    Runtime: runtimeMinutes ? `${runtimeMinutes} min` : '',
+    Runtime: runtimeLabel,
     Poster: poster || 'N/A',
     Plot: detail.overview || '',
     imdbID: imdbId,
@@ -3697,8 +4191,12 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
     Revenue: revenue,
     OriginalLanguage: originalLanguage,
     OriginalLanguageIso: detail.original_language || '',
-    EnglishDubAvailable: englishDubAvailable,
     TmdbID: tmdbId,
+    TvSeasonCount: tvSeasonCount,
+    TvEpisodeCount: tvEpisodeCount,
+    TvEpisodeRuntime: tvEpisodeRuntime,
+    TvStatus: tvStatus,
+    TvSeasonSummaries: tvSeasonSummaries,
   };
 }
 
@@ -4462,6 +4960,7 @@ async function refreshItemMetadata(listType, itemId, item, options = {}) {
       overwrite: true,
       fallbackTitle: lookupTitle,
       fallbackYear: lookupYear,
+      listType,
     });
 
     if (!updates || Object.keys(updates).length === 0) {
@@ -4478,6 +4977,111 @@ async function refreshItemMetadata(listType, itemId, item, options = {}) {
   } finally {
     setButtonState(false);
   }
+}
+
+// ============================================================================
+// Feature 6: Spinner / Wheel Experience
+// ============================================================================
+
+function setupWheelModal() {
+  if (!wheelModalTrigger || !wheelModalTemplate || !modalRoot) return;
+  wheelModalTrigger.addEventListener('click', () => openWheelModal());
+}
+
+function openWheelModal() {
+  if (!wheelModalTemplate || !modalRoot) return;
+  closeAddModal();
+  closeWheelModal();
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop wheel-modal-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal wheel-modal';
+  const fragment = wheelModalTemplate.content.cloneNode(true);
+  modal.appendChild(fragment);
+  backdrop.appendChild(modal);
+  modalRoot.innerHTML = '';
+  modalRoot.appendChild(backdrop);
+
+  const sourceSelect = modal.querySelector('[data-wheel-source]');
+  const spinButton = modal.querySelector('[data-wheel-spin]');
+  const spinnerEl = modal.querySelector('[data-wheel-spinner]');
+  const resultEl = modal.querySelector('[data-wheel-result]');
+  const closeBtn = modal.querySelector('[data-wheel-close]');
+
+  wheelSourceSelect = sourceSelect || null;
+  wheelSpinnerEl = spinnerEl || null;
+  wheelResultEl = resultEl || null;
+  if (wheelSpinnerEl) {
+    wheelSpinnerEl.classList.add('hidden');
+    wheelSpinnerEl.classList.remove('spinning');
+    wheelSpinnerEl.innerHTML = '';
+  }
+  if (wheelResultEl) {
+    wheelResultEl.innerHTML = '';
+  }
+
+  const spinHandler = () => {
+    if (!wheelSourceSelect) return;
+    spinWheel(wheelSourceSelect.value);
+  };
+  if (spinButton) {
+    spinButton.addEventListener('click', spinHandler);
+  }
+
+  const closeHandler = () => closeWheelModal();
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeHandler);
+  }
+
+  const backdropHandler = (event) => {
+    if (event.target === backdrop) {
+      closeWheelModal();
+    }
+  };
+  backdrop.addEventListener('click', backdropHandler);
+
+  const keyHandler = (event) => {
+    if (event.key === 'Escape') {
+      closeWheelModal();
+    }
+  };
+  document.addEventListener('keydown', keyHandler);
+
+  wheelModalState = {
+    backdrop,
+    modal,
+    spinButton,
+    spinHandler,
+    closeBtn,
+    closeHandler,
+    backdropHandler,
+    keyHandler,
+  };
+}
+
+function closeWheelModal() {
+  if (wheelModalState) {
+    if (wheelModalState.spinButton && wheelModalState.spinHandler) {
+      wheelModalState.spinButton.removeEventListener('click', wheelModalState.spinHandler);
+    }
+    if (wheelModalState.closeBtn && wheelModalState.closeHandler) {
+      wheelModalState.closeBtn.removeEventListener('click', wheelModalState.closeHandler);
+    }
+    if (wheelModalState.backdrop && wheelModalState.backdropHandler) {
+      wheelModalState.backdrop.removeEventListener('click', wheelModalState.backdropHandler);
+    }
+    if (wheelModalState.keyHandler) {
+      document.removeEventListener('keydown', wheelModalState.keyHandler);
+    }
+    if (wheelModalState.backdrop && wheelModalState.backdrop.parentNode) {
+      wheelModalState.backdrop.parentNode.removeChild(wheelModalState.backdrop);
+    }
+  }
+  clearWheelAnimation();
+  wheelModalState = null;
+  wheelSourceSelect = null;
+  wheelSpinnerEl = null;
+  wheelResultEl = null;
 }
 
 function buildSpinnerDataScope(listType, rawData) {
@@ -4545,6 +5149,42 @@ function renderWheelResult(item, listType) {
   wheelResultEl.appendChild(cardNode);
 }
 
+function renderWheelWinnerFromLookup(listType, finalEntry, candidateMap, rawData) {
+  if (!wheelResultEl) return;
+  if (!finalEntry || !finalEntry.id) {
+    wheelResultEl.textContent = 'Winner selected, but no details were found.';
+    return;
+  }
+  let winner = candidateMap?.get(finalEntry.id) || null;
+  if (!winner && rawData && rawData[finalEntry.id]) {
+    const fromRaw = rawData[finalEntry.id];
+    if (fromRaw) {
+      winner = fromRaw.__id ? fromRaw : Object.assign({ __id: finalEntry.id }, fromRaw);
+    }
+  }
+  if (!winner && listCaches[listType] && listCaches[listType][finalEntry.id]) {
+    const fromCache = listCaches[listType][finalEntry.id];
+    if (fromCache) {
+      winner = fromCache.__id ? fromCache : Object.assign({ __id: finalEntry.id }, fromCache);
+    }
+  }
+  if (!winner) {
+    wheelResultEl.innerHTML = '';
+    const heading = document.createElement('div');
+    heading.className = 'wheel-result-heading';
+    heading.textContent = finalEntry.title
+      ? `Winner: ${finalEntry.title}`
+      : 'Winner selected';
+    wheelResultEl.appendChild(heading);
+    const note = document.createElement('div');
+    note.className = 'small';
+    note.textContent = 'Unable to load winner details. Please refresh and try again.';
+    wheelResultEl.appendChild(note);
+    return;
+  }
+  renderWheelResult(winner, listType);
+}
+
 // --- Sequel / Prequel Lookup Logic (TMDb only) ---
 
 function buildRelatedModal(currentItem, related) {
@@ -4576,29 +5216,33 @@ function buildRelatedModal(currentItem, related) {
       row.style.background = 'var(--card-bg)';
       row.style.padding = '.5rem .75rem';
       row.style.borderRadius = '6px';
-        const title = document.createElement('div');
-        const displayTitle = r.Title || r.title || '(untitled)';
-        const displayYear = r.Year || r.year || '';
-        title.textContent = displayTitle + (displayYear ? ` (${displayYear})` : '');
+
+      const title = document.createElement('div');
+      const displayTitle = r.Title || r.title || '(untitled)';
+      const displayYear = r.Year || r.year || '';
+      title.textContent = displayTitle + (displayYear ? ` (${displayYear})` : '');
       row.appendChild(title);
-        if (r.imdbID || r.imdbId) {
-          const imdbLink = document.createElement('a');
-          imdbLink.href = `https://www.imdb.com/title/${(r.imdbID || r.imdbId)}/`;
-          imdbLink.target = '_blank';
-          imdbLink.rel = 'noopener noreferrer';
-          imdbLink.textContent = 'IMDb';
-          imdbLink.className = 'meta-link';
-          row.appendChild(imdbLink);
-        }
-        if (r.id && r.tmdb) {
-          const tmdbLink = document.createElement('a');
-          tmdbLink.href = `https://www.themoviedb.org/movie/${r.id}`;
-          tmdbLink.target = '_blank';
-          tmdbLink.rel = 'noopener noreferrer';
-          tmdbLink.textContent = 'TMDb';
-          tmdbLink.className = 'meta-link';
-          row.appendChild(tmdbLink);
-        }
+
+      if (r.imdbID || r.imdbId) {
+        const imdbLink = document.createElement('a');
+        imdbLink.href = `https://www.imdb.com/title/${(r.imdbID || r.imdbId)}/`;
+        imdbLink.target = '_blank';
+        imdbLink.rel = 'noopener noreferrer';
+        imdbLink.textContent = 'IMDb';
+        imdbLink.className = 'meta-link';
+        row.appendChild(imdbLink);
+      }
+
+      if (r.id && r.tmdb) {
+        const tmdbLink = document.createElement('a');
+        tmdbLink.href = `https://www.themoviedb.org/movie/${r.id}`;
+        tmdbLink.target = '_blank';
+        tmdbLink.rel = 'noopener noreferrer';
+        tmdbLink.textContent = 'TMDb';
+        tmdbLink.className = 'meta-link';
+        row.appendChild(tmdbLink);
+      }
+
       list.appendChild(row);
     });
   }
@@ -4721,12 +5365,12 @@ function resolveSeriesRedirect(listType, item, rawData) {
   return needsRedirect ? earliestUnwatched : item;
 }
 
-function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverride) {
+function animateWheelSequence(candidates, chosenIndex, listType, finalDisplayEntry, finalizeCallback) {
   const len = candidates.length;
   if (len === 0 || !wheelSpinnerEl) return;
 
-  const chosenItem = candidates[chosenIndex];
-  const finalDisplayItem = finalItemOverride || chosenItem;
+  const chosenEntry = candidates[chosenIndex];
+  const finalEntry = finalDisplayEntry || chosenEntry;
   const iterations = Math.max(28, len * 5);
   let pointer = Math.floor(Math.random() * len);
   const sequence = [];
@@ -4734,7 +5378,7 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverri
     sequence.push(candidates[pointer % len]);
     pointer++;
   }
-  sequence.push(finalDisplayItem);
+  sequence.push(finalEntry);
 
   const totalDuration = 7000; // keep spin length consistent regardless of candidate count
   const stepCount = sequence.length;
@@ -4754,8 +5398,8 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverri
     console.log('[Wheel] animate start', {
       listType,
       chosenIndex,
-      chosenTitle: chosenItem?.title,
-      finalTitle: finalDisplayItem?.title,
+      chosenTitle: chosenEntry?.title,
+      finalTitle: finalEntry?.title,
       candidates: candidates.map(c => c && c.title).filter(Boolean),
       steps: stepCount
     });
@@ -4773,7 +5417,9 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalItemOverri
       try { console.log(`[Wheel] step ${idx + 1}/${sequence.length}: ${item.title || '(no title)'}${isFinal ? ' [FINAL]' : ''}`); } catch (_) {}
       if (isFinal) {
         wheelSpinnerEl.classList.remove('spinning');
-        renderWheelResult(item, listType);
+        if (typeof finalizeCallback === 'function') {
+          finalizeCallback(finalEntry);
+        }
         spinTimeouts = [];
       }
     }, schedule[idx]);
@@ -4806,7 +5452,7 @@ function spinWheel(listType) {
       return;
     }
     const scopedData = buildSpinnerDataScope(listType, data);
-    const candidates = buildSpinnerCandidates(listType, scopedData);
+    const { displayCandidates: candidates, candidateMap } = buildSpinnerCandidates(listType, scopedData);
     try {
       console.log('[Wheel] spin start', {
         listType,
@@ -4826,10 +5472,24 @@ function spinWheel(listType) {
       return;
     }
     const chosenIndex = Math.floor(Math.random() * candidates.length);
-    const chosenCandidate = candidates[chosenIndex];
-    const resolvedCandidate = resolveSeriesRedirect(listType, chosenCandidate, data) || chosenCandidate;
-    try { console.log('[Wheel] pick', { chosenIndex, chosen: chosenCandidate?.title, resolved: resolvedCandidate?.title }); } catch (_) {}
-    animateWheelSequence(candidates, chosenIndex, listType, resolvedCandidate);
+    const chosenEntry = candidates[chosenIndex];
+    const chosenItem = chosenEntry && candidateMap.get(chosenEntry.id);
+    const resolvedItem = chosenItem ? (resolveSeriesRedirect(listType, chosenItem, data) || chosenItem) : null;
+    const resolvedEntry = resolvedItem
+      ? { id: resolvedItem.__id || resolvedItem.id, title: resolvedItem.title || chosenEntry?.title || '(no title)' }
+      : chosenEntry;
+    try {
+      console.log('[Wheel] pick', {
+        chosenIndex,
+        chosen: chosenEntry?.title,
+        resolved: resolvedEntry?.title,
+        resolvedId: resolvedEntry?.id,
+      });
+    } catch (_) {}
+    const finalize = (finalEntry) => {
+      renderWheelWinnerFromLookup(listType, finalEntry, candidateMap, data);
+    };
+    animateWheelSequence(candidates, chosenIndex, listType, resolvedEntry, finalize);
   }).catch(err => {
     console.error('Wheel load failed', err);
     if (!wheelSpinnerEl || !wheelResultEl) {
@@ -4860,6 +5520,7 @@ if (auth) {
 
 tmEasterEgg.bindTriggers();
 initUnifiedLibraryControls();
+initNotificationBell();
 renderUnifiedLibrary();
 
 function updateListStats(listType, entries) {
@@ -4976,7 +5637,45 @@ function extractAnimeDurationMinutes(media) {
   return '';
 }
 
+function enqueueJikanRequest(taskFn) {
+  return new Promise((resolve, reject) => {
+    jikanRequestQueue.push({ taskFn, resolve, reject });
+    pumpJikanQueue();
+  });
+}
+
+function pumpJikanQueue() {
+  if (jikanQueueActive) return;
+  jikanQueueActive = true;
+
+  const runNext = () => {
+    if (!jikanRequestQueue.length) {
+      jikanQueueActive = false;
+      return;
+    }
+    const now = Date.now();
+    const wait = Math.max(0, JIKAN_REQUEST_MIN_DELAY_MS - (now - lastJikanRequestTime));
+    const next = jikanRequestQueue.shift();
+    setTimeout(() => {
+      lastJikanRequestTime = Date.now();
+      Promise.resolve()
+        .then(next.taskFn)
+        .then(next.resolve)
+        .catch(next.reject)
+        .finally(() => {
+          runNext();
+        });
+    }, wait);
+  };
+
+  runNext();
+}
+
 async function fetchJikanJson(path, params = {}) {
+  return enqueueJikanRequest(() => executeJikanFetch(path, params));
+}
+
+async function executeJikanFetch(path, params = {}, attempt = 0) {
   try {
     const url = new URL(`${JIKAN_API_BASE_URL}${path}`);
     Object.entries(params || {}).forEach(([key, value]) => {
@@ -4984,18 +5683,39 @@ async function fetchJikanJson(path, params = {}) {
       url.searchParams.set(key, value);
     });
     const resp = await fetch(url.toString(), {
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     });
+
+    if (resp.status === 429) {
+      const retryDelay = computeJikanRetryDelay(attempt, resp);
+      console.warn('Jikan request rate-limited', path, { attempt, retryDelay });
+      if (attempt < JIKAN_MAX_RETRIES) {
+        await delay(retryDelay);
+        return executeJikanFetch(path, params, attempt + 1);
+      }
+      return null;
+    }
+
     if (!resp.ok) {
       const text = await resp.text();
       console.warn('Jikan request failed', resp.status, path, text);
       return null;
     }
+
     return await resp.json();
   } catch (err) {
     console.warn('Jikan request error', err);
     return null;
   }
+}
+
+function computeJikanRetryDelay(attempt, resp) {
+  const retryAfter = resp?.headers?.get ? resp.headers.get('Retry-After') : null;
+  const parsedSeconds = retryAfter ? Number(retryAfter) : NaN;
+  if (Number.isFinite(parsedSeconds) && parsedSeconds >= 0) {
+    return Math.max(parsedSeconds * 1000, JIKAN_REQUEST_MIN_DELAY_MS);
+  }
+  return JIKAN_RETRY_BASE_DELAY_MS * (attempt + 1);
 }
 
 async function fetchJikanAnimeDetails(id) {
@@ -5093,7 +5813,6 @@ function mapAniListMediaToMetadata(media) {
       if (entry && entry.name) genreBuckets.push(entry.name);
     });
   });
-  const englishDubAvailable = Array.isArray(media.licensors) && media.licensors.length > 0;
   const normalizedStatus = normalizeAnimeStatus(media.status);
   const year = extractAnimeYear(media);
   const malId = media.mal_id || media.id || '';
@@ -5113,7 +5832,6 @@ function mapAniListMediaToMetadata(media) {
     Type: 'anime',
     OriginalLanguage: 'Japanese',
     OriginalLanguageIso: 'ja',
-    EnglishDubAvailable: englishDubAvailable,
     AnimeEpisodes: media.episodes || '',
     AnimeDuration: durationMinutes || '',
     AnimeFormat: media.format || media.type || '',
@@ -5742,6 +6460,7 @@ async function autoAddTmdbKeywordEntries(franchiseLabel, keywordInfo, entries, o
           overwrite: true,
           fallbackTitle: entry.title,
           fallbackYear: entry.year,
+          listType: targetList,
         });
         Object.assign(payload, updates);
       }
