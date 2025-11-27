@@ -85,6 +85,8 @@ const ANIME_STATUS_PRIORITY = {
   FINISHED: 2,
   UNKNOWN: 1,
 };
+const NOTIFICATION_STORAGE_KEY = '__THE_LIST_NOTIFICATIONS__';
+const MAX_PERSISTED_NOTIFICATIONS = 50;
 
 // -----------------------
 // App state
@@ -111,6 +113,7 @@ let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
 const jikanRequestQueue = [];
 let jikanQueueActive = false;
 let lastJikanRequestTime = 0;
+let persistedNotifications = [];
 const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES),
@@ -980,25 +983,44 @@ function promptAnimeFranchiseSelection(plan, { rootAniListId, title } = {}) {
   });
 }
 
-function pushNotification({ title, message, duration = 9000 } = {}) {
+function pushNotification({ title, message } = {}) {
   if (!title && !message) return;
   if (!notificationCenter) {
     const fallbackText = [title, message].filter(Boolean).join('\n');
     if (fallbackText) alert(fallbackText);
     return;
   }
+  const record = createNotificationRecord({ title, message });
+  addPersistedNotification(record);
+  renderNotificationCard(record);
+  updateNotificationEmptyState();
+  updateNotificationBadge();
+}
+
+function createNotificationRecord({ title = '', message = '' } = {}) {
+  return {
+    id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    title,
+    message,
+    createdAt: Date.now(),
+  };
+}
+
+function renderNotificationCard(record) {
+  if (!notificationCenter || !record) return null;
   const card = document.createElement('div');
   card.className = 'notification-card';
-  if (title) {
+  card.dataset.notificationId = record.id;
+  if (record.title) {
     const titleEl = document.createElement('div');
     titleEl.className = 'notification-title';
-    titleEl.textContent = title;
+    titleEl.textContent = record.title;
     card.appendChild(titleEl);
   }
-  if (message) {
+  if (record.message) {
     const bodyEl = document.createElement('div');
     bodyEl.className = 'notification-body';
-    bodyEl.textContent = message;
+    bodyEl.textContent = record.message;
     card.appendChild(bodyEl);
   }
   const footer = document.createElement('div');
@@ -1009,45 +1031,89 @@ function pushNotification({ title, message, duration = 9000 } = {}) {
   closeBtn.textContent = 'Dismiss';
   footer.appendChild(closeBtn);
   card.appendChild(footer);
-
+  closeBtn.addEventListener('click', () => dismissNotification(record.id));
   notificationCenter.appendChild(card);
   requestAnimationFrame(() => card.classList.add('visible'));
-  updateNotificationEmptyState();
-  updateNotificationBadge();
+  return card;
+}
 
-  let dismissed = false;
-  let timerId = null;
-
-  const dismiss = () => {
-    if (dismissed) return;
-    dismissed = true;
-    card.classList.remove('visible');
-    setTimeout(() => {
-      if (card.parentNode) card.parentNode.removeChild(card);
-      updateNotificationEmptyState();
-      updateNotificationBadge();
-    }, 240);
+function dismissNotification(recordId) {
+  removePersistedNotification(recordId);
+  if (!notificationCenter) {
+    updateNotificationEmptyState();
+    updateNotificationBadge();
+    return;
+  }
+  const card = notificationCenter.querySelector(`[data-notification-id="${recordId}"]`);
+  const finalize = () => {
+    if (card && card.parentNode) {
+      card.parentNode.removeChild(card);
+    }
+    updateNotificationEmptyState();
+    updateNotificationBadge();
   };
+  if (!card) {
+    finalize();
+    return;
+  }
+  card.classList.remove('visible');
+  setTimeout(finalize, 240);
+}
 
-  timerId = setTimeout(dismiss, Math.max(4000, duration));
+function addPersistedNotification(record) {
+  if (!record) return;
+  const duplicate = persistedNotifications.some(existing => existing.title === record.title && existing.message === record.message);
+  if (duplicate) return;
+  persistedNotifications = [...persistedNotifications, record];
+  if (persistedNotifications.length > MAX_PERSISTED_NOTIFICATIONS) {
+    persistedNotifications = persistedNotifications.slice(-MAX_PERSISTED_NOTIFICATIONS);
+  }
+  persistNotificationsToStorage();
+}
 
-  card.addEventListener('mouseenter', () => {
-    if (timerId) {
-      clearTimeout(timerId);
-      timerId = null;
-    }
-  });
-  card.addEventListener('mouseleave', () => {
-    if (!dismissed && !timerId) {
-      timerId = setTimeout(dismiss, 2500);
-    }
-  });
+function removePersistedNotification(recordId) {
+  if (!recordId) return;
+  const next = persistedNotifications.filter(record => record.id !== recordId);
+  if (next.length === persistedNotifications.length) return;
+  persistedNotifications = next;
+  persistNotificationsToStorage();
+}
 
-  closeBtn.addEventListener('click', dismiss);
+function loadStoredNotifications() {
+  const raw = safeLocalStorageGet(NOTIFICATION_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(entry => ({
+        id: entry.id || `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        title: entry.title || '',
+        message: entry.message || '',
+        createdAt: Number(entry.createdAt) || Date.now(),
+      }))
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  } catch (_) {
+    return [];
+  }
+}
+
+function persistNotificationsToStorage() {
+  if (!persistedNotifications.length) {
+    safeLocalStorageRemove(NOTIFICATION_STORAGE_KEY);
+    return;
+  }
+  try {
+    safeLocalStorageSet(NOTIFICATION_STORAGE_KEY, JSON.stringify(persistedNotifications));
+  } catch (_) {
+    /* ignore storage failures */
+  }
 }
 
 function initNotificationBell() {
   if (!notificationBellBtn || !notificationCenter) return;
+  persistedNotifications = loadStoredNotifications();
+  persistedNotifications.forEach(record => renderNotificationCard(record));
   notificationBellBtn.addEventListener('click', () => {
     toggleNotificationPopover();
   });
