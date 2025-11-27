@@ -2624,7 +2624,7 @@ function buildMovieCardActions(listType, id, item) {
     {
       className: 'btn ghost',
       label: 'Delete',
-      handler: () => deleteItem(listType, id)
+      handler: () => deleteItem(listType, id, { fromFinished: showFinishedOnly })
     }
   ];
 
@@ -2753,7 +2753,7 @@ function buildStandardCardActions(listType, id, item) {
   }
 
   const deleteBtn = createEl('button', 'btn ghost', { text: 'Delete' });
-  deleteBtn.addEventListener('click', () => deleteItem(listType, id));
+  deleteBtn.addEventListener('click', () => deleteItem(listType, id, { fromFinished: showFinishedOnly }));
   actions.appendChild(deleteBtn);
 
   return actions;
@@ -4941,20 +4941,25 @@ async function finishItem(listType, itemId, ratingValue) {
 }
 
 // Delete an item
-function deleteItem(listType, itemId) {
+function deleteItem(listType, itemId, options = {}) {
   if (!currentUser) {
     alert('Not signed in');
     return Promise.reject(new Error('Not signed in'));
   }
+  const { fromFinished = false } = options;
   if (!confirm('Delete this item?')) return;
-  if (listType === 'anime' && listCaches[listType] && listCaches[listType][itemId]) {
-    const target = listCaches[listType][itemId];
+  const cacheSource = fromFinished ? finishedCaches : listCaches;
+  if (listType === 'anime' && cacheSource[listType] && cacheSource[listType][itemId]) {
+    const target = cacheSource[listType][itemId];
     const aniListId = getAniListIdFromItem(target);
     if (aniListId) {
       rememberIgnoredAniListId(aniListId);
     }
   }
-  const itemRef = ref(db, `users/${currentUser.uid}/${listType}/${itemId}`);
+  const basePath = fromFinished
+    ? `users/${currentUser.uid}/finished/${listType}`
+    : `users/${currentUser.uid}/${listType}`;
+  const itemRef = ref(db, `${basePath}/${itemId}`);
   remove(itemRef).catch(err => console.error('Delete failed', err));
 }
 
