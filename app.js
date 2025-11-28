@@ -2650,7 +2650,8 @@ function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem) {
       }
     }
     const epValue = extractEpisodeCount(entry);
-    if (epValue > 0) {
+    const isMovieEntry = isAnimeMovieEntry(entry);
+    if (epValue > 0 && !isMovieEntry) {
       totalEpisodes += epValue;
     }
     const status = (entry.animeStatus || entry.status || '').toUpperCase();
@@ -2740,9 +2741,11 @@ function buildAnimeDetailBlock(listType, entryId, item) {
   if (!item) return null;
   const block = createEl('div', 'detail-block anime-detail-block');
   const chips = [];
-  const episodeLabel = formatAnimeEpisodesLabel(extractEpisodeCount(item) || item.animeEpisodes);
-  if (episodeLabel) chips.push(episodeLabel);
-  if (item.animeDuration) chips.push(`${item.animeDuration} min/ep`);
+  if (!isAnimeMovieEntry(item)) {
+    const episodeLabel = formatAnimeEpisodesLabel(extractEpisodeCount(item) || item.animeEpisodes);
+    if (episodeLabel) chips.push(episodeLabel);
+    if (item.animeDuration) chips.push(`${item.animeDuration} min/ep`);
+  }
   if (item.animeFormat) chips.push(formatAnimeFormatLabel(item.animeFormat));
   if (item.animeStatus) chips.push(formatAnimeStatusLabel(item.animeStatus));
   if (chips.length) {
