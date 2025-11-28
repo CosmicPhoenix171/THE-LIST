@@ -2818,14 +2818,8 @@ function createSeasonNoteRow({
   }
 
   const saveNote = (value) => persistSeasonNote(listType, entryId, fieldName, sourceSeasons, season, value);
-  const debouncedSave = debounce(saveNote, 600);
 
   textarea.addEventListener('input', () => {
-    debouncedSave(textarea.value);
-    updateSeasonEditorSelection(textarea);
-  });
-  textarea.addEventListener('change', () => {
-    saveNote(textarea.value);
     updateSeasonEditorSelection(textarea);
   });
   ['click', 'keydown', 'keyup'].forEach(evt => {
@@ -2840,6 +2834,7 @@ function createSeasonNoteRow({
     updateSeasonEditorSelection(textarea);
   });
   textarea.addEventListener('blur', () => {
+    saveNote(textarea.value);
     clearActiveSeasonEditor(textarea);
   });
 
