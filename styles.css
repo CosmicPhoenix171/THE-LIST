@@ -321,7 +321,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .artwork-stack-count{margin-left:.5rem;font-size:.78rem;font-weight:600;color:var(--text-500);background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:999px;padding:.2rem .6rem}
 .card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck{
   position:relative;
-  width:130px;
+  width:150px;
   height:110px;
   justify-content:flex-start;
   overflow:hidden;
@@ -331,19 +331,25 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   top:0;
   left:0;
   width:78px;
-  transition:inherit;
+  transition:transform .25s ease, box-shadow .25s ease;
 }
 .card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork-stack-item:nth-child(1){
   transform:translateX(0);
   z-index:3;
 }
 .card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork-stack-item:nth-child(2){
-  transform:translateX(26px);
+  transform:translateX(18px);
   z-index:2;
 }
 .card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork-stack-item:nth-child(3){
-  transform:translateX(52px);
+  transform:translateX(36px);
   z-index:1;
+}
+.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck:hover .artwork-stack-item:nth-child(2){
+  transform:translateX(30px);
+}
+.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck:hover .artwork-stack-item:nth-child(3){
+  transform:translateX(60px);
 }
 .card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork{margin:0}
 .card.collapsible.movie-card.expanded .artwork-stack-count{display:none}
