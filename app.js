@@ -2305,6 +2305,7 @@ function buildCollapsibleMovieCard(listType, id, item, positionIndex = 0, option
     card.addEventListener('click', () => toggleCardExpansion(listType, id));
   }
   renderMovieCardContent(card, listType, id, item, displayEntryId);
+  ensureCardTitleResizeListener(card);
   return card;
 }
 
@@ -2323,6 +2324,7 @@ function renderMovieCardContent(card, listType, cardId, item, entryId = cardId) 
 
 const cardTitleResizeQueue = new Set();
 let cardTitleResizeScheduled = false;
+const cardTitleResizeHandlers = new WeakMap();
 
 function queueCardTitleAutosize(card) {
   if (!card) return;
@@ -2331,6 +2333,19 @@ function queueCardTitleAutosize(card) {
     cardTitleResizeScheduled = true;
     requestAnimationFrame(flushCardTitleAutosizeQueue);
   }
+}
+
+function ensureCardTitleResizeListener(card) {
+  if (!card || cardTitleResizeHandlers.has(card)) return;
+  const handler = (event) => {
+    if (event && event.target !== card) return;
+    if (event && event.propertyName && !/width|flex|grid|padding|margin|gap/.test(event.propertyName)) {
+      return;
+    }
+    queueCardTitleAutosize(card);
+  };
+  card.addEventListener('transitionend', handler);
+  cardTitleResizeHandlers.set(card, handler);
 }
 
 function flushCardTitleAutosizeQueue() {
