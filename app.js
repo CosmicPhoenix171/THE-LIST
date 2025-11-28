@@ -106,6 +106,7 @@ const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
 const PRIMARY_LIST_TYPES = ['movies', 'tvShows', 'anime', 'books'];
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
+let activeSeasonEditor = null;
 const seriesGroups = {};
 const seriesCarouselState = { movies: new Map(), tvShows: new Map(), anime: new Map() };
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
@@ -2312,6 +2313,7 @@ function renderMovieCardContent(card, listType, cardId, item, entryId = cardId) 
   card.insertBefore(summary, card.firstChild || null);
   card.appendChild(details);
   repositionSeriesCarouselNav(card, listType, cardId);
+  restoreActiveSeasonEditor(card);
 }
 
 function buildMovieCardSummary(listType, item, context = {}) {
@@ -2775,6 +2777,10 @@ function createSeasonNoteRow({
   placeholder = 'Notes for this season',
 } = {}) {
   const row = createEl('div', 'tv-season-line');
+  const seasonKey = buildSeasonRowKey(season);
+  if (seasonKey) {
+    row.dataset.seasonKey = seasonKey;
+  }
   const summaryText = formatSeasonSummary(season, fallbackLabel);
   row.appendChild(createEl('div', 'tv-season-line-summary', { text: summaryText }));
   const statusControls = createSeasonStatusControls({
@@ -2783,6 +2789,7 @@ function createSeasonNoteRow({
     season,
     fieldName,
     sourceSeasons,
+    seasonKey,
   });
   if (statusControls) {
     row.appendChild(statusControls);
@@ -2791,6 +2798,12 @@ function createSeasonNoteRow({
   notesLabel.appendChild(createEl('span', 'sr-only', { text: `${summaryText} notes` }));
   const textarea = document.createElement('textarea');
   textarea.className = 'season-notes-input';
+  if (seasonKey) {
+    textarea.dataset.seasonKey = seasonKey;
+  }
+  textarea.dataset.seasonField = 'notes';
+  textarea.dataset.entryId = entryId || '';
+  textarea.dataset.listType = listType || '';
   textarea.placeholder = placeholder;
   textarea.value = typeof season?.notes === 'string' ? season.notes : '';
   textarea.rows = 3;
@@ -2809,22 +2822,34 @@ function createSeasonNoteRow({
 
   textarea.addEventListener('input', () => {
     debouncedSave(textarea.value);
+    updateSeasonEditorSelection(textarea);
   });
   textarea.addEventListener('change', () => {
     saveNote(textarea.value);
+    updateSeasonEditorSelection(textarea);
   });
   ['click', 'keydown', 'keyup'].forEach(evt => {
-    textarea.addEventListener(evt, (ev) => ev.stopPropagation());
+    textarea.addEventListener(evt, (ev) => {
+      ev.stopPropagation();
+      updateSeasonEditorSelection(textarea);
+    });
+  });
+  textarea.addEventListener('mouseup', () => updateSeasonEditorSelection(textarea));
+  textarea.addEventListener('focus', () => {
+    rememberSeasonEditor(textarea, { field: 'notes' });
+    updateSeasonEditorSelection(textarea);
+  });
+  textarea.addEventListener('blur', () => {
+    clearActiveSeasonEditor(textarea);
   });
 
   return row;
 }
 
 const SEASON_STATUS_OPTIONS = [
-  { value: '', label: 'Status' },
+  { value: 'soon', label: 'Soon™' },
   { value: 'watching', label: 'Watching' },
   { value: 'finished', label: 'Finished' },
-  { value: 'soon', label: 'Soon™' },
 ];
 
 const DEFAULT_EPISODE_TRACKING_LIMIT = 100;
@@ -2836,11 +2861,16 @@ function createSeasonStatusControls({
   season,
   fieldName,
   sourceSeasons = [],
+  seasonKey = '',
 } = {}) {
   if (!season) return null;
   const container = createEl('div', 'season-status-controls');
   const statusSelect = document.createElement('select');
   statusSelect.className = 'season-pill-select season-status-pill';
+  if (seasonKey) statusSelect.dataset.seasonKey = seasonKey;
+  statusSelect.dataset.seasonField = 'status';
+  statusSelect.dataset.entryId = entryId || '';
+  statusSelect.dataset.listType = listType || '';
   SEASON_STATUS_OPTIONS.forEach(opt => {
     const option = document.createElement('option');
     option.value = opt.value;
@@ -2863,6 +2893,7 @@ function createSeasonStatusControls({
     entryId,
     fieldName,
     sourceSeasons,
+    seasonKey,
   });
 
   const persistStatus = (nextStatus) => {
@@ -2883,9 +2914,16 @@ function createSeasonStatusControls({
   statusSelect.addEventListener('change', (event) => {
     event.stopPropagation();
     persistStatus(statusSelect.value);
+    rememberSeasonEditor(statusSelect, { field: 'status' });
   });
   ['click', 'keydown', 'keyup'].forEach(evt => {
     statusSelect.addEventListener(evt, (event) => event.stopPropagation());
+  });
+  statusSelect.addEventListener('focus', () => {
+    rememberSeasonEditor(statusSelect, { field: 'status' });
+  });
+  statusSelect.addEventListener('blur', () => {
+    clearActiveSeasonEditor(statusSelect);
   });
 
   container.appendChild(statusSelect);
@@ -2903,12 +2941,17 @@ function buildSeasonEpisodeSelect({
   entryId,
   fieldName,
   sourceSeasons = [],
+  seasonKey = '',
 } = {}) {
   if (!season) return null;
   const totalEpisodes = Math.max(episodeCount || DEFAULT_EPISODE_TRACKING_LIMIT, 1);
   const cappedEpisodes = Math.min(totalEpisodes, MAX_EPISODE_TRACKING_LIMIT);
   const select = document.createElement('select');
   select.className = 'season-pill-select season-episode-pill';
+  if (seasonKey) select.dataset.seasonKey = seasonKey;
+  select.dataset.seasonField = 'episode';
+  select.dataset.entryId = entryId || '';
+  select.dataset.listType = listType || '';
   const placeholder = document.createElement('option');
   placeholder.value = '';
   placeholder.textContent = episodeCount > 0 ? `Ep 1-${episodeCount}` : 'Episode…';
@@ -2942,10 +2985,13 @@ function buildSeasonEpisodeSelect({
     const parsed = parseEpisodeValue(select.value);
     const normalized = parsed > 0 ? parsed : '';
     persistSeasonFields(listType, entryId, fieldName, sourceSeasons, season, { progressEpisode: normalized });
+    rememberSeasonEditor(select, { field: 'episode' });
   });
   ['click', 'keydown', 'keyup'].forEach(evt => {
     select.addEventListener(evt, (event) => event.stopPropagation());
   });
+  select.addEventListener('focus', () => rememberSeasonEditor(select, { field: 'episode' }));
+  select.addEventListener('blur', () => clearActiveSeasonEditor(select));
   return select;
 }
 
@@ -2957,6 +3003,7 @@ function toggleEpisodeVisibility(select, shouldShow) {
   } else {
     select.classList.add('is-hidden');
     select.disabled = true;
+    clearActiveSeasonEditor(select);
   }
 }
 
@@ -2972,6 +3019,104 @@ function normalizeSeasonStatus(value) {
 function resolveSeasonEpisodeCount(season) {
   if (!season) return 0;
   return parseEpisodeValue(season.episodeCount ?? season.totalEpisodes ?? season.episodes ?? season.animeEpisodes);
+}
+
+function buildSeasonRowKey(season) {
+  if (!season) return '';
+  const tokens = [];
+  if (season.id) tokens.push(`id:${season.id}`);
+  if (season.malId) tokens.push(`mal:${season.malId}`);
+  if (season.seasonId) tokens.push(`sid:${season.seasonId}`);
+  if (season.seasonNumber !== undefined && season.seasonNumber !== null) {
+    tokens.push(`num:${season.seasonNumber}`);
+  }
+  if (season.title) tokens.push(`title:${season.title.toLowerCase()}`);
+  if (season.year) tokens.push(`year:${season.year}`);
+  if (!tokens.length) {
+    const keys = Object.keys(season).sort();
+    keys.forEach(key => {
+      if (season[key] === undefined || season[key] === null) return;
+      tokens.push(`${key}:${String(season[key])}`);
+    });
+  }
+  return tokens.join('|') || 'season';
+}
+
+function rememberSeasonEditor(target, meta = {}) {
+  if (!target) return;
+  const dataset = target.dataset || {};
+  activeSeasonEditor = {
+    listType: meta.listType || dataset.listType || '',
+    entryId: meta.entryId || dataset.entryId || '',
+    seasonKey: meta.seasonKey || dataset.seasonKey || '',
+    field: meta.field || dataset.seasonField || '',
+    selectionStart: typeof target.selectionStart === 'number' ? target.selectionStart : null,
+    selectionEnd: typeof target.selectionEnd === 'number' ? target.selectionEnd : null,
+  };
+}
+
+function updateSeasonEditorSelection(target) {
+  if (!activeSeasonEditor || !target) return;
+  const dataset = target.dataset || {};
+  if (activeSeasonEditor.entryId !== (dataset.entryId || '')) return;
+  if (activeSeasonEditor.seasonKey !== (dataset.seasonKey || '')) return;
+  if (activeSeasonEditor.field !== (dataset.seasonField || '')) return;
+  if (typeof target.selectionStart === 'number') {
+    activeSeasonEditor.selectionStart = target.selectionStart;
+    activeSeasonEditor.selectionEnd = target.selectionEnd;
+  }
+}
+
+function clearActiveSeasonEditor(target) {
+  if (!activeSeasonEditor) return;
+  if (!target) {
+    activeSeasonEditor = null;
+    return;
+  }
+  const dataset = target.dataset || {};
+  if (
+    activeSeasonEditor.entryId === (dataset.entryId || '') &&
+    activeSeasonEditor.seasonKey === (dataset.seasonKey || '') &&
+    activeSeasonEditor.field === (dataset.seasonField || '')
+  ) {
+    activeSeasonEditor = null;
+  }
+}
+
+function restoreActiveSeasonEditor(card) {
+  if (!activeSeasonEditor || !card) return;
+  const cardListType = card.dataset.listType || '';
+  if (activeSeasonEditor.listType && cardListType && activeSeasonEditor.listType !== cardListType) {
+    return;
+  }
+  const selectorCandidates = card.querySelectorAll('[data-season-field]');
+  const target = Array.from(selectorCandidates).find(node => {
+    const dataset = node.dataset || {};
+    return dataset.seasonField === activeSeasonEditor.field
+      && dataset.entryId === activeSeasonEditor.entryId
+      && dataset.seasonKey === activeSeasonEditor.seasonKey;
+  });
+  if (!target) return;
+  requestAnimationFrame(() => {
+    if (typeof target.focus === 'function') {
+      target.focus({ preventScroll: true });
+    }
+    if (
+      activeSeasonEditor.field === 'notes'
+      && typeof target.setSelectionRange === 'function'
+      && typeof activeSeasonEditor.selectionStart === 'number'
+    ) {
+      const start = activeSeasonEditor.selectionStart;
+      const end = typeof activeSeasonEditor.selectionEnd === 'number'
+        ? activeSeasonEditor.selectionEnd
+        : start;
+      try {
+        target.setSelectionRange(start, end);
+      } catch (err) {
+        // ignore selection errors
+      }
+    }
+  });
 }
 
 function persistSeasonNote(listType, entryId, fieldName, sourceSeasons, targetSeason, noteValue) {
