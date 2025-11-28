@@ -336,6 +336,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   --deck-step:18px;
   --deck-hover-step:30px;
 }
+.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck:hover{
+  overflow:visible;
+}
 .card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork-stack-item{
   position:absolute;
   top:0;
@@ -370,6 +373,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   justify-content:flex-start;
   --deck-step:35px;
   --deck-hover-step:60px;
+}
+.card.collapsible.movie-card.expanded .artwork-stack.artwork-deck-expanded:hover{
+  overflow:visible;
 }
 .card.collapsible.movie-card.expanded .artwork-stack.artwork-deck-expanded .artwork-stack-item{
   position:absolute;
