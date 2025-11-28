@@ -2489,6 +2489,52 @@ function formatAnimeFormatLabel(value) {
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
 }
 
+function extractEpisodeCount(entry) {
+  if (!entry) return 0;
+  const seasonFields = ['animeSeasonSummaries', 'tvSeasonSummaries'];
+  for (const field of seasonFields) {
+    const total = sumSeasonEpisodeCounts(entry[field]);
+    if (total > 0) {
+      return total;
+    }
+  }
+  const directCandidates = [entry.animeEpisodes, entry.totalEpisodes, entry.episodes];
+  for (const candidate of directCandidates) {
+    const parsed = parseEpisodeValue(candidate);
+    if (parsed > 0) {
+      return parsed;
+    }
+  }
+  return 0;
+}
+
+function sumSeasonEpisodeCounts(seasons) {
+  if (!Array.isArray(seasons) || !seasons.length) return 0;
+  return seasons.reduce((total, season) => {
+    const parsed = parseEpisodeValue(season?.episodeCount);
+    return parsed > 0 ? total + parsed : total;
+  }, 0);
+}
+
+function parseEpisodeValue(value) {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    if (/season/i.test(trimmed) && !/episod|\bep\b/i.test(trimmed)) {
+      return 0;
+    }
+    const match = trimmed.match(/(\d+(?:\.\d+)?)/);
+    if (!match) return 0;
+    const parsed = Number(match[1]);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+  return 0;
+}
+
 function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem) {
   const normalizedListType = listType || 'anime';
   let entries = [];
@@ -2521,8 +2567,8 @@ function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem) {
         movieCount++;
       }
     }
-    const epValue = Number(entry.animeEpisodes || entry.episodes);
-    if (Number.isFinite(epValue) && epValue > 0) {
+    const epValue = extractEpisodeCount(entry);
+    if (epValue > 0) {
       totalEpisodes += epValue;
     }
     const status = (entry.animeStatus || entry.status || '').toUpperCase();
@@ -2612,7 +2658,8 @@ function buildAnimeDetailBlock(listType, entryId, item) {
   if (!item) return null;
   const block = createEl('div', 'detail-block anime-detail-block');
   const chips = [];
-  if (item.animeEpisodes) chips.push(formatAnimeEpisodesLabel(item.animeEpisodes));
+  const episodeLabel = formatAnimeEpisodesLabel(extractEpisodeCount(item) || item.animeEpisodes);
+  if (episodeLabel) chips.push(episodeLabel);
   if (item.animeDuration) chips.push(`${item.animeDuration} min/ep`);
   if (item.animeFormat) chips.push(formatAnimeFormatLabel(item.animeFormat));
   if (item.animeStatus) chips.push(formatAnimeStatusLabel(item.animeStatus));
@@ -2823,11 +2870,11 @@ function getAnimeSeasonField(item) {
 }
 
 function formatAnimeEpisodesLabel(value) {
-  const count = Number(value);
-  if (Number.isFinite(count) && count > 0) {
+  const count = parseEpisodeValue(value);
+  if (count > 0) {
     return `${count} episode${count === 1 ? '' : 's'}`;
   }
-  return `${value} episodes`;
+  return '';
 }
 
 function buildSeriesCarouselBlock(listType, cardId) {
