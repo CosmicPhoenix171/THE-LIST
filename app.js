@@ -2976,7 +2976,7 @@ function buildMovieArtwork(item, context = {}) {
   const wrapper = createEl('div', 'artwork-wrapper');
   const seriesEntries = Array.isArray(context.seriesEntries) ? context.seriesEntries : [];
   const stackItems = buildSeriesPosterStackItems(item, seriesEntries);
-  const shouldStack = stackItems.length > 1;
+  const shouldStack = stackItems.length > 1 || (!context.isExpanded && stackItems.length > 0);
   if (shouldStack) {
     wrapper.classList.add('artwork-stack-wrapper');
     const stackClasses = ['artwork-stack'];
