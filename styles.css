@@ -314,17 +314,38 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .card.collapsible.movie-card.expanded .anime-summary-badges{justify-content:flex-start}
 .card.collapsible.movie-card.expanded .tv-summary-badges{justify-content:flex-start}
 .artwork-wrapper{display:flex;flex-direction:column;gap:.4rem;align-items:center}
-.artwork-stack-wrapper{width:100%;padding:0 1.25rem}
-.artwork-stack{display:flex;align-items:center;justify-content:center;width:100%;overflow:hidden}
-.artwork-stack .artwork{width:70px;height:105px;margin-left:-36px;box-shadow:0 8px 18px rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.08);transition:transform .2s ease,box-shadow .2s ease;margin-right:0}
-.artwork-stack .artwork:first-child{margin-left:0}
-.artwork-stack .artwork:nth-child(1){z-index:3}
-.artwork-stack .artwork:nth-child(2){z-index:2}
-.artwork-stack .artwork:nth-child(3){z-index:1}
+.artwork-stack-wrapper{width:100%;display:flex;justify-content:center;padding:0}
+.artwork-stack{display:flex;align-items:center;justify-content:center;width:100%;overflow:visible}
+.artwork-stack .artwork{width:70px;height:105px;box-shadow:0 8px 18px rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.08);transition:transform .2s ease,box-shadow .2s ease}
 .artwork-stack .artwork:hover{transform:translateY(-4px);box-shadow:0 12px 24px rgba(0,0,0,0.55)}
 .artwork-stack-count{margin-left:.5rem;font-size:.78rem;font-weight:600;color:var(--text-500);background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:999px;padding:.2rem .6rem}
-.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck{justify-content:center}
-.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork-stack-item{transform:none}
+.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck{
+  position:relative;
+  width:130px;
+  height:110px;
+  justify-content:flex-start;
+  overflow:hidden;
+}
+.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork-stack-item{
+  position:absolute;
+  top:0;
+  left:0;
+  width:78px;
+  transition:inherit;
+}
+.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork-stack-item:nth-child(1){
+  transform:translateX(0);
+  z-index:3;
+}
+.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork-stack-item:nth-child(2){
+  transform:translateX(26px);
+  z-index:2;
+}
+.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork-stack-item:nth-child(3){
+  transform:translateX(52px);
+  z-index:1;
+}
+.card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck .artwork{margin:0}
 .card.collapsible.movie-card.expanded .artwork-stack-count{display:none}
 .card.collapsible.movie-card .artwork{width:90px;aspect-ratio:2 / 3;height:auto;margin:0}
 .card.collapsible.movie-card .artwork.placeholder{display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--text-500);padding:.4rem;text-align:center}
