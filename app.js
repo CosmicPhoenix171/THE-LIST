@@ -113,6 +113,16 @@ const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
+const franchiseState = {
+  loaded: false,
+  records: [],
+};
+const FRANCHISE_MEDIA_LABELS = {
+  movie: 'Movie',
+  tv: 'TV Series',
+  season: 'Season',
+  special: 'Special',
+};
 const jikanRequestQueue = [];
 let jikanQueueActive = false;
 let lastJikanRequestTime = 0;
@@ -344,10 +354,11 @@ function buildLibraryStatChip(label, value, options = {}) {
 // 2. Add Modal & Item Management
 // 3. List Loading & Collapsible Cards
 // 4. Unified Library
-// 5. Metadata & External API Pipelines
-// 6. Spinner / Wheel Experience
-// 7. Anime Franchise Automations
-// 8. Utility Helpers & Shared Formatters
+// 5. Franchise Timelines
+// 6. Metadata & External API Pipelines
+// 7. Spinner / Wheel Experience
+// 8. Anime Franchise Automations
+// 9. Utility Helpers & Shared Formatters
 // ============================================================================
 
 // DOM references
@@ -359,6 +370,9 @@ const signOutBtn = document.getElementById('sign-out');
 const backToTopBtn = document.getElementById('back-to-top');
 const modalRoot = document.getElementById('modal-root');
 const combinedListEl = document.getElementById('combined-list');
+const franchiseSectionEl = document.getElementById('franchise-section');
+const franchiseShelfEl = document.getElementById('franchise-shelf');
+const franchiseMetaEl = document.getElementById('franchise-meta');
 const libraryStatsSummaryEl = document.getElementById('library-stats-summary');
 const unifiedSearchInput = document.getElementById('library-search');
 const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
@@ -1095,7 +1109,7 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywor
 }
 
 // ============================================================================
-// Feature 7: Anime Franchise Automations
+// Feature 8: Anime Franchise Automations
 // ============================================================================
 
 function formatAnimeFranchiseEntryLabel(entry) {
@@ -1581,6 +1595,7 @@ function showLogin() {
   introPlayed = false;
   safeStorageRemove(INTRO_SESSION_KEY);
   resetFilterState();
+   resetFranchiseSection();
   updateBackToTopVisibility();
 }
 
@@ -1591,6 +1606,7 @@ function showAppForUser(user) {
   updateBackToTopVisibility();
   playTheListIntro();
   loadPrimaryLists();
+  loadFranchises();
 }
 
 function loadPrimaryLists() {
@@ -1798,6 +1814,7 @@ function loadFinishedList(listType) {
       renderUnifiedLibrary();
       updateLibraryRuntimeStats();
     }
+    refreshFranchiseLibraryMatches();
   }, (err) => {
     console.error('Finished list read error', err);
   });
@@ -1893,6 +1910,7 @@ function renderList(listType, data) {
   }
 
   renderUnifiedLibrary();
+  refreshFranchiseLibraryMatches();
 }
 
 // ============================================================================
@@ -2075,6 +2093,495 @@ function computeLibraryRuntimeStats() {
     }
   });
 
+  return stats;
+}
+
+// ============================================================================
+// Feature 5: Franchise Timelines
+// ============================================================================
+
+function loadFranchises() {
+  if (listeners.franchises) {
+    listeners.franchises();
+    delete listeners.franchises;
+  }
+  if (!currentUser || !db) {
+    resetFranchiseSection();
+    return;
+  }
+  if (franchiseShelfEl) {
+    franchiseShelfEl.innerHTML = '<div class="franchise-empty small">Loading franchises...</div>';
+  }
+  const path = ref(db, `users/${currentUser.uid}/franchises`);
+  const off = onValue(path, (snap) => {
+    const raw = snap.val() || {};
+    franchiseState.records = normalizeFranchiseCollection(raw);
+    franchiseState.loaded = true;
+    renderFranchiseShelf();
+    refreshFranchiseLibraryMatches();
+  }, (err) => {
+    console.warn('Franchise load failed', err);
+    franchiseState.loaded = true;
+    if (franchiseShelfEl) {
+      franchiseShelfEl.innerHTML = '<div class="franchise-empty small">Unable to load franchises.</div>';
+    }
+    updateFranchiseMeta([]);
+  });
+  listeners.franchises = off;
+}
+
+function resetFranchiseSection() {
+  franchiseState.loaded = false;
+  franchiseState.records = [];
+  if (franchiseMetaEl) {
+    franchiseMetaEl.innerHTML = '';
+  }
+  if (franchiseShelfEl) {
+    franchiseShelfEl.innerHTML = '<div class="franchise-empty small">Sign in to load curated franchises.</div>';
+  }
+}
+
+function renderFranchiseShelf() {
+  if (!franchiseShelfEl) return;
+  updateFranchiseMeta(franchiseState.records);
+  if (!franchiseState.loaded) {
+    franchiseShelfEl.innerHTML = '<div class="franchise-empty small">Loading franchises...</div>';
+    return;
+  }
+  const records = franchiseState.records || [];
+  if (!records.length) {
+    franchiseShelfEl.innerHTML = '<div class="franchise-empty small">No franchises yet. Build one from your automations to see it here.</div>';
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  records.forEach(record => {
+    const card = buildFranchiseCard(record);
+    if (card) fragment.appendChild(card);
+  });
+  franchiseShelfEl.innerHTML = '';
+  franchiseShelfEl.appendChild(fragment);
+}
+
+function updateFranchiseMeta(records) {
+  if (!franchiseMetaEl) return;
+  franchiseMetaEl.innerHTML = '';
+  if (!franchiseState.loaded || !records || !records.length) return;
+  const totalFranchises = records.length;
+  const totalEntries = records.reduce((sum, record) => sum + (record.stats?.totalEntries || record.entries.length || 0), 0);
+  const trackedEntries = records.reduce((sum, record) => sum + (record.stats?.libraryMatches || 0), 0);
+  const finishedEntries = records.reduce((sum, record) => sum + (record.stats?.finishedCount || 0), 0);
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(buildFranchiseMetaPill(totalFranchises, totalFranchises === 1 ? 'Franchise' : 'Franchises'));
+  fragment.appendChild(buildFranchiseMetaPill(totalEntries, totalEntries === 1 ? 'Entry' : 'Entries'));
+  if (trackedEntries > 0) {
+    fragment.appendChild(buildFranchiseMetaPill(trackedEntries, 'Tracked'));
+  }
+  if (finishedEntries > 0) {
+    fragment.appendChild(buildFranchiseMetaPill(finishedEntries, 'Finished'));
+  }
+  franchiseMetaEl.appendChild(fragment);
+}
+
+function buildFranchiseMetaPill(value, label) {
+  const pill = createEl('span', 'franchise-meta-pill');
+  const strong = createEl('strong', '', { text: formatLibraryStatNumber(value) });
+  pill.appendChild(strong);
+  pill.appendChild(document.createTextNode(` ${label}`));
+  return pill;
+}
+
+function buildFranchiseCard(record) {
+  if (!record) return null;
+  const card = createEl('article', 'franchise-card');
+  const header = createEl('div', 'franchise-card-header');
+  const titleBlock = createEl('div', 'franchise-card-title-block');
+  const title = createEl('h3', 'franchise-card-title', { text: record.name || 'Franchise' });
+  titleBlock.appendChild(title);
+  if (record.tagline) {
+    titleBlock.appendChild(createEl('p', 'franchise-card-subtitle', { text: record.tagline }));
+  } else if (record.synopsis) {
+    titleBlock.appendChild(createEl('p', 'franchise-card-subtitle', { text: record.synopsis }));
+  }
+  header.appendChild(titleBlock);
+
+  const metaRow = createEl('div', 'franchise-card-meta');
+  const totalEntries = record.stats?.totalEntries ?? record.entries.length;
+  metaRow.appendChild(buildFranchiseMetaPill(totalEntries, totalEntries === 1 ? 'Entry' : 'Entries'));
+  const tracked = record.stats?.libraryMatches || 0;
+  if (tracked > 0) {
+    metaRow.appendChild(buildFranchiseMetaPill(tracked, 'Tracked'));
+  }
+  const remaining = record.stats?.remainingCount || Math.max(totalEntries - (record.stats?.finishedCount || 0), 0);
+  if (remaining > 0) {
+    metaRow.appendChild(buildFranchiseMetaPill(remaining, 'Remaining'));
+  }
+  header.appendChild(metaRow);
+  card.appendChild(header);
+
+  card.appendChild(buildFranchiseTimeline(record));
+  return card;
+}
+
+function buildFranchiseTimeline(record) {
+  const wrapper = createEl('div', 'franchise-timeline');
+  if (!Array.isArray(record.entries) || !record.entries.length) {
+    wrapper.appendChild(createEl('div', 'franchise-empty small', { text: 'No timeline entries yet.' }));
+    return wrapper;
+  }
+  const track = createEl('div', 'franchise-track');
+  record.entries.forEach(entry => {
+    const node = buildFranchiseTimelineEntry(entry);
+    if (node) track.appendChild(node);
+  });
+  if (!track.childElementCount) {
+    wrapper.appendChild(createEl('div', 'franchise-empty small', { text: 'No timeline entries yet.' }));
+    return wrapper;
+  }
+  wrapper.appendChild(track);
+  return wrapper;
+}
+
+function buildFranchiseTimelineEntry(entry) {
+  if (!entry) return null;
+  const entryEl = createEl('div', 'franchise-entry');
+  entryEl.classList.add(`media-${entry.mediaType || 'movie'}`);
+  if (entry.isFinished) entryEl.classList.add('is-finished');
+  if (entry.libraryMatch) entryEl.classList.add('in-library');
+
+  const header = createEl('div', 'franchise-entry-header');
+  if (entry.orderLabel) {
+    header.appendChild(createEl('span', 'franchise-entry-order', { text: entry.orderLabel }));
+  }
+  header.appendChild(createEl('span', 'franchise-entry-badge', { text: entry.badgeLabel || FRANCHISE_MEDIA_LABELS[entry.mediaType] || 'Entry' }));
+  entryEl.appendChild(header);
+
+  entryEl.appendChild(createEl('div', 'franchise-entry-title', { text: entry.title || 'Untitled entry' }));
+  if (entry.subtitle) {
+    entryEl.appendChild(createEl('div', 'franchise-entry-subtitle', { text: entry.subtitle }));
+  }
+
+  const metaBits = [];
+  if (entry.releaseLabel) metaBits.push(entry.releaseLabel);
+  if (entry.runtimeMinutes) metaBits.push(`${entry.runtimeMinutes} min`);
+  if (entry.episodes) metaBits.push(`${entry.episodes} ep`);
+  if (entry.watchStatusLabel && entry.watchStatus !== 'finished') metaBits.push(entry.watchStatusLabel);
+  if (metaBits.length) {
+    entryEl.appendChild(createEl('div', 'franchise-entry-meta', { text: metaBits.join(' • ') }));
+  }
+
+  if (entry.notes) {
+    entryEl.appendChild(createEl('p', 'franchise-entry-notes', { text: entry.notes }));
+  }
+
+  const statusText = entry.libraryMatch
+    ? (entry.isFinished ? 'Finished in your library' : 'In your library')
+    : (entry.highlightLabel || entry.watchStatusLabel || entry.releaseStatusLabel || '');
+  if (statusText) {
+    entryEl.appendChild(createEl('div', 'franchise-entry-status', { text: statusText }));
+  }
+
+  return entryEl;
+}
+
+function normalizeFranchiseCollection(raw) {
+  let records = [];
+  if (Array.isArray(raw)) {
+    records = raw;
+  } else if (raw && typeof raw === 'object') {
+    records = Object.entries(raw).map(([id, value]) => ({ ...(value || {}), id }));
+  }
+  return records.map((record, index) => normalizeFranchiseRecord(record, index)).filter(Boolean).sort((a, b) => {
+    if (a.order !== b.order) return a.order - b.order;
+    return titleSortKey(a.name).localeCompare(titleSortKey(b.name));
+  });
+}
+
+function normalizeFranchiseRecord(source, fallbackIndex = 0) {
+  if (!source) return null;
+  const id = source.id || source.franchiseId || `franchise-${fallbackIndex + 1}`;
+  const entries = normalizeFranchiseEntries(source.entries || source.timeline || source.parts || source.mediaItems || []);
+  const record = {
+    id,
+    name: source.name || source.title || `Franchise ${fallbackIndex + 1}`,
+    tagline: source.tagline || source.subtitle || '',
+    synopsis: source.description || source.summary || '',
+    order: resolveFranchiseDisplayOrder(source, fallbackIndex),
+    updatedAt: Number(source.updatedAt || source.updated || source.timestamp || 0) || 0,
+    entries,
+  };
+  record.stats = computeFranchiseStats(entries);
+  return record;
+}
+
+function normalizeFranchiseEntries(rawEntries) {
+  let entries = [];
+  if (Array.isArray(rawEntries)) {
+    entries = rawEntries;
+  } else if (rawEntries && typeof rawEntries === 'object') {
+    entries = Object.entries(rawEntries).map(([id, value]) => ({ ...(value || {}), id }));
+  }
+  return entries.map((entry, index) => normalizeFranchiseEntry(entry, index)).filter(Boolean).sort((a, b) => {
+    if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder;
+    if (a.releaseDate && b.releaseDate && a.releaseDate !== b.releaseDate) {
+      return a.releaseDate < b.releaseDate ? -1 : 1;
+    }
+    if ((a.releaseYear || 0) !== (b.releaseYear || 0)) {
+      return (a.releaseYear || 0) - (b.releaseYear || 0);
+    }
+    return titleSortKey(a.title).localeCompare(titleSortKey(b.title));
+  });
+}
+
+function normalizeFranchiseEntry(source, fallbackIndex = 0) {
+  if (!source) return null;
+  const id = source.id || source.entryId || `entry-${fallbackIndex + 1}`;
+  const mediaType = coerceFranchiseMediaType(source.mediaType || source.type || source.category || source.format, source);
+  const listType = resolveFranchiseListType(mediaType, source.listType);
+  const releaseDate = sanitizeFranchiseDate(source.releaseDate || source.airDate || source.date || '');
+  const releaseYearStr = sanitizeYear(source.year || source.releaseYear || releaseDate);
+  const releaseYear = releaseYearStr ? Number(releaseYearStr) : null;
+  const releaseLabel = formatFranchiseReleaseLabel(releaseDate, releaseYearStr);
+  const watchStatus = normalizeFranchiseWatchStatus(source.watchStatus || source.status || source.progress);
+  const entry = {
+    id,
+    title: source.title || source.name || source.episodeTitle || source.seriesTitle || 'Untitled entry',
+    subtitle: source.subtitle || source.seriesTitle || '',
+    mediaType,
+    listType,
+    releaseDate,
+    releaseYear,
+    releaseLabel,
+    watchStatus,
+    watchStatusLabel: formatFranchiseWatchStatusLabel(watchStatus),
+    releaseStatusLabel: formatFranchiseReleaseStatusLabel(normalizeFranchiseReleaseStatus(source.releaseStatus || source.availability)),
+    highlightLabel: source.highlight || source.nextAction || '',
+    notes: source.notes || source.summary || '',
+    badgeLabel: formatFranchiseBadgeLabel(mediaType, source),
+    orderLabel: source.phase || source.arc || source.era || source.timelineLabel || '',
+    runtimeMinutes: parseRuntimeMinutes(source.runtimeMinutes || source.runtime || source.duration),
+    episodes: parseEpisodeValue(source.episodes || source.episodeCount || source.totalEpisodes),
+    seasonNumber: Number.isFinite(Number(source.seasonNumber)) ? Number(source.seasonNumber) : null,
+    tmdbId: source.tmdbId || source.tmdbID || null,
+    imdbId: source.imdbId || source.imdbID || null,
+    aniListId: source.aniListId || null,
+    listEntryId: source.listEntryId || source.listId || source.libraryId || null,
+    displayOrder: resolveFranchiseDisplayOrder(source, fallbackIndex),
+    libraryMatch: false,
+    isFinished: watchStatus === 'finished',
+  };
+  return entry;
+}
+
+function coerceFranchiseMediaType(value, source = {}) {
+  if (source && source.mediaType && typeof source.mediaType === 'object') {
+    value = source.mediaType.type || source.mediaType.name || value;
+  }
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized && source && (source.seasonNumber !== undefined || source.episodes)) {
+    return 'season';
+  }
+  if (['movie', 'film', 'feature'].includes(normalized)) return 'movie';
+  if (['season', 'tv_season', 'series_season'].includes(normalized)) return 'season';
+  if (['tv', 'show', 'series'].includes(normalized)) return 'tv';
+  if (['special', 'ova', 'ona', 'short'].includes(normalized)) return 'special';
+  return normalized || 'movie';
+}
+
+function resolveFranchiseListType(mediaType, provided) {
+  if (provided && PRIMARY_LIST_TYPES.includes(provided)) {
+    return provided;
+  }
+  if (mediaType === 'tv' || mediaType === 'season') return 'tvShows';
+  if (mediaType === 'special') return 'movies';
+  return 'movies';
+}
+
+function resolveFranchiseDisplayOrder(source, fallbackIndex = 0) {
+  const candidates = [source.order, source.sort, source.timelineOrder, source.rank, source.position];
+  for (const candidate of candidates) {
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+  const dateValue = sanitizeFranchiseDate(source.releaseDate || source.date || '');
+  if (dateValue) {
+    const timestamp = Date.parse(dateValue);
+    if (Number.isFinite(timestamp)) {
+      return timestamp;
+    }
+  }
+  const yearValue = Number(sanitizeYear(source.year || source.releaseYear));
+  if (Number.isFinite(yearValue)) {
+    return yearValue * 1000;
+  }
+  return fallbackIndex;
+}
+
+function sanitizeFranchiseDate(value) {
+  if (!value) return '';
+  const match = String(value).match(/(\d{4})(?:[-/.]?(\d{1,2}))?(?:[-/.]?(\d{1,2}))?/);
+  if (!match) return '';
+  const year = match[1];
+  const month = match[2] ? match[2].padStart(2, '0') : '01';
+  const day = match[3] ? match[3].padStart(2, '0') : '01';
+  return `${year}-${month}-${day}`;
+}
+
+function formatFranchiseReleaseLabel(releaseDate, releaseYear) {
+  if (releaseDate) {
+    const [year, month] = releaseDate.split('-');
+    if (year && month) {
+      const monthIndex = Number(month) - 1;
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      if (monthIndex >= 0 && monthIndex < monthNames.length) {
+        return `${monthNames[monthIndex]} ${year}`;
+      }
+      return year;
+    }
+  }
+  if (releaseYear) return releaseYear;
+  return '';
+}
+
+function normalizeFranchiseWatchStatus(value) {
+  if (!value) return '';
+  const normalized = String(value).trim().toLowerCase();
+  if (['finished', 'complete', 'completed', 'watched', 'done'].includes(normalized)) return 'finished';
+  if (['watching', 'in_progress', 'in-progress', 'ongoing', 'current'].includes(normalized)) return 'in-progress';
+  if (['planned', 'backlog', 'pending', 'queue', 'queued', 'up next', 'up-next'].includes(normalized)) return 'pending';
+  if (['skipped', 'dropped', 'abandoned'].includes(normalized)) return 'skipped';
+  return normalized;
+}
+
+function normalizeFranchiseReleaseStatus(value) {
+  if (!value) return '';
+  const normalized = String(value).trim().toLowerCase();
+  if (['released', 'available'].includes(normalized)) return 'released';
+  if (['upcoming', 'announced', 'tba'].includes(normalized)) return 'upcoming';
+  if (['delayed', 'hiatus'].includes(normalized)) return 'delayed';
+  return normalized;
+}
+
+function formatFranchiseWatchStatusLabel(status) {
+  switch (status) {
+    case 'finished':
+      return 'Finished';
+    case 'in-progress':
+      return 'In progress';
+    case 'pending':
+      return 'Backlog';
+    case 'skipped':
+      return 'Skipped';
+    default:
+      return status ? status.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()) : '';
+  }
+}
+
+function formatFranchiseReleaseStatusLabel(status) {
+  switch (status) {
+    case 'released':
+      return 'Released';
+    case 'upcoming':
+      return 'Upcoming';
+    case 'delayed':
+      return 'Delayed';
+    default:
+      return status ? status.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()) : '';
+  }
+}
+
+function formatFranchiseBadgeLabel(mediaType, source = {}) {
+  if (source.badge) return source.badge;
+  if (mediaType === 'season') {
+    const numeric = Number(source.seasonNumber);
+    if (Number.isFinite(numeric)) {
+      return `S${String(numeric).padStart(2, '0')}`;
+    }
+  }
+  if (source.part) {
+    const numeric = Number(source.part);
+    if (Number.isFinite(numeric)) {
+      return `Part ${numeric}`;
+    }
+  }
+  return FRANCHISE_MEDIA_LABELS[mediaType] || 'Entry';
+}
+
+function refreshFranchiseLibraryMatches() {
+  if (!franchiseState.loaded || !Array.isArray(franchiseState.records) || !franchiseState.records.length) return;
+  let updated = false;
+  franchiseState.records.forEach(record => {
+    let recordChanged = false;
+    record.entries.forEach(entry => {
+      const match = resolveFranchiseLibraryMatch(entry);
+      const isMatched = Boolean(match);
+      if (entry.libraryMatch !== isMatched) {
+        entry.libraryMatch = isMatched;
+        recordChanged = true;
+        updated = true;
+      }
+      if (isMatched && !entry.isFinished && match && (match.finishedAt || match.finishedDate)) {
+        entry.isFinished = true;
+        recordChanged = true;
+      }
+    });
+    if (recordChanged) {
+      record.stats = computeFranchiseStats(record.entries);
+    }
+  });
+  if (updated) {
+    renderFranchiseShelf();
+  } else {
+    updateFranchiseMeta(franchiseState.records);
+  }
+}
+
+function resolveFranchiseLibraryMatch(entry) {
+  if (!entry || !entry.listType) return null;
+  const pools = [listCaches[entry.listType] || {}, finishedCaches[entry.listType] || {}];
+  for (const pool of pools) {
+    if (!pool) continue;
+    if (entry.listEntryId && pool[entry.listEntryId]) {
+      return pool[entry.listEntryId];
+    }
+    if (entry.tmdbId) {
+      const match = Object.values(pool).find(item => Number(item.tmdbId) === Number(entry.tmdbId));
+      if (match) return match;
+    }
+    if (entry.imdbId) {
+      const match = Object.values(pool).find(item => item.imdbId && item.imdbId === entry.imdbId);
+      if (match) return match;
+    }
+    if (entry.title) {
+      const targetTitle = normalizeTitleKey(entry.title);
+      const match = Object.values(pool).find(item => normalizeTitleKey(item.title) === targetTitle && (!entry.releaseYear || sanitizeYear(item.year) === String(entry.releaseYear)));
+      if (match) return match;
+    }
+  }
+  return null;
+}
+
+function computeFranchiseStats(entries) {
+  const stats = {
+    totalEntries: Array.isArray(entries) ? entries.length : 0,
+    finishedCount: 0,
+    libraryMatches: 0,
+    remainingCount: 0,
+  };
+  if (!Array.isArray(entries)) {
+    return stats;
+  }
+  entries.forEach(entry => {
+    if (!entry) return;
+    if (entry.isFinished || entry.watchStatus === 'finished') {
+      stats.finishedCount += 1;
+    }
+    if (entry.libraryMatch) {
+      stats.libraryMatches += 1;
+    }
+  });
+  stats.remainingCount = Math.max(stats.totalEntries - stats.finishedCount, 0);
   return stats;
 }
 
@@ -4611,7 +5118,7 @@ function getMissingMetadataFields(item, listType) {
 }
 
 // ============================================================================
-// Feature 5: Metadata Refresh & External API Pipelines
+// Feature 6: Metadata Refresh & External API Pipelines
 // ============================================================================
 
 function needsMetadataRefresh(listType, item) {
@@ -4710,7 +5217,7 @@ function maybeRefreshMetadata(listType, data) {
 }
 
 // ============================================================================
-// Feature 8: Utility Helpers & Shared Formatters
+// Feature 9: Utility Helpers & Shared Formatters
 // ============================================================================
 
 function buildTrailerUrl(title, year) {
@@ -6174,7 +6681,7 @@ async function refreshItemMetadata(listType, itemId, item, options = {}) {
 }
 
 // ============================================================================
-// Feature 6: Spinner / Wheel Experience
+// Feature 7: Spinner / Wheel Experience
 // ============================================================================
 
 function setupWheelModal() {
