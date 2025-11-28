@@ -2878,15 +2878,12 @@ function createSeasonStatusControls({
     option.textContent = opt.label;
     statusSelect.appendChild(option);
   });
-  const existingStatus = normalizeSeasonStatus(season.watchStatus);
-  const normalizedStatus = existingStatus || DEFAULT_SEASON_STATUS;
+  const storedStatus = normalizeSeasonStatus(season.watchStatus);
+  const normalizedStatus = storedStatus || DEFAULT_SEASON_STATUS;
   statusSelect.value = normalizedStatus;
   const canPersist = Boolean(listType && entryId && fieldName && Array.isArray(sourceSeasons) && sourceSeasons.length);
   if (!canPersist) {
     statusSelect.disabled = true;
-  }
-  if (!existingStatus && canPersist && DEFAULT_SEASON_STATUS) {
-    persistSeasonFields(listType, entryId, fieldName, sourceSeasons, season, { watchStatus: DEFAULT_SEASON_STATUS });
   }
 
   const episodeCount = resolveSeasonEpisodeCount(season);
