@@ -6663,6 +6663,26 @@ function pickAnimeTitle(source = {}) {
   return candidates[0] || '';
 }
 
+function pickAnimeSuggestionTitle(source = {}) {
+  if (!source) return '';
+  const englishTitle = source.titleEnglish
+    || source.title_english
+    || (source.title && typeof source.title === 'object' ? source.title.english : null)
+    || extractEnglishTitleFromList(source.titles);
+  const cleanedEnglish = typeof englishTitle === 'string' ? englishTitle.trim() : '';
+  if (cleanedEnglish) return cleanedEnglish;
+  return pickAnimeTitle(source);
+}
+
+function extractEnglishTitleFromList(titles) {
+  if (!Array.isArray(titles)) return '';
+  const englishEntry = titles.find(entry => entry && /english/i.test(entry?.type || ''));
+  if (englishEntry && englishEntry.title) {
+    return englishEntry.title;
+  }
+  return '';
+}
+
 function formatAnimeStatusLabel(value) {
   if (!value) return '';
   const normalized = String(value).toUpperCase();
@@ -6824,7 +6844,7 @@ async function fetchAniListSuggestions(query) {
   if (!entries.length) return [];
   return entries.map(anime => ({
     source: 'jikan',
-    title: pickAnimeTitle(anime),
+    title: pickAnimeSuggestionTitle(anime),
     year: anime.year || extractPrimaryYear(anime.aired?.from || ''),
     anilistId: anime.mal_id,
     format: anime.type || '',
