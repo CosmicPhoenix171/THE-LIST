@@ -323,8 +323,8 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .artwork-stack-count{margin-left:.5rem;font-size:.78rem;font-weight:600;color:var(--text-500);background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:999px;padding:.2rem .6rem}
 .card.collapsible.movie-card:not(.expanded) .artwork-stack.artwork-deck{
   position:relative;
-  width:150px;
-  height:110px;
+  width:160px;
+  height:150px;
   justify-content:flex-start;
   overflow:hidden;
 }
@@ -392,6 +392,38 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .movie-card-title{font-weight:700;font-size:1rem;line-height:1.25}
 .movie-card-status{align-self:center}
 .card.collapsible.movie-card .title{font-size:1rem}
+.card.collapsible.movie-card:not(.expanded) .movie-card-summary{position:relative;padding-bottom:3.2rem;margin-top:0.25rem}
+.card.collapsible.movie-card:not(.expanded) .movie-card-info{
+  position:absolute;
+  left:50%;
+  bottom:0;
+  transform:translate(-50%, 60%);
+  width:calc(100% - 1.5rem);
+  background:linear-gradient(180deg,rgba(6,12,18,0.15),rgba(6,12,18,0.9));
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:16px;
+  padding:.6rem .85rem;
+  box-shadow:0 14px 32px rgba(0,0,0,0.35);
+  text-align:left;
+  align-items:flex-start;
+}
+.card.collapsible.movie-card:not(.expanded) .movie-card-header{align-items:flex-start;width:100%}
+.card.collapsible.movie-card:not(.expanded) .movie-card-info .title{font-size:1rem}
+.card.collapsible.movie-card:not(.expanded) .series-card-subtitle{font-size:.78rem;color:var(--text-300)}
+.card.collapsible.movie-card:not(.expanded) .anime-summary-badges,
+.card.collapsible.movie-card:not(.expanded) .tv-summary-badges{justify-content:flex-start}
+.card.collapsible.movie-card:not(.expanded) .movie-card-info::before{
+  content:'';
+  position:absolute;
+  top:-22px;
+  left:50%;
+  transform:translateX(-50%);
+  width:65%;
+  height:60px;
+  background:linear-gradient(180deg,rgba(6,12,18,0),rgba(6,12,18,0.65));
+  filter:blur(18px);
+  z-index:-1;
+}
 .card.collapsible.movie-card .meta{font-size:.82rem}
 .card.collapsible.movie-card .actor-line{font-size:.8rem}
 .movie-card-info{display:flex;flex-direction:column;gap:.3rem;width:100%}
