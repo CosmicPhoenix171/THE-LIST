@@ -161,6 +161,11 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .franchise-entry-meta{font-size:.8rem;color:var(--text-500);display:flex;flex-wrap:wrap;gap:.35rem}
 .franchise-entry-notes{font-size:.82rem;color:var(--text-300);margin:0}
 .franchise-entry-status{font-size:.78rem;font-weight:600;color:var(--text-300)}
+.franchise-entry[draggable="true"]{cursor:grab}
+.franchise-entry.is-dragging{opacity:.35;cursor:grabbing}
+.franchise-track.is-dragging{outline:1px dashed rgba(125,242,201,0.35);outline-offset:6px}
+.franchise-entry-placeholder{border:1px dashed rgba(125,242,201,0.5);background:rgba(125,242,201,0.08);color:var(--text-500);min-width:190px;min-height:120px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:600;letter-spacing:.04em;text-transform:uppercase;pointer-events:none}
+.franchise-entry-placeholder span{pointer-events:none}
 .franchise-legend{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.25rem;color:var(--text-500);font-size:.78rem}
 .franchise-legend span{display:flex;align-items:center;gap:.25rem}
 .franchise-legend-dot{width:10px;height:10px;border-radius:50%;background:rgba(125,242,201,0.8);display:inline-block}

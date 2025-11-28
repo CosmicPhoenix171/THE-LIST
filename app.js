@@ -119,6 +119,13 @@ const franchiseState = {
   loaded: false,
   records: [],
 };
+const franchiseDragState = {
+  activeEntryId: null,
+  activeFranchiseId: null,
+  activeTrack: null,
+  placeholder: null,
+};
+let franchiseDragEventsBound = false;
 const FRANCHISE_MEDIA_LABELS = {
   movie: 'Movie',
   tv: 'TV Series',
@@ -2224,6 +2231,7 @@ function renderFranchiseShelf() {
   });
   franchiseShelfEl.innerHTML = '';
   franchiseShelfEl.appendChild(fragment);
+  ensureFranchiseDragEvents();
 }
 
 function updateFranchiseMeta(records) {
@@ -2296,8 +2304,9 @@ function buildFranchiseTimeline(record) {
     return wrapper;
   }
   const track = createEl('div', 'franchise-track');
+  track.dataset.franchiseId = record.id || '';
   record.entries.forEach(entry => {
-    const node = buildFranchiseTimelineEntry(entry);
+    const node = buildFranchiseTimelineEntry(record, entry);
     if (node) track.appendChild(node);
   });
   if (!track.childElementCount) {
@@ -2308,12 +2317,15 @@ function buildFranchiseTimeline(record) {
   return wrapper;
 }
 
-function buildFranchiseTimelineEntry(entry) {
+function buildFranchiseTimelineEntry(record, entry) {
   if (!entry) return null;
   const entryEl = createEl('div', 'franchise-entry');
   entryEl.classList.add(`media-${entry.mediaType || 'movie'}`);
   if (entry.isFinished) entryEl.classList.add('is-finished');
   if (entry.libraryMatch) entryEl.classList.add('in-library');
+  entryEl.dataset.entryId = entry.id || '';
+  entryEl.dataset.franchiseId = record?.id || '';
+  entryEl.setAttribute('draggable', 'true');
 
   const header = createEl('div', 'franchise-entry-header');
   if (entry.orderLabel) {
@@ -2350,6 +2362,226 @@ function buildFranchiseTimelineEntry(entry) {
   return entryEl;
 }
 
+function ensureFranchiseDragEvents() {
+  if (franchiseDragEventsBound || !franchiseShelfEl) return;
+  franchiseShelfEl.addEventListener('dragstart', handleFranchiseDragStart);
+  franchiseShelfEl.addEventListener('dragover', handleFranchiseDragOver);
+  franchiseShelfEl.addEventListener('drop', handleFranchiseDrop);
+  franchiseShelfEl.addEventListener('dragend', handleFranchiseDragEnd);
+  franchiseDragEventsBound = true;
+}
+
+function handleFranchiseDragStart(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const entry = target?.closest('.franchise-entry');
+  if (!entry || entry.classList.contains('franchise-entry-placeholder')) return;
+  const track = entry.closest('.franchise-track');
+  if (!track) return;
+  const draggableCount = track.querySelectorAll('.franchise-entry:not(.franchise-entry-placeholder)').length;
+  if (draggableCount <= 1) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  const entryId = entry.dataset.entryId;
+  const franchiseId = track.dataset.franchiseId || entry.dataset.franchiseId;
+  if (!entryId || !franchiseId) return;
+  franchiseDragState.activeEntryId = entryId;
+  franchiseDragState.activeFranchiseId = franchiseId;
+  franchiseDragState.activeTrack = track;
+  removeFranchisePlaceholder();
+  entry.classList.add('is-dragging');
+  track.classList.add('is-dragging');
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', franchiseDragState.activeEntryId || '');
+  }
+}
+
+function handleFranchiseDragOver(event) {
+  if (!franchiseDragState.activeEntryId) return;
+  const target = event.target instanceof Element ? event.target : null;
+  const track = target?.closest('.franchise-track');
+  if (!track || track.dataset.franchiseId !== franchiseDragState.activeFranchiseId) return;
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move';
+  }
+  const placeholder = getFranchiseDragPlaceholder();
+  if (placeholder.parentElement !== track) {
+    track.appendChild(placeholder);
+  }
+  let targetEntry = target?.closest('.franchise-entry');
+  if (!targetEntry) {
+    targetEntry = getFranchiseEntryFromPosition(track, event.clientX);
+    if (!targetEntry) {
+      track.appendChild(placeholder);
+      return;
+    }
+  }
+  if (targetEntry === placeholder) {
+    return;
+  }
+  if (targetEntry.classList.contains('is-dragging')) {
+    return;
+  }
+  const rect = targetEntry.getBoundingClientRect();
+  const insertBefore = event.clientX < rect.left + rect.width / 2;
+  if (insertBefore) {
+    track.insertBefore(placeholder, targetEntry);
+  } else {
+    track.insertBefore(placeholder, targetEntry.nextSibling);
+  }
+}
+
+function handleFranchiseDrop(event) {
+  if (!franchiseDragState.activeEntryId) return;
+  const target = event.target instanceof Element ? event.target : null;
+  const track = target?.closest('.franchise-track');
+  if (!track || track.dataset.franchiseId !== franchiseDragState.activeFranchiseId) {
+    clearFranchiseDragState();
+    return;
+  }
+  event.preventDefault();
+  const orderedEntryIds = computeFranchiseDropOrder(track);
+  clearFranchiseDragState();
+  if (orderedEntryIds && orderedEntryIds.length) {
+    applyFranchiseEntryOrder(track.dataset.franchiseId || '', orderedEntryIds);
+  }
+}
+
+function handleFranchiseDragEnd() {
+  clearFranchiseDragState();
+}
+
+function computeFranchiseDropOrder(track) {
+  const movingId = franchiseDragState.activeEntryId;
+  if (!track || !movingId) return null;
+  const placeholder = franchiseDragState.placeholder;
+  const currentIds = Array.from(track.querySelectorAll('.franchise-entry'))
+    .filter(node => !node.classList.contains('franchise-entry-placeholder'))
+    .map(node => node.dataset.entryId)
+    .filter(Boolean);
+  if (!placeholder || placeholder.parentElement !== track) {
+    return currentIds;
+  }
+  const insertionIndex = getFranchisePlaceholderIndex(track, placeholder);
+  const withoutMoving = currentIds.filter(id => id !== movingId);
+  const clampedIndex = Math.max(0, Math.min(withoutMoving.length, insertionIndex));
+  withoutMoving.splice(clampedIndex, 0, movingId);
+  return withoutMoving;
+}
+
+function getFranchisePlaceholderIndex(track, placeholder) {
+  if (!track || !placeholder) return 0;
+  let index = 0;
+  const children = Array.from(track.children);
+  for (const child of children) {
+    if (child === placeholder) {
+      break;
+    }
+    if (child.classList && child.classList.contains('franchise-entry') && !child.classList.contains('franchise-entry-placeholder')) {
+      index += 1;
+    }
+  }
+  return index;
+}
+
+function getFranchiseEntryFromPosition(track, clientX) {
+  if (!track || clientX === undefined || clientX === null) return null;
+  const entries = Array.from(track.querySelectorAll('.franchise-entry:not(.franchise-entry-placeholder)'));
+  if (!entries.length) return null;
+  let closestEntry = null;
+  let smallestDelta = Infinity;
+  entries.forEach(entry => {
+    if (entry.classList.contains('is-dragging')) return;
+    const rect = entry.getBoundingClientRect();
+    const center = rect.left + rect.width / 2;
+    const delta = Math.abs(clientX - center);
+    if (delta < smallestDelta) {
+      smallestDelta = delta;
+      closestEntry = entry;
+    }
+  });
+  return closestEntry;
+}
+
+function getFranchiseDragPlaceholder() {
+  if (franchiseDragState.placeholder) return franchiseDragState.placeholder;
+  const placeholder = document.createElement('div');
+  placeholder.className = 'franchise-entry franchise-entry-placeholder';
+  placeholder.setAttribute('aria-hidden', 'true');
+  placeholder.setAttribute('draggable', 'false');
+  placeholder.innerHTML = '<span>Drop here</span>';
+  franchiseDragState.placeholder = placeholder;
+  return placeholder;
+}
+
+function removeFranchisePlaceholder() {
+  const placeholder = franchiseDragState.placeholder;
+  if (placeholder && placeholder.parentElement) {
+    placeholder.parentElement.removeChild(placeholder);
+  }
+}
+
+function clearFranchiseDragState() {
+  removeFranchisePlaceholder();
+  if (franchiseShelfEl) {
+    const draggingEntry = franchiseShelfEl.querySelector('.franchise-entry.is-dragging');
+    if (draggingEntry) draggingEntry.classList.remove('is-dragging');
+  }
+  if (franchiseDragState.activeTrack) {
+    franchiseDragState.activeTrack.classList.remove('is-dragging');
+  }
+  franchiseDragState.activeEntryId = null;
+  franchiseDragState.activeFranchiseId = null;
+  franchiseDragState.activeTrack = null;
+}
+
+function applyFranchiseEntryOrder(franchiseId, orderedEntryIds) {
+  if (!franchiseId || !Array.isArray(orderedEntryIds) || !orderedEntryIds.length) return;
+  const record = franchiseState.records.find(item => item.id === franchiseId);
+  if (!record) return;
+  const currentOrder = record.entries.map(entry => entry.id);
+  if (arraysShallowEqual(currentOrder, orderedEntryIds)) return;
+  const entryMap = new Map(record.entries.map(entry => [entry.id, entry]));
+  const orderSet = new Set(orderedEntryIds);
+  const orderedEntries = orderedEntryIds.map((entryId, index) => {
+    const entry = entryMap.get(entryId);
+    if (entry) {
+      entry.displayOrder = index;
+      return entry;
+    }
+    return null;
+  }).filter(Boolean);
+  entryMap.forEach((entry, entryId) => {
+    if (!orderSet.has(entryId)) {
+      orderedEntries.push(entry);
+    }
+  });
+  record.entries = orderedEntries;
+  record.entryOrder = orderedEntryIds.slice();
+  renderFranchiseShelf();
+  persistFranchiseEntryOrder(franchiseId, orderedEntryIds);
+}
+
+function persistFranchiseEntryOrder(franchiseId, orderedEntryIds) {
+  if (!currentUser || !db || !franchiseId) return;
+  const path = ref(db, `users/${currentUser.uid}/franchises/${franchiseId}/entryOrder`);
+  set(path, orderedEntryIds).catch(err => {
+    console.warn('Failed to save franchise entry order', err);
+  });
+}
+
+function arraysShallowEqual(a, b) {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 function normalizeFranchiseCollection(raw) {
   let records = [];
   if (Array.isArray(raw)) {
@@ -2366,7 +2598,8 @@ function normalizeFranchiseCollection(raw) {
 function normalizeFranchiseRecord(source, fallbackIndex = 0) {
   if (!source) return null;
   const id = source.id || source.franchiseId || `franchise-${fallbackIndex + 1}`;
-  const entries = normalizeFranchiseEntries(source.entries || source.timeline || source.parts || source.mediaItems || []);
+  const entryOrder = Array.isArray(source.entryOrder) ? source.entryOrder.filter(Boolean) : null;
+  const entries = normalizeFranchiseEntries(source.entries || source.timeline || source.parts || source.mediaItems || [], entryOrder);
   const record = {
     id,
     name: source.name || source.title || `Franchise ${fallbackIndex + 1}`,
@@ -2375,19 +2608,42 @@ function normalizeFranchiseRecord(source, fallbackIndex = 0) {
     order: resolveFranchiseDisplayOrder(source, fallbackIndex),
     updatedAt: Number(source.updatedAt || source.updated || source.timestamp || 0) || 0,
     entries,
+    entryOrder,
   };
   record.stats = computeFranchiseStats(entries);
   return record;
 }
 
-function normalizeFranchiseEntries(rawEntries) {
+function normalizeFranchiseEntries(rawEntries, customOrderList = null) {
   let entries = [];
   if (Array.isArray(rawEntries)) {
     entries = rawEntries;
   } else if (rawEntries && typeof rawEntries === 'object') {
     entries = Object.entries(rawEntries).map(([id, value]) => ({ ...(value || {}), id }));
   }
-  return entries.map((entry, index) => normalizeFranchiseEntry(entry, index)).filter(Boolean).sort((a, b) => {
+  const customOrderMap = Array.isArray(customOrderList)
+    ? customOrderList.reduce((acc, entryId, index) => {
+        if (entryId) acc[entryId] = index;
+        return acc;
+      }, {})
+    : null;
+  const normalized = entries.map((entry, index) => {
+    const normalizedEntry = normalizeFranchiseEntry(entry, index);
+    if (normalizedEntry && customOrderMap && customOrderMap[normalizedEntry.id] !== undefined) {
+      normalizedEntry.displayOrder = customOrderMap[normalizedEntry.id];
+    }
+    return normalizedEntry;
+  }).filter(Boolean);
+  return normalized.sort((a, b) => {
+    if (customOrderMap) {
+      const aOrder = customOrderMap[a.id];
+      const bOrder = customOrderMap[b.id];
+      if (aOrder !== undefined || bOrder !== undefined) {
+        if (aOrder === undefined) return 1;
+        if (bOrder === undefined) return -1;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+      }
+    }
     if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder;
     if (a.releaseDate && b.releaseDate && a.releaseDate !== b.releaseDate) {
       return a.releaseDate < b.releaseDate ? -1 : 1;
