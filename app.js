@@ -51,6 +51,32 @@ const JIKAN_MAX_RETRIES = 2;
 const MYANIMELIST_ANIME_URL = 'https://myanimelist.net/anime';
 const METADATA_SCHEMA_VERSION = 4;
 const APP_VERSION = 'test-pages-2025.11.15';
+const ANIME_FRANCHISE_RELATION_TYPES = new Set([
+  'SEQUEL',
+  'PREQUEL',
+  'MAIN_STORY',
+  'SIDE_STORY',
+  'ALTERNATIVE',
+  'SPIN_OFF',
+  'COMPILATION',
+  'CONTAINS',
+  'PARENT',
+  'CHILD',
+  'OTHER'
+]);
+const ANIME_FRANCHISE_ALLOWED_FORMATS = new Set([
+  'TV',
+  'TV_SHORT',
+  'ONA',
+  'OVA',
+  'MOVIE',
+  'SPECIAL'
+]);
+const ANIME_FRANCHISE_MAX_DEPTH = 4;
+const ANIME_FRANCHISE_MAX_ENTRIES = 25;
+const ANIME_FRANCHISE_SCAN_SERIES_LIMIT = 4;
+const ANIME_FRANCHISE_RESCAN_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const ANIME_FRANCHISE_IGNORE_KEY = '__THE_LIST_ANIME_IGNORE__';
 const ANIME_STATUS_PRIORITY = {
   RELEASING: 6,
   NOT_YET_RELEASED: 5,
@@ -89,6 +115,16 @@ const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
 let introPlayed = safeStorageGet(INTRO_SESSION_KEY) === '1';
+const franchiseState = {
+  loaded: false,
+  records: [],
+};
+const FRANCHISE_MEDIA_LABELS = {
+  movie: 'Movie',
+  tv: 'TV Series',
+  season: 'Season',
+  special: 'Special',
+};
 const jikanRequestQueue = [];
 let jikanQueueActive = false;
 let lastJikanRequestTime = 0;
@@ -311,6 +347,443 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
     stageStartMinutes = stageEndMinutes;
     if (isLastStage) break;
   }
+
+  if (!sequence.length) {
+    valueEl.innerHTML = renderRuntimePillsDisplay(finalUnitValues, { minutes: true });
+    return;
+  }
+  
+  let activeStageIndex = 0;
+  let currentFrame = 0;
+
+  function updateFrame() {
+    if (activeStageIndex >= sequence.length) {
+      const visibilityMap = sequence.reduce((acc, stage) => {
+        acc[stage.unit] = true;
+        return acc;
+      }, {});
+      valueEl.innerHTML = renderRuntimePillsDisplay(finalUnitValues, visibilityMap);
+      definitions.forEach(d => chipElement.classList.remove(d.className));
+      chipElement.classList.add(getRuntimeThresholdClass(finalMinutes));
+      return;
+    }
+    
+    const stage = sequence[activeStageIndex];
+    if (stage.rangeMinutes <= 0) {
+      activeStageIndex++;
+      requestAnimationFrame(updateFrame);
+      return;
+    }
+
+    currentFrame++;
+    const progress = Math.min(currentFrame / FRAMES_PER_SECTION, 1);
+    const currentTotalMinutes = stage.startMinutes + (stage.rangeMinutes * progress);
+    const displayValues = getRuntimeUnitBreakdown(currentTotalMinutes);
+    const visibilityMap = {};
+    for (let i = 0; i <= activeStageIndex; i++) {
+      visibilityMap[sequence[i].unit] = true;
+    }
+
+    definitions.forEach(d => chipElement.classList.remove(d.className));
+    chipElement.classList.add(stage.className);
+
+    valueEl.innerHTML = renderRuntimePillsDisplay(displayValues, visibilityMap, stage.unit);
+
+    if (progress >= 1) {
+      activeStageIndex++;
+      currentFrame = 0;
+    }
+
+    requestAnimationFrame(updateFrame);
+  }
+  
+  setTimeout(() => requestAnimationFrame(updateFrame), 300);
+}
+
+function buildLibraryStatChip(label, value, options = {}) {
+  const { modifier = '' } = options;
+  const chip = createEl('span', modifier ? `library-stat-chip ${modifier}` : 'library-stat-chip');
+  const valueEl = createEl('span', 'library-stat-value', { text: value });
+  const labelEl = createEl('span', 'library-stat-label', { text: label });
+  chip.appendChild(valueEl);
+  chip.appendChild(labelEl);
+  return chip;
+}
+// ============================================================================
+// Feature Map (grouped by responsibilities)
+// 1. Auth & Session Flow
+// 2. Add Modal & Item Management
+// 3. List Loading & Collapsible Cards
+// 4. Unified Library
+// 5. Franchise Timelines
+// 6. Metadata & External API Pipelines
+// 7. Spinner / Wheel Experience
+// 8. Anime Franchise Automations
+// 9. Utility Helpers & Shared Formatters
+// ============================================================================
+
+// DOM references
+const loginScreen = document.getElementById('login-screen');
+const googleSigninBtn = document.getElementById('google-signin');
+const appRoot = document.getElementById('app');
+const userNameEl = document.getElementById('user-name');
+const signOutBtn = document.getElementById('sign-out');
+const backToTopBtn = document.getElementById('back-to-top');
+const modalRoot = document.getElementById('modal-root');
+const combinedListEl = document.getElementById('combined-list');
+const franchiseSectionEl = document.getElementById('franchise-section');
+const franchiseShelfEl = document.getElementById('franchise-shelf');
+const franchiseMetaEl = document.getElementById('franchise-meta');
+const libraryStatsSummaryEl = document.getElementById('library-stats-summary');
+const unifiedSearchInput = document.getElementById('library-search');
+const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
+const finishedFilterToggle = document.getElementById('finished-filter-toggle');
+const notificationCenter = document.getElementById('notification-center');
+const notificationShell = document.getElementById('notification-shell');
+const notificationBellBtn = document.getElementById('notification-bell');
+const notificationBadgeEl = document.getElementById('notification-count');
+const notificationEmptyStateEl = document.getElementById('notification-empty-state');
+const wheelModalTrigger = document.getElementById('open-wheel-modal');
+const wheelModalTemplate = document.getElementById('wheel-modal-template');
+let wheelSourceSelect = null;
+let wheelSpinnerEl = null;
+let wheelResultEl = null;
+let wheelModalState = null;
+let notificationPopoverOpen = false;
+const addModalTrigger = document.getElementById('open-add-modal');
+const addFormTemplatesContainer = document.getElementById('add-form-templates');
+const addFormTemplateMap = {};
+if (addFormTemplatesContainer) {
+  addFormTemplatesContainer.querySelectorAll('template[data-list]').forEach(template => {
+    const type = template && template.dataset ? template.dataset.list : '';
+    if (type) {
+      addFormTemplateMap[type] = template;
+    }
+  });
+}
+let activeAddModal = null;
+
+let animeFranchiseScanTimer = null;
+let animeFranchiseScanInflight = false;
+let animeFranchiseLastScanSignature = '';
+let animeFranchiseLastScanTime = 0;
+let pendingAnimeScanData = null;
+const animeFranchiseMissingHashes = new Map();
+const animeFranchiseIgnoredIds = loadAnimeFranchiseIgnoredIds();
+
+const tmEasterEgg = (() => {
+  const sprites = [];
+  let running = false;
+  let spawnTimer = null;
+  let rafId = null;
+  let layer = null;
+  let intensityMultiplier = 1;
+  const gravity = 0.32;
+  const bounce = 0.68;
+  const friction = 0.995;
+  const settleThreshold = 0.12;
+  const wakeSpeed = 0.35;
+  const supportAngleThreshold = 0.5;
+  const supportDistanceEpsilon = 0.75;
+  const spawnMinDelay = 320;
+  const spawnMaxDelay = 900;
+
+  const seasonThemes = {
+    winter: {
+      text: '❄',
+      color: '#c3e8ff',
+      glow: '0 0 18px rgba(195,232,255,0.85)',
+    },
+    halloween: {
+      text: '🎃',
+      color: '#ffb347',
+      glow: '0 0 18px rgba(255,138,0,0.85)',
+    },
+  };
+
+  function getSeasonalTheme(now = new Date()) {
+    const month = now.getMonth(); // 0-indexed
+    if (month === 11) return seasonThemes.winter; // December
+    if (month === 9) return seasonThemes.halloween; // October
+    return null;
+  }
+
+  function getCurrentTmTheme() {
+    return getSeasonalTheme();
+  }
+
+  function ensureLayer() {
+    if (layer) return layer;
+    layer = document.createElement('div');
+    layer.id = 'tm-rain-layer';
+    document.body.appendChild(layer);
+    return layer;
+  }
+
+  function bindTriggers() {
+    document.querySelectorAll('.tm').forEach(node => {
+      if (node.dataset.tmEggBound === 'true') return;
+      node.dataset.tmEggBound = 'true';
+      node.classList.add('tm-clickable');
+      node.addEventListener('click', handleTmClick);
+    });
+  }
+
+  function handleTmClick() {
+    if (!running) {
+      start();
+    } else {
+      boostIntensity();
+    }
+  }
+
+  function start() {
+    if (running) return;
+    running = true;
+    intensityMultiplier = 1;
+    ensureLayer();
+    spawnBurst(4 * intensityMultiplier);
+    scheduleNextSpawn();
+    tick();
+  }
+
+  function boostIntensity() {
+    intensityMultiplier *= 2;
+    spawnBurst(Math.max(4, Math.round(intensityMultiplier * 2)));
+    if (spawnTimer) {
+      clearTimeout(spawnTimer);
+      scheduleNextSpawn();
+    }
+  }
+
+  function scheduleNextSpawn() {
+    const delayScale = Math.max(1, intensityMultiplier);
+    const minDelay = Math.max(50, spawnMinDelay / delayScale);
+    const maxDelay = Math.max(minDelay + 10, spawnMaxDelay / delayScale);
+    spawnTimer = setTimeout(() => {
+      const batch = Math.max(1, Math.round(intensityMultiplier));
+      spawnBurst(batch);
+      scheduleNextSpawn();
+    }, minDelay + Math.random() * (maxDelay - minDelay));
+  }
+
+  function spawnBurst(count) {
+    for (let i = 0; i < count; i++) {
+      spawnSprite();
+    }
+  }
+
+  function spawnSprite() {
+    if (!layer) ensureLayer();
+    const size = 20 + Math.random() * 26;
+    const theme = getCurrentTmTheme();
+    const sprite = {
+      size,
+      radius: size / 2,
+      x: Math.random() * (window.innerWidth - size) + size / 2,
+      y: -size - Math.random() * 40,
+      vx: (Math.random() - 0.5) * 1.4,
+      vy: Math.random() * -1.5,
+      rotation: Math.random() * 360,
+      spin: (Math.random() - 0.5) * 120,
+      resting: false,
+      supported: false,
+    };
+    const el = document.createElement('div');
+    el.className = 'tm-sprite';
+    el.textContent = theme && theme.text ? theme.text : '™';
+    el.style.fontSize = `${size}px`;
+    if (theme) {
+      el.classList.add('tm-themed');
+      if (theme.color) {
+        el.style.color = theme.color;
+      }
+      if (theme.glow) {
+        el.style.textShadow = theme.glow;
+      }
+    }
+    el.style.setProperty('--tm-spin', `${sprite.spin}deg`);
+    layer.appendChild(el);
+    sprite.el = el;
+    sprites.push(sprite);
+    syncSprite(sprite);
+  }
+
+  function syncSprite(sprite) {
+    if (!sprite.el) return;
+    sprite.el.style.left = `${sprite.x}px`;
+    sprite.el.style.top = `${sprite.y}px`;
+    sprite.el.style.transform = `translate(-50%, -50%) rotate(${sprite.rotation}deg)`;
+  }
+
+  function resolveCollisions() {
+    for (let i = 0; i < sprites.length; i++) {
+      for (let j = i + 1; j < sprites.length; j++) {
+        const a = sprites[i];
+        const b = sprites[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy) || 0.0001;
+        const minDist = a.radius + b.radius;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        if (Math.abs(ny) > supportAngleThreshold && dist - minDist <= supportDistanceEpsilon) {
+          if (ny > 0) a.supported = true;
+          if (ny < 0) b.supported = true;
+        }
+        if (dist >= minDist) continue;
+        const overlap = (minDist - dist) / 2;
+        a.x -= nx * overlap;
+        a.y -= ny * overlap;
+        b.x += nx * overlap;
+        b.y += ny * overlap;
+        const relVelX = b.vx - a.vx;
+        const relVelY = b.vy - a.vy;
+        const velAlongNormal = relVelX * nx + relVelY * ny;
+        if (velAlongNormal > 0) continue;
+        const restitution = 0.65;
+        const impulse = -(1 + restitution) * velAlongNormal / 2;
+        const impulseX = impulse * nx;
+        const impulseY = impulse * ny;
+        a.vx -= impulseX;
+        a.vy -= impulseY;
+        b.vx += impulseX;
+        b.vy += impulseY;
+        if (Math.abs(a.vx) > wakeSpeed || Math.abs(a.vy) > wakeSpeed) a.resting = false;
+        if (Math.abs(b.vx) > wakeSpeed || Math.abs(b.vy) > wakeSpeed) b.resting = false;
+        if (ny > supportAngleThreshold) a.supported = true;
+        if (ny < -supportAngleThreshold) b.supported = true;
+      }
+    }
+  }
+
+  function tick() {
+    rafId = requestAnimationFrame(tick);
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    sprites.forEach(sprite => {
+      sprite.supported = false;
+      if (!sprite.resting) {
+        sprite.vy += gravity;
+        sprite.vx *= friction;
+        sprite.x += sprite.vx;
+        sprite.y += sprite.vy;
+      }
+      sprite.rotation = (sprite.rotation + sprite.spin * 0.016) % 360;
+      const radius = sprite.radius;
+      if (sprite.x - radius < 0) {
+        sprite.x = radius;
+        sprite.vx *= -bounce;
+      } else if (sprite.x + radius > width) {
+        sprite.x = width - radius;
+        sprite.vx *= -bounce;
+      }
+      if (sprite.y + radius > height) {
+        sprite.y = height - radius;
+        if (!sprite.resting) {
+          sprite.vy *= -bounce;
+        }
+        sprite.supported = true;
+      }
+    });
+    resolveCollisions();
+    sprites.forEach(sprite => {
+      const settledVertically = Math.abs(sprite.vy) < settleThreshold;
+      const settledHorizontally = Math.abs(sprite.vx) < settleThreshold;
+      if (sprite.supported && settledVertically && settledHorizontally) {
+        sprite.vx = 0;
+        sprite.vy = 0;
+        sprite.resting = true;
+      } else if (!sprite.supported && sprite.resting) {
+        sprite.resting = false;
+      }
+    });
+    sprites.forEach(syncSprite);
+  }
+
+  return {
+    bindTriggers,
+    getSeasonalTheme,
+    getCurrentTmTheme,
+  };
+})();
+
+function logAppVersionOnce() {
+  const flagKey = '__THE_LIST_VERSION_LOGGED__';
+  if (globalThis[flagKey]) return;
+  globalThis[flagKey] = true;
+  const brandStyle = 'color:#7df2c9;font-weight:700;font-size:1rem';
+  const infoStyle = 'color:#e7eef6;font-weight:400;font-size:1rem';
+  console.info(`%cTHE LIST™%c version ${APP_VERSION}`, brandStyle, infoStyle);
+}
+
+logAppVersionOnce();
+
+// firebase instances
+let db = null;
+let auth = null;
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+// ============================================================================
+// Feature 1: Auth & Session Flow
+// ============================================================================
+
+// Initialize Firebase and services
+function initFirebase() {
+  if (appInitialized) return;
+  if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
+    console.warn('Firebase config is empty. Paste your config into app.js to enable Firebase.');
+    // still create a fake environment to avoid runtime exceptions in dev (but DB calls will fail)
+  }
+  const app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  setPersistence(auth, browserLocalPersistence).catch(err => {
+    console.warn('Unable to set auth persistence', err);
+  });
+  db = getDatabase(app);
+  appInitialized = true;
+
+  // Wire UI events
+  googleSigninBtn.addEventListener('click', () => signInWithGoogle());
+  signOutBtn.addEventListener('click', () => signOut());
+
+  setupAddModal();
+  setupWheelModal();
+
+  document.querySelectorAll('[data-role="actor-filter"]').forEach(input => {
+    const listType = input.dataset.list;
+    input.addEventListener('input', () => {
+      if (!listType || !(listType in actorFilters)) return;
+      actorFilters[listType] = input.value;
+      const cached = listCaches[listType];
+      if (cached) {
+        renderList(listType, cached);
+      }
+    });
+  });
+
+  // Sort controls
+  document.querySelectorAll('[data-role="sort"]').forEach(sel => {
+    const listType = sel.dataset.list;
+    sel.addEventListener('change', () => {
+      if (!listType) return;
+      sortModes[listType] = sel.value;
+      const cached = listCaches[listType];
+      if (cached) renderList(listType, cached);
+    });
+  });
+
+  if (backToTopBtn) {
+    backToTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    window.addEventListener('scroll', updateBackToTopVisibility, { passive: true });
+    updateBackToTopVisibility();
+  }
+}
+
+// ============================================================================
+// Feature 2: Add Modal & Item Management
+// ============================================================================
 
 function setupAddModal() {
   if (!addModalTrigger || !modalRoot) return;
@@ -696,6 +1169,110 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywor
   });
 }
 
+// ============================================================================
+// Feature 8: Anime Franchise Automations
+// ============================================================================
+
+function formatAnimeFranchiseEntryLabel(entry) {
+  if (!entry) return 'Untitled entry';
+  const labelParts = [];
+  if (entry.seriesOrder !== undefined && entry.seriesOrder !== null) {
+    labelParts.push(`#${entry.seriesOrder}`);
+  }
+  labelParts.push(entry.title || 'Untitled');
+  const meta = [];
+  if (entry.format) meta.push(entry.format);
+  if (entry.year) meta.push(entry.year);
+  if (entry.relationType && entry.relationType !== 'ROOT') {
+    const pretty = entry.relationType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, ch => ch.toUpperCase());
+    meta.push(pretty);
+  }
+  const metaText = meta.length ? ` (${meta.join(' • ')})` : '';
+  return `${labelParts.filter(Boolean).join(' ')}${metaText}`;
+}
+
+function promptAnimeFranchiseSelection(plan, { rootAniListId, title } = {}) {
+  if (!plan || !Array.isArray(plan.entries)) return Promise.resolve([]);
+  const rootIdStr = rootAniListId ? String(rootAniListId) : '';
+  const selectable = plan.entries.filter(entry => {
+    if (!entry || entry.aniListId === undefined || entry.aniListId === null) return false;
+    if (rootIdStr && String(entry.aniListId) === rootIdStr) return false;
+    return true;
+  });
+  if (!selectable.length) return Promise.resolve([]);
+  if (!modalRoot) {
+    return Promise.resolve(selectable.map(entry => entry.aniListId));
+  }
+  closeAddModal();
+  closeWheelModal();
+  return new Promise(resolve => {
+    modalRoot.innerHTML = '';
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    const displayName = plan.seriesName || title || 'this franchise';
+    const heading = document.createElement('h3');
+    heading.textContent = `Add related anime for "${displayName}"?`;
+    modal.appendChild(heading);
+    const sub = document.createElement('p');
+    sub.textContent = 'Choose which sequels, movies, and specials to add alongside this entry.';
+    modal.appendChild(sub);
+    const list = document.createElement('div');
+    list.style.maxHeight = '260px';
+    list.style.overflowY = 'auto';
+    list.style.marginTop = '.5rem';
+    list.style.display = 'flex';
+    list.style.flexDirection = 'column';
+    list.style.gap = '.35rem';
+    const checkboxes = [];
+    selectable.forEach(entry => {
+      const row = document.createElement('label');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '.5rem';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.value = String(entry.aniListId);
+      row.appendChild(cb);
+      const text = document.createElement('span');
+      text.textContent = formatAnimeFranchiseEntryLabel(entry);
+      row.appendChild(text);
+      list.appendChild(row);
+      checkboxes.push(cb);
+    });
+    modal.appendChild(list);
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '.5rem';
+    actions.style.marginTop = '1rem';
+    const close = (result) => {
+      modalRoot.innerHTML = '';
+      resolve(result);
+    };
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn primary';
+    addBtn.textContent = 'Add Selected';
+    addBtn.addEventListener('click', () => {
+      const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+      close(selected);
+    });
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'btn secondary';
+    skipBtn.textContent = 'Skip';
+    skipBtn.addEventListener('click', () => close([]));
+    actions.appendChild(addBtn);
+    actions.appendChild(skipBtn);
+    modal.appendChild(actions);
+    backdrop.appendChild(modal);
+    modalRoot.appendChild(backdrop);
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) close([]);
+    });
+  });
+}
+
 function pushNotification({ title, message } = {}) {
   if (!title && !message) return;
   if (!notificationCenter) {
@@ -945,6 +1522,63 @@ function updateNotificationEmptyState() {
   notificationEmptyStateEl.classList.toggle('hidden', hasNotifications);
 }
 
+function showAnimeFranchiseNotification(seriesName, missingEntries) {
+  if (!Array.isArray(missingEntries) || missingEntries.length === 0) return;
+  const sampleTitles = missingEntries
+    .map(entry => entry && entry.title)
+    .filter(Boolean)
+    .slice(0, 3);
+  const extra = missingEntries.length - sampleTitles.length;
+  const segments = [];
+  if (sampleTitles.length) {
+    segments.push(sampleTitles.join(', '));
+  }
+  if (extra > 0) {
+    segments.push(`+${extra} more`);
+  }
+  const summary = segments.join(' | ');
+  const body = summary
+    ? `${summary} ready to add from MyAnimeList. Use the anime Add form to pull them in.`
+    : 'New related entries are available on MyAnimeList. Use the anime Add form to pull them in.';
+  const heading = seriesName ? `New entries for ${seriesName}` : 'New anime entries found';
+  pushNotification({ title: heading, message: body });
+}
+
+function loadAnimeFranchiseIgnoredIds() {
+  const raw = safeLocalStorageGet(ANIME_FRANCHISE_IGNORE_KEY);
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.map(value => String(value)));
+    }
+  } catch (_) {}
+  return new Set();
+}
+
+function persistAnimeFranchiseIgnoredIds() {
+  try {
+    const payload = JSON.stringify(Array.from(animeFranchiseIgnoredIds));
+    safeLocalStorageSet(ANIME_FRANCHISE_IGNORE_KEY, payload);
+  } catch (_) {}
+}
+
+function rememberIgnoredAniListId(id) {
+  if (!id) return;
+  const normalized = String(id);
+  if (animeFranchiseIgnoredIds.has(normalized)) return;
+  animeFranchiseIgnoredIds.add(normalized);
+  persistAnimeFranchiseIgnoredIds();
+}
+
+function clearIgnoredAniListId(id) {
+  if (!id) return;
+  const normalized = String(id);
+  if (!animeFranchiseIgnoredIds.has(normalized)) return;
+  animeFranchiseIgnoredIds.delete(normalized);
+  persistAnimeFranchiseIgnoredIds();
+}
+
 function signOut() {
   safeStorageRemove(INTRO_SESSION_KEY);
   fbSignOut(auth).catch(err => console.error('Sign-out error', err));
@@ -1022,6 +1656,7 @@ function showLogin() {
   introPlayed = false;
   safeStorageRemove(INTRO_SESSION_KEY);
   resetFilterState();
+   resetFranchiseSection();
   updateBackToTopVisibility();
 }
 
@@ -1032,6 +1667,7 @@ function showAppForUser(user) {
   updateBackToTopVisibility();
   playTheListIntro();
   loadPrimaryLists();
+  loadFranchises();
 }
 
 function loadPrimaryLists() {
@@ -1212,6 +1848,9 @@ function loadList(listType) {
     const data = snap.val() || {};
     renderList(listType, data);
     maybeRefreshMetadata(listType, data);
+    if (listType === 'anime') {
+      scheduleAnimeFranchiseScan(data);
+    }
   }, (err) => {
     console.error('DB read error', err);
     if (listContainer) {
@@ -1237,6 +1876,7 @@ function loadFinishedList(listType) {
       renderUnifiedLibrary();
       updateLibraryRuntimeStats();
     }
+    refreshFranchiseLibraryMatches();
   }, (err) => {
     console.error('Finished list read error', err);
   });
@@ -1297,6 +1937,219 @@ function renderList(listType, data) {
     if (mode === 'title') {
       if (ta < tb) return -1; if (ta > tb) return 1; return 0;
     }
+    if (mode === 'yearAsc' || mode === 'yearDesc') {
+      const ya = a && a.year ? parseInt(a.year, 10) : 9999;
+      const yb = b && b.year ? parseInt(b.year, 10) : 9999;
+      if (ya !== yb) return mode === 'yearAsc' ? ya - yb : yb - ya;
+      if (ta < tb) return -1; if (ta > tb) return 1; return 0;
+    }
+    if (mode === 'director') {
+      const da = (a && (a.director || a.author || '')).toLowerCase();
+      const db = (b && (b.director || b.author || '')).toLowerCase();
+      if (da && db && da !== db) return da < db ? -1 : 1;
+      if (ta < tb) return -1; if (ta > tb) return 1; return 0;
+    }
+    if (mode === 'series') {
+      const sa = (a && a.seriesName ? a.seriesName : '').toLowerCase();
+      const sb = (b && b.seriesName ? b.seriesName : '').toLowerCase();
+      if (sa && sb && sa !== sb) return sa < sb ? -1 : 1;
+      const oa = parseSeriesOrder(a && a.seriesOrder);
+      const ob = parseSeriesOrder(b && b.seriesOrder);
+      if (oa !== ob) return oa - ob;
+      if (ta < tb) return -1; if (ta > tb) return 1; return 0;
+    }
+    // fallback title
+    if (ta < tb) return -1; if (ta > tb) return 1; return 0;
+  });
+
+  if (isCollapsibleList(listType) && container) {
+    renderCollapsibleMediaGrid(listType, container, filtered);
+  } else if (container) {
+    renderStandardList(container, listType, filtered);
+  }
+
+  if (listType in expandedCards) {
+    updateCollapsibleCardStates(listType);
+  }
+
+  renderUnifiedLibrary();
+  refreshFranchiseLibraryMatches();
+  scheduleCrossSeriesRefresh();
+}
+
+// ============================================================================
+// Feature 4: Unified Library
+// ============================================================================
+
+function renderUnifiedLibrary() {
+  updateLibraryRuntimeStats();
+  if (!combinedListEl) return;
+  const displayCaches = getDisplayCacheMap();
+  const hasLoadedAny = PRIMARY_LIST_TYPES.some(type => displayCaches[type] !== undefined);
+  if (!hasLoadedAny) {
+    const message = showFinishedOnly ? 'Loading finished entries...' : 'Loading your library...';
+    combinedListEl.innerHTML = `<div class="small">${message}</div>`;
+    return;
+  }
+
+  const unifiedEntries = collectUnifiedEntries();
+  const activeTypes = unifiedFilters.types;
+  let filtered = unifiedEntries.filter(entry => activeTypes.has(entry.listType));
+  const query = unifiedFilters.search;
+  if (query) {
+    filtered = filtered.filter(entry => matchesUnifiedSearch(entry.displayItem, query));
+  }
+
+  filtered.sort((a, b) => {
+    const ta = titleSortKey(a.displayItem?.title || '');
+    const tb = titleSortKey(b.displayItem?.title || '');
+    if (ta < tb) return -1;
+    if (ta > tb) return 1;
+    const ya = Number(a.displayItem?.year) || 9999;
+    const yb = Number(b.displayItem?.year) || 9999;
+    if (ya !== yb) return ya - yb;
+    const idxA = Math.max(PRIMARY_LIST_TYPES.indexOf(a.listType), 0);
+    const idxB = Math.max(PRIMARY_LIST_TYPES.indexOf(b.listType), 0);
+    return idxA - idxB;
+  });
+
+  if (!filtered.length) {
+    const emptyMessage = showFinishedOnly
+      ? 'No finished entries match the current filters yet.'
+      : 'No entries match the current filters yet.';
+    combinedListEl.innerHTML = `<div class="small">${emptyMessage}</div>`;
+    return;
+  }
+
+  combinedListEl.innerHTML = '';
+  const grid = createEl('div', 'movies-grid unified-grid');
+  filtered.forEach(entry => {
+    const node = buildUnifiedCard(entry);
+    if (node) {
+      grid.appendChild(node);
+    }
+  });
+  combinedListEl.appendChild(grid);
+}
+
+function collectUnifiedEntries() {
+  const allEntries = [];
+  PRIMARY_LIST_TYPES.forEach(listType => {
+    const cacheEntries = Object.entries(getDisplayCache(listType) || {});
+    if (!cacheEntries.length) return;
+    if (isCollapsibleList(listType)) {
+      const { displayRecords } = prepareCollapsibleRecords(listType, cacheEntries);
+      displayRecords.forEach(record => {
+        allEntries.push({
+          listType,
+          id: record.id,
+          item: record.item,
+          displayItem: record.displayItem,
+          displayEntryId: record.displayEntryId,
+          positionIndex: record.index,
+        });
+      });
+    } else {
+      cacheEntries.forEach(([id, item], index) => {
+        if (!item) return;
+        allEntries.push({
+          listType,
+          id,
+          item,
+          displayItem: item,
+          displayEntryId: id,
+          positionIndex: index,
+        });
+      });
+    }
+  });
+  return allEntries;
+}
+
+function updateLibraryRuntimeStats() {
+  if (!libraryStatsSummaryEl) return;
+  const stats = computeLibraryRuntimeStats();
+  if (!stats.hasAnyData || !libraryFullyLoaded) {
+    libraryStatsSummaryEl.textContent = 'Totals update once your lists load.';
+    libraryStatsSummaryEl.classList.remove('has-data');
+    libraryStatsSummaryEl.removeAttribute('aria-label');
+    return;
+  }
+  libraryStatsSummaryEl.classList.add('has-data');
+  libraryStatsSummaryEl.innerHTML = '';
+  const movieLabel = stats.movieCount === 1 ? 'Movie' : 'Movies';
+  const episodeLabel = stats.episodeCount === 1 ? 'Episode' : 'Episodes';
+  const runtimePlaceholder = renderRuntimePillsDisplay();
+
+  const movieChip = buildLibraryStatChip(movieLabel, formatLibraryStatNumber(stats.movieCount));
+  const episodeChip = buildLibraryStatChip(episodeLabel, formatLibraryStatNumber(stats.episodeCount));
+  const runtimeChip = buildLibraryStatChip('Finish Time', '', { 
+    modifier: 'runtime runtime-minutes' 
+  });
+  const runtimeValueEl = runtimeChip.querySelector('.library-stat-value');
+  if (runtimeValueEl) {
+    runtimeValueEl.innerHTML = runtimePlaceholder;
+  }
+
+  libraryStatsSummaryEl.appendChild(movieChip);
+  libraryStatsSummaryEl.appendChild(episodeChip);
+  libraryStatsSummaryEl.appendChild(runtimeChip);
+
+  if (stats.totalMinutes > 0) {
+    animateRuntimeProgression(runtimeChip, stats.totalMinutes);
+  } else {
+    const valueEl = runtimeChip.querySelector('.library-stat-value');
+    if (valueEl) valueEl.textContent = 'Runtime info unavailable';
+  }
+
+  const runtimeSummaryText = stats.totalMinutes > 0
+    ? (formatRuntimeDuration(stats.totalMinutes) || 'Runtime info unavailable')
+    : 'Runtime info unavailable';
+  const spokenSummary = `${stats.movieCount} ${movieLabel}, ${stats.episodeCount} ${episodeLabel}, ${runtimeSummaryText}`;
+  libraryStatsSummaryEl.setAttribute('aria-label', spokenSummary);
+}
+
+function computeLibraryRuntimeStats() {
+  const cacheMap = getDisplayCacheMap();
+  const stats = {
+    hasAnyData: PRIMARY_LIST_TYPES.some(type => cacheMap[type] !== undefined),
+    movieCount: 0,
+    episodeCount: 0,
+    totalMinutes: 0,
+  };
+  if (!stats.hasAnyData) {
+    return stats;
+  }
+
+  Object.values(cacheMap.movies || {}).forEach(item => {
+    if (!item) return;
+    stats.movieCount += 1;
+    const minutes = estimateMovieRuntimeMinutes(item);
+    if (minutes > 0) {
+      stats.totalMinutes += minutes;
+    }
+  });
+
+  Object.values(cacheMap.tvShows || {}).forEach(item => {
+    if (!item) return;
+    const episodes = getTvEpisodeCount(item);
+    if (episodes > 0) {
+      stats.episodeCount += episodes;
+      const runtimePerEpisode = estimateTvEpisodeRuntimeMinutes(item);
+      if (runtimePerEpisode > 0) {
+        stats.totalMinutes += runtimePerEpisode * episodes;
+      }
+    }
+  });
+
+  Object.values(cacheMap.anime || {}).forEach(item => {
+    if (!item) return;
+    const episodes = getAnimeEpisodeCount(item);
+    if (episodes > 0) {
+      stats.episodeCount += episodes;
+    }
+    const runtimePerEpisode = estimateAnimeEpisodeRuntimeMinutes(item);
+    if (runtimePerEpisode > 0) {
       const multiplier = episodes > 0 ? episodes : (isAnimeMovieEntry(item) ? 1 : 0);
       if (multiplier > 0) {
         stats.totalMinutes += runtimePerEpisode * multiplier;
@@ -1307,6 +2160,497 @@ function renderList(listType, data) {
   return stats;
 }
 
+// ============================================================================
+// Feature 5: Franchise Timelines
+// ============================================================================
+
+function loadFranchises() {
+  if (listeners.franchises) {
+    listeners.franchises();
+    delete listeners.franchises;
+  }
+  if (!currentUser || !db) {
+    resetFranchiseSection();
+    return;
+  }
+  if (franchiseShelfEl) {
+    franchiseShelfEl.innerHTML = '<div class="franchise-empty small">Loading franchises...</div>';
+  }
+  const path = ref(db, `users/${currentUser.uid}/franchises`);
+  const off = onValue(path, (snap) => {
+    const raw = snap.val() || {};
+    franchiseState.records = normalizeFranchiseCollection(raw);
+    franchiseState.loaded = true;
+    renderFranchiseShelf();
+    refreshFranchiseLibraryMatches();
+  }, (err) => {
+    console.warn('Franchise load failed', err);
+    franchiseState.loaded = true;
+    if (franchiseShelfEl) {
+      franchiseShelfEl.innerHTML = '<div class="franchise-empty small">Unable to load franchises.</div>';
+    }
+    updateFranchiseMeta([]);
+  });
+  listeners.franchises = off;
+}
+
+function resetFranchiseSection() {
+  franchiseState.loaded = false;
+  franchiseState.records = [];
+  if (franchiseMetaEl) {
+    franchiseMetaEl.innerHTML = '';
+  }
+  if (franchiseShelfEl) {
+    franchiseShelfEl.innerHTML = '<div class="franchise-empty small">Sign in to load curated franchises.</div>';
+  }
+}
+
+function renderFranchiseShelf() {
+  if (!franchiseShelfEl) return;
+  updateFranchiseMeta(franchiseState.records);
+  if (!franchiseState.loaded) {
+    franchiseShelfEl.innerHTML = '<div class="franchise-empty small">Loading franchises...</div>';
+    return;
+  }
+  const records = franchiseState.records || [];
+  if (!records.length) {
+    franchiseShelfEl.innerHTML = '';
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  records.forEach(record => {
+    const card = buildFranchiseCard(record);
+    if (card) fragment.appendChild(card);
+  });
+  franchiseShelfEl.innerHTML = '';
+  franchiseShelfEl.appendChild(fragment);
+}
+
+function updateFranchiseMeta(records) {
+  if (!franchiseMetaEl) return;
+  franchiseMetaEl.innerHTML = '';
+  if (!franchiseState.loaded || !records || !records.length) return;
+  const totalFranchises = records.length;
+  const totalEntries = records.reduce((sum, record) => sum + (record.stats?.totalEntries || record.entries.length || 0), 0);
+  const trackedEntries = records.reduce((sum, record) => sum + (record.stats?.libraryMatches || 0), 0);
+  const finishedEntries = records.reduce((sum, record) => sum + (record.stats?.finishedCount || 0), 0);
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(buildFranchiseMetaPill(totalFranchises, totalFranchises === 1 ? 'Franchise' : 'Franchises'));
+  fragment.appendChild(buildFranchiseMetaPill(totalEntries, totalEntries === 1 ? 'Entry' : 'Entries'));
+  if (trackedEntries > 0) {
+    fragment.appendChild(buildFranchiseMetaPill(trackedEntries, 'Tracked'));
+  }
+  if (finishedEntries > 0) {
+    fragment.appendChild(buildFranchiseMetaPill(finishedEntries, 'Finished'));
+  }
+  franchiseMetaEl.appendChild(fragment);
+}
+
+function buildFranchiseMetaPill(value, label) {
+  const pill = createEl('span', 'franchise-meta-pill');
+  const strong = createEl('strong', '', { text: formatLibraryStatNumber(value) });
+  pill.appendChild(strong);
+  pill.appendChild(document.createTextNode(` ${label}`));
+  return pill;
+}
+
+function buildFranchiseCard(record) {
+  if (!record) return null;
+  const card = createEl('article', 'franchise-card');
+  const header = createEl('div', 'franchise-card-header');
+  const titleBlock = createEl('div', 'franchise-card-title-block');
+  const title = createEl('h3', 'franchise-card-title', { text: record.name || 'Franchise' });
+  titleBlock.appendChild(title);
+  if (record.tagline) {
+    titleBlock.appendChild(createEl('p', 'franchise-card-subtitle', { text: record.tagline }));
+  } else if (record.synopsis) {
+    titleBlock.appendChild(createEl('p', 'franchise-card-subtitle', { text: record.synopsis }));
+  }
+  header.appendChild(titleBlock);
+
+  const metaRow = createEl('div', 'franchise-card-meta');
+  const totalEntries = record.stats?.totalEntries ?? record.entries.length;
+  metaRow.appendChild(buildFranchiseMetaPill(totalEntries, totalEntries === 1 ? 'Entry' : 'Entries'));
+  const tracked = record.stats?.libraryMatches || 0;
+  if (tracked > 0) {
+    metaRow.appendChild(buildFranchiseMetaPill(tracked, 'Tracked'));
+  }
+  const remaining = record.stats?.remainingCount || Math.max(totalEntries - (record.stats?.finishedCount || 0), 0);
+  if (remaining > 0) {
+    metaRow.appendChild(buildFranchiseMetaPill(remaining, 'Remaining'));
+  }
+  header.appendChild(metaRow);
+  card.appendChild(header);
+
+  card.appendChild(buildFranchiseTimeline(record));
+  return card;
+}
+
+function buildFranchiseTimeline(record) {
+  const wrapper = createEl('div', 'franchise-timeline');
+  if (!Array.isArray(record.entries) || !record.entries.length) {
+    wrapper.appendChild(createEl('div', 'franchise-empty small', { text: 'No timeline entries yet.' }));
+    if (context.isExpanded) {
+      wrapper.classList.add('artwork-wrapper-expanded');
+    }
+    return wrapper;
+  }
+  const track = createEl('div', 'franchise-track');
+  record.entries.forEach(entry => {
+    const node = buildFranchiseTimelineEntry(entry);
+    if (node) track.appendChild(node);
+  });
+  if (!track.childElementCount) {
+    wrapper.appendChild(createEl('div', 'franchise-empty small', { text: 'No timeline entries yet.' }));
+    return wrapper;
+  }
+  wrapper.appendChild(track);
+  return wrapper;
+}
+
+function buildFranchiseTimelineEntry(entry) {
+  if (!entry) return null;
+  const entryEl = createEl('div', 'franchise-entry');
+  entryEl.classList.add(`media-${entry.mediaType || 'movie'}`);
+  if (entry.isFinished) entryEl.classList.add('is-finished');
+  if (entry.libraryMatch) entryEl.classList.add('in-library');
+
+  const header = createEl('div', 'franchise-entry-header');
+  if (entry.orderLabel) {
+    header.appendChild(createEl('span', 'franchise-entry-order', { text: entry.orderLabel }));
+  }
+  header.appendChild(createEl('span', 'franchise-entry-badge', { text: entry.badgeLabel || FRANCHISE_MEDIA_LABELS[entry.mediaType] || 'Entry' }));
+  entryEl.appendChild(header);
+
+  entryEl.appendChild(createEl('div', 'franchise-entry-title', { text: entry.title || 'Untitled entry' }));
+  if (entry.subtitle) {
+    entryEl.appendChild(createEl('div', 'franchise-entry-subtitle', { text: entry.subtitle }));
+  }
+
+  const metaBits = [];
+  if (entry.releaseLabel) metaBits.push(entry.releaseLabel);
+  if (entry.runtimeMinutes) metaBits.push(`${entry.runtimeMinutes} min`);
+  if (entry.episodes) metaBits.push(`${entry.episodes} ep`);
+  if (entry.watchStatusLabel && entry.watchStatus !== 'finished') metaBits.push(entry.watchStatusLabel);
+  if (metaBits.length) {
+    entryEl.appendChild(createEl('div', 'franchise-entry-meta', { text: metaBits.join(' • ') }));
+  }
+
+  if (entry.notes) {
+    entryEl.appendChild(createEl('p', 'franchise-entry-notes', { text: entry.notes }));
+  }
+
+  const statusText = entry.libraryMatch
+    ? (entry.isFinished ? 'Finished in your library' : 'In your library')
+    : (entry.highlightLabel || entry.watchStatusLabel || entry.releaseStatusLabel || '');
+  if (statusText) {
+    entryEl.appendChild(createEl('div', 'franchise-entry-status', { text: statusText }));
+  }
+
+  return entryEl;
+}
+
+function normalizeFranchiseCollection(raw) {
+  let records = [];
+  if (Array.isArray(raw)) {
+    records = raw;
+  } else if (raw && typeof raw === 'object') {
+    records = Object.entries(raw).map(([id, value]) => ({ ...(value || {}), id }));
+  }
+  return records.map((record, index) => normalizeFranchiseRecord(record, index)).filter(Boolean).sort((a, b) => {
+    if (a.order !== b.order) return a.order - b.order;
+    return titleSortKey(a.name).localeCompare(titleSortKey(b.name));
+  });
+}
+
+function normalizeFranchiseRecord(source, fallbackIndex = 0) {
+  if (!source) return null;
+  const id = source.id || source.franchiseId || `franchise-${fallbackIndex + 1}`;
+  const entries = normalizeFranchiseEntries(source.entries || source.timeline || source.parts || source.mediaItems || []);
+  const record = {
+    id,
+    name: source.name || source.title || `Franchise ${fallbackIndex + 1}`,
+    tagline: source.tagline || source.subtitle || '',
+    synopsis: source.description || source.summary || '',
+    order: resolveFranchiseDisplayOrder(source, fallbackIndex),
+    updatedAt: Number(source.updatedAt || source.updated || source.timestamp || 0) || 0,
+    entries,
+  };
+  record.stats = computeFranchiseStats(entries);
+  return record;
+}
+
+function normalizeFranchiseEntries(rawEntries) {
+  let entries = [];
+  if (Array.isArray(rawEntries)) {
+    entries = rawEntries;
+  } else if (rawEntries && typeof rawEntries === 'object') {
+    entries = Object.entries(rawEntries).map(([id, value]) => ({ ...(value || {}), id }));
+  }
+  return entries.map((entry, index) => normalizeFranchiseEntry(entry, index)).filter(Boolean).sort((a, b) => {
+    if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder;
+    if (a.releaseDate && b.releaseDate && a.releaseDate !== b.releaseDate) {
+      return a.releaseDate < b.releaseDate ? -1 : 1;
+    }
+    if ((a.releaseYear || 0) !== (b.releaseYear || 0)) {
+      return (a.releaseYear || 0) - (b.releaseYear || 0);
+    }
+    return titleSortKey(a.title).localeCompare(titleSortKey(b.title));
+  });
+}
+
+function normalizeFranchiseEntry(source, fallbackIndex = 0) {
+  if (!source) return null;
+  const id = source.id || source.entryId || `entry-${fallbackIndex + 1}`;
+  const mediaType = coerceFranchiseMediaType(source.mediaType || source.type || source.category || source.format, source);
+  const listType = resolveFranchiseListType(mediaType, source.listType);
+  const releaseDate = sanitizeFranchiseDate(source.releaseDate || source.airDate || source.date || '');
+  const releaseYearStr = sanitizeYear(source.year || source.releaseYear || releaseDate);
+  const releaseYear = releaseYearStr ? Number(releaseYearStr) : null;
+  const releaseLabel = formatFranchiseReleaseLabel(releaseDate, releaseYearStr);
+  const watchStatus = normalizeFranchiseWatchStatus(source.watchStatus || source.status || source.progress);
+  const entry = {
+    id,
+    title: source.title || source.name || source.episodeTitle || source.seriesTitle || 'Untitled entry',
+    subtitle: source.subtitle || source.seriesTitle || '',
+    mediaType,
+    listType,
+    releaseDate,
+    releaseYear,
+    releaseLabel,
+    watchStatus,
+    watchStatusLabel: formatFranchiseWatchStatusLabel(watchStatus),
+    releaseStatusLabel: formatFranchiseReleaseStatusLabel(normalizeFranchiseReleaseStatus(source.releaseStatus || source.availability)),
+    highlightLabel: source.highlight || source.nextAction || '',
+    notes: source.notes || source.summary || '',
+    badgeLabel: formatFranchiseBadgeLabel(mediaType, source),
+    orderLabel: source.phase || source.arc || source.era || source.timelineLabel || '',
+    runtimeMinutes: parseRuntimeMinutes(source.runtimeMinutes || source.runtime || source.duration),
+    episodes: parseEpisodeValue(source.episodes || source.episodeCount || source.totalEpisodes),
+    seasonNumber: Number.isFinite(Number(source.seasonNumber)) ? Number(source.seasonNumber) : null,
+    tmdbId: source.tmdbId || source.tmdbID || null,
+    imdbId: source.imdbId || source.imdbID || null,
+    aniListId: source.aniListId || null,
+    listEntryId: source.listEntryId || source.listId || source.libraryId || null,
+    displayOrder: resolveFranchiseDisplayOrder(source, fallbackIndex),
+    libraryMatch: false,
+    isFinished: watchStatus === 'finished',
+  };
+  return entry;
+}
+
+function coerceFranchiseMediaType(value, source = {}) {
+  if (source && source.mediaType && typeof source.mediaType === 'object') {
+    value = source.mediaType.type || source.mediaType.name || value;
+  }
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized && source && (source.seasonNumber !== undefined || source.episodes)) {
+    return 'season';
+  }
+  if (['movie', 'film', 'feature'].includes(normalized)) return 'movie';
+  if (['season', 'tv_season', 'series_season'].includes(normalized)) return 'season';
+  if (['tv', 'show', 'series'].includes(normalized)) return 'tv';
+  if (['special', 'ova', 'ona', 'short'].includes(normalized)) return 'special';
+  return normalized || 'movie';
+}
+
+function resolveFranchiseListType(mediaType, provided) {
+  if (provided && PRIMARY_LIST_TYPES.includes(provided)) {
+    return provided;
+  }
+  if (mediaType === 'tv' || mediaType === 'season') return 'tvShows';
+  if (mediaType === 'special') return 'movies';
+  return 'movies';
+}
+
+function resolveFranchiseDisplayOrder(source, fallbackIndex = 0) {
+  const candidates = [source.order, source.sort, source.timelineOrder, source.rank, source.position];
+  for (const candidate of candidates) {
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+  const dateValue = sanitizeFranchiseDate(source.releaseDate || source.date || '');
+  if (dateValue) {
+    const timestamp = Date.parse(dateValue);
+    if (Number.isFinite(timestamp)) {
+      return timestamp;
+    }
+  }
+  const yearValue = Number(sanitizeYear(source.year || source.releaseYear));
+  if (Number.isFinite(yearValue)) {
+    return yearValue * 1000;
+  }
+  return fallbackIndex;
+}
+
+function sanitizeFranchiseDate(value) {
+  if (!value) return '';
+  const match = String(value).match(/(\d{4})(?:[-/.]?(\d{1,2}))?(?:[-/.]?(\d{1,2}))?/);
+  if (!match) return '';
+  const year = match[1];
+  const month = match[2] ? match[2].padStart(2, '0') : '01';
+  const day = match[3] ? match[3].padStart(2, '0') : '01';
+  return `${year}-${month}-${day}`;
+}
+
+function formatFranchiseReleaseLabel(releaseDate, releaseYear) {
+  if (releaseDate) {
+    const [year, month] = releaseDate.split('-');
+    if (year && month) {
+      const monthIndex = Number(month) - 1;
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      if (monthIndex >= 0 && monthIndex < monthNames.length) {
+        return `${monthNames[monthIndex]} ${year}`;
+      }
+      return year;
+    }
+  }
+  if (releaseYear) return releaseYear;
+  return '';
+}
+
+function normalizeFranchiseWatchStatus(value) {
+  if (!value) return '';
+  const normalized = String(value).trim().toLowerCase();
+  if (['finished', 'complete', 'completed', 'watched', 'done'].includes(normalized)) return 'finished';
+  if (['watching', 'in_progress', 'in-progress', 'ongoing', 'current'].includes(normalized)) return 'in-progress';
+  if (['planned', 'backlog', 'pending', 'queue', 'queued', 'up next', 'up-next'].includes(normalized)) return 'pending';
+  if (['skipped', 'dropped', 'abandoned'].includes(normalized)) return 'skipped';
+  return normalized;
+}
+
+function normalizeFranchiseReleaseStatus(value) {
+  if (!value) return '';
+  const normalized = String(value).trim().toLowerCase();
+  if (['released', 'available'].includes(normalized)) return 'released';
+  if (['upcoming', 'announced', 'tba'].includes(normalized)) return 'upcoming';
+  if (['delayed', 'hiatus'].includes(normalized)) return 'delayed';
+  return normalized;
+}
+
+function formatFranchiseWatchStatusLabel(status) {
+  switch (status) {
+    case 'finished':
+      return 'Finished';
+    case 'in-progress':
+      return 'In progress';
+    case 'pending':
+      return 'Backlog';
+    case 'skipped':
+      return 'Skipped';
+    default:
+      return status ? status.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()) : '';
+  }
+}
+
+function formatFranchiseReleaseStatusLabel(status) {
+  switch (status) {
+    case 'released':
+      return 'Released';
+    case 'upcoming':
+      return 'Upcoming';
+    case 'delayed':
+      return 'Delayed';
+    default:
+      return status ? status.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()) : '';
+  }
+}
+
+function formatFranchiseBadgeLabel(mediaType, source = {}) {
+  if (source.badge) return source.badge;
+  if (mediaType === 'season') {
+    const numeric = Number(source.seasonNumber);
+    if (Number.isFinite(numeric)) {
+      return `S${String(numeric).padStart(2, '0')}`;
+    }
+  }
+  if (source.part) {
+    const numeric = Number(source.part);
+    if (Number.isFinite(numeric)) {
+      return `Part ${numeric}`;
+    }
+  }
+  return FRANCHISE_MEDIA_LABELS[mediaType] || 'Entry';
+}
+
+function refreshFranchiseLibraryMatches() {
+  if (!franchiseState.loaded || !Array.isArray(franchiseState.records) || !franchiseState.records.length) return;
+  let updated = false;
+  franchiseState.records.forEach(record => {
+    let recordChanged = false;
+    record.entries.forEach(entry => {
+      const match = resolveFranchiseLibraryMatch(entry);
+      const isMatched = Boolean(match);
+      if (entry.libraryMatch !== isMatched) {
+        entry.libraryMatch = isMatched;
+        recordChanged = true;
+        updated = true;
+      }
+      if (isMatched && !entry.isFinished && match && (match.finishedAt || match.finishedDate)) {
+        entry.isFinished = true;
+        recordChanged = true;
+      }
+    });
+    if (recordChanged) {
+      record.stats = computeFranchiseStats(record.entries);
+    }
+  });
+  if (updated) {
+    renderFranchiseShelf();
+  } else {
+    updateFranchiseMeta(franchiseState.records);
+  }
+}
+
+function resolveFranchiseLibraryMatch(entry) {
+  if (!entry || !entry.listType) return null;
+  const pools = [listCaches[entry.listType] || {}, finishedCaches[entry.listType] || {}];
+  for (const pool of pools) {
+    if (!pool) continue;
+    if (entry.listEntryId && pool[entry.listEntryId]) {
+      return pool[entry.listEntryId];
+    }
+    if (entry.tmdbId) {
+      const match = Object.values(pool).find(item => Number(item.tmdbId) === Number(entry.tmdbId));
+      if (match) return match;
+    }
+    if (entry.imdbId) {
+      const match = Object.values(pool).find(item => item.imdbId && item.imdbId === entry.imdbId);
+      if (match) return match;
+    }
+    if (entry.title) {
+      const targetTitle = normalizeTitleKey(entry.title);
+      const match = Object.values(pool).find(item => normalizeTitleKey(item.title) === targetTitle && (!entry.releaseYear || sanitizeYear(item.year) === String(entry.releaseYear)));
+      if (match) return match;
+    }
+  }
+  return null;
+}
+
+function computeFranchiseStats(entries) {
+  const stats = {
+    totalEntries: Array.isArray(entries) ? entries.length : 0,
+    finishedCount: 0,
+    libraryMatches: 0,
+    remainingCount: 0,
+  };
+  if (!Array.isArray(entries)) {
+    return stats;
+  }
+  entries.forEach(entry => {
+    if (!entry) return;
+    if (entry.isFinished || entry.watchStatus === 'finished') {
+      stats.finishedCount += 1;
+    }
+    if (entry.libraryMatch) {
+      stats.libraryMatches += 1;
+    }
+  });
+  stats.remainingCount = Math.max(stats.totalEntries - stats.finishedCount, 0);
+  return stats;
+}
 
 function estimateMovieRuntimeMinutes(item) {
   if (!item) return 0;
@@ -2618,7 +3962,7 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
 
 function buildSeriesTreeHeader(count) {
   const heading = createEl('div', 'series-tree-heading');
-  heading.appendChild(createEl('div', 'series-tree-heading-title', { text: 'Series order' }));
+  heading.appendChild(createEl('div', 'series-tree-heading-title', { text: 'Franchise order' }));
   heading.appendChild(createEl('div', 'series-tree-heading-count', { text: `${count} ${count === 1 ? 'entry' : 'entries'}` }));
   return heading;
 }
@@ -3289,6 +4633,9 @@ async function addItemFromForm(listType, form) {
     const useAniList = listType === 'anime';
     const useGoogleBooks = listType === 'books';
     const hasMetadataProvider = useAniList || useGoogleBooks || Boolean(TMDB_API_KEY);
+    let animeFranchisePlan = null;
+    let animeFranchiseSelectionIds = null;
+    let aniListTargetId = useAniList ? (selectedAniListId || '') : '';
     let movieCollectionInfo = null;
     if (!metadata && supportsMetadata) {
       if (useAniList) {
@@ -3301,6 +4648,33 @@ async function addItemFromForm(listType, form) {
         metadata = await fetchTmdbMetadata(listType, { title, year, imdbId: selectedImdbId, tmdbId: selectedTmdbId });
       }
     }
+    if (useAniList) {
+      if (!aniListTargetId && metadata && metadata.AniListId) {
+        aniListTargetId = metadata.AniListId;
+      }
+      if (aniListTargetId) {
+        try {
+          animeFranchisePlan = await fetchAniListFranchisePlan({
+            aniListId: aniListTargetId,
+            preferredSeriesName: seriesNameValue || (metadata && metadata.Title) || title,
+          });
+        } catch (err) {
+          console.warn('Unable to build MyAnimeList franchise plan', err);
+        }
+      }
+    }
+    if (useAniList && animeFranchisePlan && Array.isArray(animeFranchisePlan.entries)) {
+      try {
+        animeFranchiseSelectionIds = await promptAnimeFranchiseSelection(animeFranchisePlan, {
+          rootAniListId: aniListTargetId || (metadata && metadata.AniListId) || '',
+          title,
+        });
+      } catch (err) {
+        console.warn('Franchise selection prompt failed', err);
+        animeFranchiseSelectionIds = null;
+      }
+    }
+
     const item = {
       title,
       createdAt: Date.now(),
@@ -3348,9 +4722,23 @@ async function addItemFromForm(listType, form) {
         });
         Object.assign(item, metadataUpdates);
       }
-      if (useAniList && !item.seriesName) {
-        const derivedSeriesName = (metadata && metadata.Title) || title;
-        if (derivedSeriesName) item.seriesName = derivedSeriesName;
+      if (useAniList) {
+        if (!item.seriesName) {
+          const derivedSeriesName = (animeFranchisePlan && animeFranchisePlan.seriesName) || (metadata && metadata.Title) || title;
+          if (derivedSeriesName) item.seriesName = derivedSeriesName;
+        }
+        if (animeFranchisePlan && Array.isArray(animeFranchisePlan.entries) && animeFranchisePlan.entries.length) {
+          const rootEntry = aniListTargetId
+            ? animeFranchisePlan.entries.find(entry => entry && entry.aniListId && String(entry.aniListId) === String(aniListTargetId))
+            : null;
+          if (rootEntry && rootEntry.seriesOrder !== undefined && rootEntry.seriesOrder !== null) {
+            const hasExistingOrder = item.seriesOrder !== undefined && item.seriesOrder !== null;
+            if (!hasExistingOrder) {
+              item.seriesOrder = rootEntry.seriesOrder;
+            }
+          }
+          item.seriesSize = animeFranchisePlan.entries.length;
+        }
       }
     }
 
@@ -3385,6 +4773,21 @@ async function addItemFromForm(listType, form) {
     }
 
     await addItem(listType, item);
+
+    if (listType === 'anime' && animeFranchisePlan) {
+      const allowAutoAdd = animeFranchiseSelectionIds === null || (Array.isArray(animeFranchiseSelectionIds) && animeFranchiseSelectionIds.length > 0);
+      try {
+        if (allowAutoAdd) {
+          await autoAddAnimeFranchiseEntries(
+            animeFranchisePlan,
+            aniListTargetId || (metadata && metadata.AniListId),
+            Array.isArray(animeFranchiseSelectionIds) ? animeFranchiseSelectionIds : undefined,
+          );
+        }
+      } catch (err) {
+        console.warn('Unable to auto-add related anime entries', err);
+      }
+    }
 
     let keywordPromptContext = null;
     if (franchiseKeywordInfo && Array.isArray(franchiseKeywordEntryCandidates) && franchiseKeywordEntryCandidates.length) {
@@ -4646,7 +6049,7 @@ async function tmdbFetch(path, params = {}) {
   return await resp.json();
 }
 
-function formatTmdbEntrySummary(item, mediaType, extras = {}) {
+function formatTmdbFranchiseEntry(item, mediaType, extras = {}) {
   if (!item) return null;
   const title = mediaType === 'tv'
     ? (item.name || item.original_name || item.title || item.original_title)
@@ -4666,6 +6069,218 @@ function formatTmdbEntrySummary(item, mediaType, extras = {}) {
     voteAverage: Number(item.vote_average) || 0,
     ...extras,
   };
+}
+
+function pickBestTmdbSearchResult(results, query, mediaType) {
+  if (!Array.isArray(results) || !results.length) return null;
+  const normalizedQuery = normalizeTitleKey(query);
+  return results.reduce((best, entry) => {
+    if (!entry) return best;
+    const title = mediaType === 'tv'
+      ? (entry.name || entry.original_name || '')
+      : (entry.title || entry.original_title || '');
+    if (!title) return best;
+    const normalizedTitle = normalizeTitleKey(title);
+    const popularity = Number(entry.popularity) || 0;
+    const voteAverage = Number(entry.vote_average) || 0;
+    const exactMatch = normalizedTitle === normalizedQuery;
+    const score = (exactMatch ? 1000 : 0) + popularity * 3 + voteAverage;
+    if (!best || score > best.__score) {
+      best = { ...entry, __score: score };
+    }
+    return best;
+  }, null);
+}
+
+function mergeFranchiseEntrySets(targetMap, entries) {
+  if (!Array.isArray(entries)) return;
+  entries.forEach(entry => {
+    if (!entry || !entry.id) return;
+    const key = `${entry.mediaType || 'unknown'}:${entry.id}`;
+    if (targetMap.has(key)) return;
+    targetMap.set(key, entry);
+  });
+}
+
+function buildFranchiseSeasonEntries(tvDetails) {
+  if (!tvDetails || !Array.isArray(tvDetails.seasons)) return [];
+  return tvDetails.seasons
+    .filter(season => season && season.season_number !== undefined)
+    .map(season => ({
+      id: `${tvDetails.id}-season-${season.season_number}`,
+      tmdbId: season.id || null,
+      mediaType: 'tvSeason',
+      seriesId: tvDetails.id,
+      title: season.name || `Season ${season.season_number}`,
+      seasonNumber: season.season_number,
+      episodes: season.episode_count || null,
+      year: extractPrimaryYear(season.air_date || ''),
+      releaseDate: season.air_date || '',
+      poster: season.poster_path ? `${TMDB_IMAGE_BASE_URL}${season.poster_path}` : '',
+      overview: season.overview || '',
+    }));
+}
+
+function collectRecommendationEntries(details, mediaType) {
+  if (!details) return [];
+  const buckets = [];
+  const pushEntries = (source, relation) => {
+    if (!source || !Array.isArray(source.results)) return;
+    source.results.forEach(item => {
+      const entry = formatTmdbFranchiseEntry(item, mediaType, {
+        relation,
+        relationSourceId: details.id,
+      });
+      if (entry) buckets.push(entry);
+    });
+  };
+  pushEntries(details.recommendations, 'recommendation');
+  pushEntries(details.similar, 'similar');
+  return buckets;
+}
+
+async function searchTmdbAcrossMedia(query) {
+  if (!query || !query.trim()) return { movieMatches: [], tvMatches: [] };
+  const params = {
+    query: query.trim(),
+    include_adult: 'false',
+    language: 'en-US',
+  };
+  const [movieResp, tvResp] = await Promise.allSettled([
+    tmdbFetch('/search/movie', params),
+    tmdbFetch('/search/tv', params),
+  ]);
+  const movieMatches = movieResp.status === 'fulfilled' && Array.isArray(movieResp.value?.results)
+    ? movieResp.value.results
+    : [];
+  const tvMatches = tvResp.status === 'fulfilled' && Array.isArray(tvResp.value?.results)
+    ? tvResp.value.results
+    : [];
+  return { movieMatches, tvMatches };
+}
+
+async function fetchTmdbFranchiseDetails(mediaType, id) {
+  if (!id) return null;
+  const append = 'credits,external_ids,recommendations,similar';
+  try {
+    const payload = await tmdbFetch(`/${mediaType}/${id}`, { append_to_response: append });
+    return payload || null;
+  } catch (err) {
+    console.warn('Unable to fetch TMDb franchise details', mediaType, id, err);
+    return null;
+  }
+}
+
+async function fetchTmdbCollectionMovies(collectionId) {
+  if (!collectionId) return [];
+  try {
+    const payload = await tmdbFetch(`/collection/${collectionId}`);
+    if (!payload || !Array.isArray(payload.parts)) return [];
+    return payload.parts
+      .map((part, index) => formatTmdbFranchiseEntry(part, 'movie', {
+        collectionId: payload.id,
+        collectionName: payload.name || '',
+        collectionOrder: typeof part.order === 'number' ? part.order : index + 1,
+      }))
+      .filter(Boolean);
+  } catch (err) {
+    console.warn('Unable to fetch TMDb collection entries', collectionId, err);
+    return [];
+  }
+}
+
+async function fetchTmdbFranchise(query) {
+  const sanitizedQuery = (query || '').trim();
+  if (!sanitizedQuery) return null;
+  if (!TMDB_API_KEY) {
+    maybeWarnAboutTmdbKey();
+    throw new Error('TMDb API key missing');
+  }
+
+  const franchise = {
+    query: sanitizedQuery,
+    mainMovie: null,
+    mainTV: null,
+    collectionMovies: [],
+    tvSeasons: [],
+    connectedUniverse: [],
+    allEntriesFlat: [],
+  };
+
+  const allEntryMap = new Map();
+
+  try {
+    const { movieMatches, tvMatches } = await searchTmdbAcrossMedia(sanitizedQuery);
+    const bestMovie = pickBestTmdbSearchResult(movieMatches, sanitizedQuery, 'movie');
+    const bestTv = pickBestTmdbSearchResult(tvMatches, sanitizedQuery, 'tv');
+
+    if (bestMovie && bestMovie.id) {
+      const movieDetails = await fetchTmdbFranchiseDetails('movie', bestMovie.id);
+      if (movieDetails) {
+        franchise.mainMovie = formatTmdbFranchiseEntry(movieDetails, 'movie', {
+          runtime: movieDetails.runtime || null,
+          releaseDate: movieDetails.release_date || '',
+          imdbId: movieDetails.imdb_id || '',
+          collectionId: movieDetails.belongs_to_collection?.id || null,
+          collectionName: movieDetails.belongs_to_collection?.name || '',
+        });
+        if (franchise.mainMovie) mergeFranchiseEntrySets(allEntryMap, [franchise.mainMovie]);
+
+        if (movieDetails.belongs_to_collection?.id) {
+          const collectionEntries = await fetchTmdbCollectionMovies(movieDetails.belongs_to_collection.id);
+          franchise.collectionMovies = collectionEntries;
+          mergeFranchiseEntrySets(allEntryMap, collectionEntries);
+        }
+
+        const movieRelated = collectRecommendationEntries(movieDetails, 'movie');
+        franchise.connectedUniverse.push(...movieRelated);
+        mergeFranchiseEntrySets(allEntryMap, movieRelated);
+      }
+    }
+
+    if (bestTv && bestTv.id) {
+      const tvDetails = await fetchTmdbFranchiseDetails('tv', bestTv.id);
+      if (tvDetails) {
+        franchise.mainTV = formatTmdbFranchiseEntry(tvDetails, 'tv', {
+          seasonsCount: Array.isArray(tvDetails.seasons) ? tvDetails.seasons.length : 0,
+          firstAirDate: tvDetails.first_air_date || '',
+          lastAirDate: tvDetails.last_air_date || '',
+          episodeRunTime: Array.isArray(tvDetails.episode_run_time) ? tvDetails.episode_run_time[0] : null,
+        });
+        if (franchise.mainTV) mergeFranchiseEntrySets(allEntryMap, [franchise.mainTV]);
+
+        const seasons = buildFranchiseSeasonEntries(tvDetails);
+        franchise.tvSeasons = seasons;
+        seasons.forEach(season => {
+          const key = `tvSeason:${season.id}`;
+          if (!allEntryMap.has(key)) {
+            allEntryMap.set(key, season);
+          }
+        });
+
+        const tvRelated = collectRecommendationEntries(tvDetails, 'tv');
+        franchise.connectedUniverse.push(...tvRelated);
+        mergeFranchiseEntrySets(allEntryMap, tvRelated);
+      }
+    }
+
+    const uniqueUniverse = new Map();
+    franchise.connectedUniverse.forEach(entry => {
+      if (!entry || !entry.id) return;
+      if (franchise.mainMovie && entry.mediaType === 'movie' && entry.id === franchise.mainMovie.id) return;
+      if (franchise.mainTV && entry.mediaType === 'tv' && entry.id === franchise.mainTV.id) return;
+      if (franchise.collectionMovies.some(movie => movie.id === entry.id && entry.mediaType === 'movie')) return;
+      const key = `${entry.mediaType}:${entry.id}`;
+      if (!uniqueUniverse.has(key)) uniqueUniverse.set(key, entry);
+    });
+    franchise.connectedUniverse = Array.from(uniqueUniverse.values());
+
+    franchise.allEntriesFlat = Array.from(allEntryMap.values());
+    return franchise;
+  } catch (err) {
+    console.warn('Unable to build TMDb franchise payload', err);
+    throw err;
+  }
 }
 
 // --- Watch Providers (TMDb) ---
@@ -5088,6 +6703,13 @@ function deleteItem(listType, itemId, options = {}) {
   const { fromFinished = false } = options;
   if (!confirm('Delete this item?')) return;
   const cacheSource = fromFinished ? finishedCaches : listCaches;
+  if (listType === 'anime' && cacheSource[listType] && cacheSource[listType][itemId]) {
+    const target = cacheSource[listType][itemId];
+    const aniListId = getAniListIdFromItem(target);
+    if (aniListId) {
+      rememberIgnoredAniListId(aniListId);
+    }
+  }
   const basePath = fromFinished
     ? `users/${currentUser.uid}/finished/${listType}`
     : `users/${currentUser.uid}/${listType}`;
@@ -6393,13 +8015,305 @@ function mapAniListMediaToMetadata(media) {
   };
 }
 
+function isSupportedAnimeRelationType(value) {
+  if (!value) return false;
+  return ANIME_FRANCHISE_RELATION_TYPES.has(normalizeAnimeRelationType(value));
+}
+
+function normalizeAnimeRelationType(value) {
+  if (!value) return '';
+  return String(value).trim().toUpperCase().replace(/\s+/g, '_');
+}
+
+function isSupportedAnimeFormat(format) {
+  if (!format) return false;
+  return ANIME_FRANCHISE_ALLOWED_FORMATS.has(String(format).toUpperCase());
+}
+
+function getAnimeFormatPriority(format) {
+  const normalized = String(format || '').toUpperCase();
+  switch (normalized) {
+    case 'TV': return 1;
+    case 'TV_SHORT': return 2;
+    case 'ONA': return 3;
+    case 'OVA': return 4;
+    case 'MOVIE': return 5;
+    case 'SPECIAL': return 6;
+    default: return 9;
+  }
+}
+
+function compareAnimeFranchiseEntries(a, b) {
+  const yearA = Number.isFinite(a?.year) ? a.year : 9999;
+  const yearB = Number.isFinite(b?.year) ? b.year : 9999;
+  if (yearA !== yearB) return yearA - yearB;
+  const depthA = Number.isFinite(a?.depth) ? a.depth : 99;
+  const depthB = Number.isFinite(b?.depth) ? b.depth : 99;
+  if (depthA !== depthB) return depthA - depthB;
+  const formatDiff = getAnimeFormatPriority(a?.format) - getAnimeFormatPriority(b?.format);
+  if (formatDiff !== 0) return formatDiff;
+  const titleA = (a?.title || '').toLowerCase();
+  const titleB = (b?.title || '').toLowerCase();
+  if (titleA < titleB) return -1;
+  if (titleA > titleB) return 1;
+  return 0;
+}
+
+function stripAnimeSeasonSuffix(title) {
+  if (!title) return '';
+  return title
+    .replace(/\s+(Season|Cour|Part)\s+\d+$/i, '')
+    .replace(/\s+(I{2,4}|V|VI{0,3})$/i, '')
+    .trim();
+}
+
+function deriveAnimeSeriesName(entries, preferred) {
+  const manual = (preferred || '').trim();
+  if (manual) return manual;
+  const root = entries.find(entry => entry.depth === 0 && entry.title);
+  if (root) {
+    const trimmed = stripAnimeSeasonSuffix(root.title);
+    return trimmed || root.title;
+  }
+  const fallback = entries[0]?.title || '';
+  const trimmedFallback = stripAnimeSeasonSuffix(fallback);
+  return trimmedFallback || fallback || 'Franchise';
+}
+
+async function fetchAniListMediaWithRelations(aniListId) {
+  return fetchJikanAnimeDetails(aniListId);
+}
+
+function mapAniListMediaToFranchiseEntry(media, relationType, depth) {
+  if (!media) return null;
+  const title = pickAnimeTitle(media.title || media);
+  if (!title) return null;
+  const yearString = extractAnimeYear(media);
+  const yearValue = yearString ? Number(yearString) : null;
+  const malId = media.mal_id || media.id || null;
+  const cover = media.coverImage?.extraLarge
+    || media.coverImage?.large
+    || media.images?.jpg?.large_image_url
+    || media.images?.jpg?.image_url
+    || media.images?.webp?.large_image_url
+    || media.images?.webp?.image_url
+    || '';
+  return {
+    aniListId: malId,
+    title,
+    year: Number.isFinite(yearValue) ? yearValue : null,
+    format: media.format || media.type || '',
+    episodes: media.episodes || null,
+    duration: extractAnimeDurationMinutes(media) || null,
+    status: normalizeAnimeStatus(media.status),
+    siteUrl: media.url || (malId ? `${MYANIMELIST_ANIME_URL}/${malId}` : ''),
+    cover,
+    relationType: relationType || '',
+    depth: depth || 0,
+  };
+}
+
+async function fetchAniListFranchisePlan({ aniListId, preferredSeriesName } = {}) {
+  if (!aniListId) return null;
+  const rootId = Number(aniListId);
+  if (!Number.isFinite(rootId) || rootId <= 0) return null;
+  const queue = [{ id: rootId, depth: 0, relationType: 'ROOT' }];
+  const seen = new Set();
+  const mediaCache = new Map();
+  const entries = [];
+
+  while (queue.length && entries.length < ANIME_FRANCHISE_MAX_ENTRIES) {
+    const current = queue.shift();
+    if (!current || seen.has(current.id)) continue;
+    let media = mediaCache.get(current.id);
+    if (!media) {
+      media = await fetchAniListMediaWithRelations(current.id);
+      if (!media) continue;
+      mediaCache.set(current.id, media);
+    }
+    seen.add(current.id);
+    const entry = mapAniListMediaToFranchiseEntry(media, current.relationType, current.depth);
+    if (entry) entries.push(entry);
+    if (current.depth >= ANIME_FRANCHISE_MAX_DEPTH) continue;
+    const relationGroups = Array.isArray(media.relations) ? media.relations : [];
+    relationGroups.forEach(group => {
+      const normalizedRelation = normalizeAnimeRelationType(group?.relation || group?.relationType || '');
+      if (!isSupportedAnimeRelationType(normalizedRelation)) return;
+      const nodes = Array.isArray(group.entry) ? group.entry : Array.isArray(group.edges) ? group.edges.map(edge => edge?.node) : [];
+      nodes.forEach(node => {
+        const childId = node?.mal_id || node?.id;
+        if (!childId || seen.has(childId)) return;
+        queue.push({ id: childId, depth: current.depth + 1, relationType: normalizedRelation });
+      });
+    });
+  }
+
+  const filtered = entries.filter(entry => entry.depth === 0 || isSupportedAnimeFormat(entry.format));
+  if (filtered.length <= 1) return null;
+
+  filtered.sort(compareAnimeFranchiseEntries);
+  filtered.forEach((entry, idx) => {
+    entry.seriesOrder = idx + 1;
+  });
+  const seriesName = deriveAnimeSeriesName(filtered, preferredSeriesName);
+  filtered.forEach(entry => {
+    entry.seriesName = seriesName;
+  });
+  return {
+    seriesName,
+    entries: filtered,
+  };
+}
+
+async function autoAddAnimeFranchiseEntries(plan, rootAniListId, selectedIds) {
+  if (!plan || !Array.isArray(plan.entries) || !plan.entries.length) return;
+  const rootId = rootAniListId ? Number(rootAniListId) : null;
+  const selectionSet = Array.isArray(selectedIds) && selectedIds.length
+    ? new Set(selectedIds.map(id => String(id)))
+    : null;
+  let addedCount = 0;
+  for (const entry of plan.entries) {
+    if (!entry || !entry.title) continue;
+    if (rootId && Number(entry.aniListId) === rootId) continue;
+    if (selectionSet && !selectionSet.has(String(entry.aniListId))) continue;
+    const payload = {
+      title: entry.title,
+      createdAt: Date.now(),
+      year: entry.year ? String(entry.year) : '',
+      seriesName: entry.seriesName || plan.seriesName || '',
+      seriesOrder: entry.seriesOrder ?? null,
+      seriesSize: plan.entries.length,
+      aniListId: entry.aniListId || null,
+      aniListUrl: entry.siteUrl || '',
+      animeFormat: entry.format || '',
+      animeEpisodes: entry.episodes ?? '',
+      animeDuration: entry.duration ?? '',
+      animeStatus: entry.status || '',
+      poster: entry.cover || '',
+      originalLanguage: 'Japanese',
+      originalLanguageIso: 'ja',
+    };
+    if (isDuplicateCandidate('anime', payload)) continue;
+    try {
+      await addItem('anime', payload);
+      addedCount++;
+    } catch (err) {
+      console.warn('Auto-add anime entry failed', entry.title, err);
+    }
+  }
+  if (addedCount > 0) {
+    try {
+      console.info(`[MyAnimeList] Auto-added ${addedCount} related anime entries for "${plan.seriesName}"`);
+    } catch (_) {}
+  }
+}
+
 function getAniListIdFromItem(item) {
   if (!item) return '';
-  const value = item.aniListId
-    || item.anilistId
-    || item.AniListId
-    || (item.metadata && (item.metadata.AniListId || item.metadata.anilistId));
+  const value = item.aniListId || item.anilistId || item.AniListId || (item.metadata && (item.metadata.AniListId || item.metadata.anilistId));
   return value ? String(value) : '';
+}
+
+function computeAnimeDatasetSignature(data) {
+  const ids = Object.values(data || {})
+    .map(item => getAniListIdFromItem(item))
+    .filter(Boolean)
+    .sort();
+  return ids.join(',');
+}
+
+function buildAnimeFranchiseSeriesMap(data) {
+  const map = new Map();
+  Object.values(data || {}).forEach(item => {
+    const aniListId = getAniListIdFromItem(item);
+    if (!aniListId) return;
+    const rawSeries = typeof item.seriesName === 'string' ? item.seriesName.trim() : '';
+    const seriesKey = rawSeries ? normalizeTitleKey(rawSeries) : `__solo_${aniListId}`;
+    if (!map.has(seriesKey)) {
+      map.set(seriesKey, {
+        seriesName: rawSeries || item.title || '',
+        representativeId: aniListId,
+        items: [],
+      });
+    }
+    const bucket = map.get(seriesKey);
+    bucket.items.push(item);
+    if (!bucket.representativeId && aniListId) {
+      bucket.representativeId = aniListId;
+    }
+    if (aniListId) {
+      clearIgnoredAniListId(aniListId);
+    }
+  });
+  return map;
+}
+
+function scheduleAnimeFranchiseScan(data) {
+  pendingAnimeScanData = data;
+  const signature = computeAnimeDatasetSignature(data);
+  const now = Date.now();
+  const shouldRun = signature !== animeFranchiseLastScanSignature
+    || (now - animeFranchiseLastScanTime) > ANIME_FRANCHISE_RESCAN_INTERVAL_MS;
+  if (!shouldRun) return;
+  animeFranchiseLastScanSignature = signature;
+  if (animeFranchiseScanTimer) {
+    clearTimeout(animeFranchiseScanTimer);
+  }
+  animeFranchiseScanTimer = setTimeout(() => {
+    animeFranchiseScanTimer = null;
+    animeFranchiseLastScanTime = Date.now();
+    runAnimeFranchiseScan(pendingAnimeScanData);
+  }, 1000);
+}
+
+async function runAnimeFranchiseScan(data) {
+  if (animeFranchiseScanInflight) return;
+  animeFranchiseScanInflight = true;
+  try {
+    if (!data || typeof data !== 'object') return;
+    const seriesMap = buildAnimeFranchiseSeriesMap(data);
+    if (!seriesMap.size) return;
+    let scanned = 0;
+    for (const [seriesKey, info] of seriesMap.entries()) {
+      if (scanned >= ANIME_FRANCHISE_SCAN_SERIES_LIMIT) break;
+      const aniListId = info.representativeId;
+      if (!aniListId) continue;
+      scanned++;
+      let plan;
+      try {
+        plan = await fetchAniListFranchisePlan({
+          aniListId,
+          preferredSeriesName: info.seriesName,
+        });
+      } catch (err) {
+        console.warn('MyAnimeList franchise scan failed', err);
+        continue;
+      }
+      if (!plan || !Array.isArray(plan.entries) || !plan.entries.length) continue;
+      const existingIds = new Set(info.items.map(getAniListIdFromItem).filter(Boolean).map(String));
+      const missingEntries = plan.entries.filter(entry => {
+        if (!entry || !entry.aniListId) return false;
+        const idStr = String(entry.aniListId);
+        if (existingIds.has(idStr)) return false;
+        if (animeFranchiseIgnoredIds.has(idStr)) return false;
+        return true;
+      });
+      if (!missingEntries.length) {
+        animeFranchiseMissingHashes.delete(seriesKey);
+        continue;
+      }
+      const missingHash = missingEntries
+        .map(entry => String(entry.aniListId))
+        .sort()
+        .join(',');
+      const previousHash = animeFranchiseMissingHashes.get(seriesKey);
+      if (previousHash === missingHash) continue;
+      animeFranchiseMissingHashes.set(seriesKey, missingHash);
+      showAnimeFranchiseNotification(plan.seriesName || info.seriesName, missingEntries);
+    }
+  } finally {
+    animeFranchiseScanInflight = false;
+  }
 }
 
 function buildGoogleBooksQuery(search) {
@@ -6579,7 +8493,7 @@ async function discoverTmdbKeywordEntries(keywordId, mediaType, pageLimit = TMDB
       });
       if (Array.isArray(payload?.results)) {
         payload.results.forEach(result => {
-          const entry = formatTmdbEntrySummary(result, mediaType);
+          const entry = formatTmdbFranchiseEntry(result, mediaType);
           if (entry) entries.push(entry);
         });
       }
