@@ -276,6 +276,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .card .card-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:.4rem}
 .card-header{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap}
 .card .title{font-weight:700;font-size:1rem;line-height:1.2}
+.series-card-subtitle{font-size:.86rem;color:var(--text-500);font-weight:500}
 .single-line-title{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .card .meta{color:var(--text-500);font-size:.85rem}
 .movie-card-extra-meta{color:var(--text-300);font-size:.84rem;margin-top:.15rem}

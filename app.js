@@ -3026,8 +3026,12 @@ function buildSeriesPosterStackItems(activeItem, seriesEntries = []) {
 function buildMovieCardInfo(listType, item, context = {}) {
   const info = createEl('div', 'movie-card-info');
   const header = createEl('div', 'movie-card-header');
-  const title = createEl('div', 'title', { text: item.title || '(no title)' });
+  const { titleText, subtitleText } = resolveSeriesCardTitleParts(item, context);
+  const title = createEl('div', 'title', { text: titleText });
   header.appendChild(title);
+  if (subtitleText) {
+    header.appendChild(createEl('div', 'series-card-subtitle', { text: subtitleText }));
+  }
   const ratingBadge = buildFinishedRatingBadge(item);
   if (ratingBadge) {
     header.appendChild(ratingBadge);
@@ -3040,6 +3044,16 @@ function buildMovieCardInfo(listType, item, context = {}) {
   }
 
   return info;
+}
+
+function resolveSeriesCardTitleParts(item, context = {}) {
+  const defaultTitle = item?.title || '(no title)';
+  const seriesName = resolveSeriesNameFromEntries(context.seriesEntries, item);
+  if (!context.isExpanded && seriesName) {
+    const subtitle = seriesName !== defaultTitle ? defaultTitle : '';
+    return { titleText: seriesName, subtitleText: subtitle };
+  }
+  return { titleText: defaultTitle, subtitleText: '' };
 }
 
 function buildMediaSummaryBadges(listType, item, context = {}) {
