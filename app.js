@@ -495,6 +495,17 @@ const tmEasterEgg = (() => {
   let rafId = null;
   let layer = null;
   let intensityMultiplier = 1;
+  const pointerState = {
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    active: false,
+    lastX: 0,
+    lastY: 0,
+    lastTime: 0,
+  };
+  let pointerListenersAttached = false;
   const gravity = 0.32;
   const bounce = 0.68;
   const friction = 0.995;
@@ -507,6 +518,11 @@ const tmEasterEgg = (() => {
   const collisionIterations = 4;
   const maxVerticalSpeed = 24;
   const maxHorizontalSpeed = 12;
+  const pointerRadius = 48;
+  const pointerPushStrength = 1.65;
+  const pointerVelocityInfluence = 0.28;
+  const pointerVelocityDecay = 0.86;
+  const pointerActivityWindow = 220;
 
   const seasonThemes = {
     winter: {
@@ -537,7 +553,46 @@ const tmEasterEgg = (() => {
     layer = document.createElement('div');
     layer.id = 'tm-rain-layer';
     document.body.appendChild(layer);
+    attachPointerListeners();
     return layer;
+  }
+
+  function attachPointerListeners() {
+    if (pointerListenersAttached) return;
+    pointerListenersAttached = true;
+    const passiveOpts = { passive: true };
+    window.addEventListener('pointermove', handlePointerMove, passiveOpts);
+    window.addEventListener('pointerdown', handlePointerMove, passiveOpts);
+    window.addEventListener('pointerup', handlePointerIdle, passiveOpts);
+    window.addEventListener('pointerleave', handlePointerIdle, passiveOpts);
+    window.addEventListener('pointercancel', handlePointerIdle, passiveOpts);
+    window.addEventListener('blur', handlePointerIdle);
+  }
+
+  function handlePointerMove(event) {
+    const { clientX, clientY } = event;
+    const now = performance.now();
+    if (pointerState.active && pointerState.lastTime) {
+      const dt = Math.max(now - pointerState.lastTime, 8);
+      const normalization = 16 / dt;
+      pointerState.vx = (clientX - pointerState.lastX) * normalization;
+      pointerState.vy = (clientY - pointerState.lastY) * normalization;
+    } else {
+      pointerState.vx = 0;
+      pointerState.vy = 0;
+    }
+    pointerState.active = true;
+    pointerState.x = clientX;
+    pointerState.y = clientY;
+    pointerState.lastX = clientX;
+    pointerState.lastY = clientY;
+    pointerState.lastTime = now;
+  }
+
+  function handlePointerIdle() {
+    pointerState.active = false;
+    pointerState.vx = 0;
+    pointerState.vy = 0;
   }
 
   function bindTriggers() {
@@ -638,6 +693,30 @@ const tmEasterEgg = (() => {
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+  function applyPointerInteractions() {
+    if (!pointerState.active) return;
+    const now = performance.now();
+    if (!pointerState.lastTime || (now - pointerState.lastTime) > pointerActivityWindow) {
+      return;
+    }
+    sprites.forEach(sprite => {
+      const dx = sprite.x - pointerState.x;
+      const dy = sprite.y - pointerState.y;
+      const dist = Math.hypot(dx, dy) || 0.0001;
+      const effectiveRadius = pointerRadius + sprite.radius;
+      if (dist > effectiveRadius) return;
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const overlap = effectiveRadius - dist;
+      const pushStrength = (overlap / effectiveRadius) * pointerPushStrength;
+      sprite.x += nx * overlap;
+      sprite.y += ny * overlap;
+      sprite.vx += nx * pushStrength + pointerState.vx * pointerVelocityInfluence;
+      sprite.vy += ny * pushStrength + pointerState.vy * pointerVelocityInfluence;
+      sprite.resting = false;
+    });
+  }
+
   function resolveCollisions() {
     let resolvedAny = false;
     for (let i = 0; i < sprites.length; i++) {
@@ -713,6 +792,11 @@ const tmEasterEgg = (() => {
         sprite.supported = true;
       }
     });
+    applyPointerInteractions();
+    pointerState.vx *= pointerVelocityDecay;
+    pointerState.vy *= pointerVelocityDecay;
+    if (Math.abs(pointerState.vx) < 0.01) pointerState.vx = 0;
+    if (Math.abs(pointerState.vy) < 0.01) pointerState.vy = 0;
     for (let iter = 0; iter < collisionIterations; iter++) {
       if (!resolveCollisions()) break; // extra passes keep sprites from tunneling
     }
