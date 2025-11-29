@@ -128,14 +128,13 @@ const franchiseState = {
   loaded: false,
   records: [],
 };
-const franchiseState = {
+const franchiseDragState = {
   activeEntryId: null,
   activeFranchiseId: null,
   activeTrack: null,
-const franchiseDragState = {
+  placeholder: null,
 };
 let franchiseDragEventsBound = false;
-let franchiseOrderLabelMode = 'manual';
 const FRANCHISE_MEDIA_LABELS = {
   movie: 'Movie',
   season: 'Season',
