@@ -253,6 +253,12 @@ function formatLibraryStatNumber(value) {
   return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
+function getSeriesAwareTitle(item) {
+  if (!item) return '';
+  if (item.seriesName) return item.seriesName;
+  return item.title || '';
+}
+
 function getRuntimeThresholdClass(totalMinutes) {
   if (totalMinutes < RUNTIME_THRESHOLDS.MINUTES.max) return 'runtime-minutes';
   if (totalMinutes < RUNTIME_THRESHOLDS.HOURS.max) return 'runtime-hours';
@@ -2045,8 +2051,8 @@ function renderList(listType, data) {
 
   const mode = sortModes[listType] || 'title';
   filtered.sort(([, a], [, b]) => {
-    const ta = titleSortKey(a && a.title ? a.title : '');
-    const tb = titleSortKey(b && b.title ? b.title : '');
+    const ta = titleSortKey(getSeriesAwareTitle(a));
+    const tb = titleSortKey(getSeriesAwareTitle(b));
     if (mode === 'title') {
       if (ta < tb) return -1; if (ta > tb) return 1; return 0;
     }
@@ -2114,8 +2120,8 @@ function renderUnifiedLibrary() {
   }
 
   filtered.sort((a, b) => {
-    const ta = titleSortKey(a.displayItem?.title || '');
-    const tb = titleSortKey(b.displayItem?.title || '');
+    const ta = titleSortKey(getSeriesAwareTitle(a.displayItem || a.item));
+    const tb = titleSortKey(getSeriesAwareTitle(b.displayItem || b.item));
     if (ta < tb) return -1;
     if (ta > tb) return 1;
     const ya = Number(a.displayItem?.year) || 9999;
