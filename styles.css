@@ -526,6 +526,19 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .season-notes-input:disabled{opacity:.6;cursor:not-allowed}
 .collapsible-links{display:flex;flex-wrap:wrap;gap:.6rem}
 .collapsible-actions{display:flex;gap:.6rem;flex-wrap:wrap;justify-content:flex-end}
+.collapsible-actions.inline-actions{
+  width:100%;
+  justify-content:center;
+  margin-top:.4rem;
+}
+.card.collapsible.movie-card.expanded .collapsible-actions.inline-actions{justify-content:flex-start}
+.collapsible-actions.inline-actions .btn{
+  min-width:0;
+  flex:1 1 45%;
+  padding:.45rem .65rem;
+  font-size:.82rem;
+}
+.card.collapsible.movie-card:not(.expanded) .collapsible-actions.inline-actions .btn{flex:1 1 100%}
 .movie-card-details .notes{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);padding:.6rem .7rem;border-radius:10px}
 .series-tree{display:flex;flex-direction:column;gap:.75rem}
 .series-tree-heading{display:flex;align-items:center;justify-content:space-between;gap:.5rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text-500)}

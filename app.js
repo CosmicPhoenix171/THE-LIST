@@ -3497,12 +3497,16 @@ function buildMovieCardInfo(listType, item, context = {}) {
     header.appendChild(ratingBadge);
   }
 
+  info.appendChild(header);
+
   if (isCollapsibleList(listType)) {
     const badges = buildMediaSummaryBadges(listType, item, { ...context, listType });
     if (badges) info.appendChild(badges);
+    const inlineActions = buildMovieCardActions(listType, context.entryId || context.cardId || '', item, { variant: 'inline' });
+    if (inlineActions) {
+      info.appendChild(inlineActions);
+    }
   }
-
-  info.appendChild(header);
 
   return info;
 }
@@ -3810,8 +3814,6 @@ function buildMovieCardDetails(listType, cardId, entryId, item, context = {}) {
       details.appendChild(seriesBlock);
     }
   }
-
-  details.appendChild(buildMovieCardActions(listType, entryId, item));
   return details;
 }
 
@@ -5004,8 +5006,13 @@ function buildMovieLinks(listType, item) {
   return links.children.length ? links : null;
 }
 
-function buildMovieCardActions(listType, id, item) {
-  const actions = createEl('div', 'actions collapsible-actions');
+function buildMovieCardActions(listType, id, item, options = {}) {
+  const { variant = 'details' } = options;
+  const classNames = ['actions', 'collapsible-actions'];
+  if (variant === 'inline') {
+    classNames.push('inline-actions');
+  }
+  const actions = createEl('div', classNames.join(' '));
   const configs = [
     {
       className: 'btn secondary',
