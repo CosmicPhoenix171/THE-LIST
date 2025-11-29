@@ -3015,6 +3015,7 @@ function matchesUnifiedSearch(item, query) {
 
 function itemHasAnimeKeyword(item) {
   if (!item) return false;
+  if (item.hasAnimeKeyword === true) return true;
   const candidates = [
     item.franchiseKeywordName,
     item.keywordName,
@@ -5893,6 +5894,12 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
   if (metadata.AniListId) {
     setField('aniListId', metadata.AniListId);
   }
+  if (Array.isArray(metadata.Keywords) && metadata.Keywords.length) {
+    setField('keywords', metadata.Keywords);
+  }
+  if (metadata.HasAnimeKeyword) {
+    setField('hasAnimeKeyword', true);
+  }
 
   const tmdbIdValue = metadata.TmdbID && metadata.TmdbID !== 'N/A' ? metadata.TmdbID : (metadata.TmdbId || '');
   setField('tmdbId', tmdbIdValue);
@@ -6506,7 +6513,8 @@ async function findTmdbCandidate({ mediaType, title, year, imdbId }) {
 
 async function fetchTmdbDetail(mediaType, id) {
   try {
-    const detailResp = await fetch(`https://api.themoviedb.org/3/${mediaType}/${id}?api_key=${TMDB_API_KEY}&append_to_response=credits,external_ids`);
+    const appendParams = ['credits', 'external_ids', 'keywords'];
+    const detailResp = await fetch(`https://api.themoviedb.org/3/${mediaType}/${id}?api_key=${TMDB_API_KEY}&append_to_response=${appendParams.join(',')}`);
     if (!detailResp.ok) return null;
     return await detailResp.json();
   } catch (err) {
@@ -6519,6 +6527,13 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
   if (!detail) return null;
   const poster = detail.poster_path ? `https://image.tmdb.org/t/p/w500${detail.poster_path}` : '';
   const releaseDate = mediaType === 'movie' ? detail.release_date : detail.first_air_date;
+  const keywordSource = mediaType === 'movie'
+    ? detail.keywords?.keywords
+    : detail.keywords?.results;
+  const keywordNames = Array.isArray(keywordSource)
+    ? keywordSource.map(entry => (entry && typeof entry.name === 'string') ? entry.name.trim() : '').filter(Boolean)
+    : [];
+  const hasAnimeKeyword = keywordNames.some(name => ANIME_KEYWORD_REGEX.test(name));
   const runtimeMinutes = mediaType === 'movie'
     ? detail.runtime
     : (Array.isArray(detail.episode_run_time) && detail.episode_run_time.length ? detail.episode_run_time[0] : null);
@@ -6579,6 +6594,8 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
     TvEpisodeRuntime: tvEpisodeRuntime,
     TvStatus: tvStatus,
     TvSeasonSummaries: tvSeasonSummaries,
+    Keywords: keywordNames,
+    HasAnimeKeyword: hasAnimeKeyword,
   };
 }
 
