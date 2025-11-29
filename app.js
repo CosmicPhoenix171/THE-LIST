@@ -2147,20 +2147,16 @@ function renderUnifiedLibrary() {
 
 function collectUnifiedEntries() {
   const allEntries = [];
+  const collapsibleEntries = [];
+  
   PRIMARY_LIST_TYPES.forEach(listType => {
     const cacheEntries = Object.entries(getDisplayCache(listType) || {});
     if (!cacheEntries.length) return;
+    
     if (isCollapsibleList(listType)) {
-      const { displayRecords } = prepareCollapsibleRecords(listType, cacheEntries);
-      displayRecords.forEach(record => {
-        allEntries.push({
-          listType,
-          id: record.id,
-          item: record.item,
-          displayItem: record.displayItem,
-          displayEntryId: record.displayEntryId,
-          positionIndex: record.index,
-        });
+      cacheEntries.forEach(([id, item], index) => {
+        if (!item) return;
+        collapsibleEntries.push({ listType, id, item, index });
       });
     } else {
       cacheEntries.forEach(([id, item], index) => {
@@ -2176,6 +2172,75 @@ function collectUnifiedEntries() {
       });
     }
   });
+
+  const seriesBuckets = new Map();
+  const records = [];
+
+  collapsibleEntries.forEach(entry => {
+    const { listType, id, item, index } = entry;
+    const seriesKey = item.seriesName ? normalizeTitleKey(item.seriesName) : '';
+    const order = numericSeriesOrder(item.seriesOrder);
+    const record = { listType, id, item, index, seriesKey, order };
+    records.push(record);
+    
+    if (seriesKey) {
+      let bucket = seriesBuckets.get(seriesKey);
+      if (!bucket) {
+        bucket = { entries: [] };
+        seriesBuckets.set(seriesKey, bucket);
+      }
+      bucket.entries.push(record);
+    }
+  });
+
+  const leaderMembersByCardId = new Map();
+  
+  seriesBuckets.forEach(bucket => {
+    const sortedRecords = sortSeriesRecords(bucket.entries);
+    const leader = pickSeriesLeader(sortedRecords);
+    if (leader) {
+      bucket.leaderId = leader.id;
+      const compactEntries = sortedRecords.map(entry => ({
+        id: entry.id,
+        item: entry.item,
+        order: entry.order,
+        listType: entry.listType,
+      }));
+      leaderMembersByCardId.set(leader.id, compactEntries);
+    }
+  });
+  
+  seriesGroups.unified = leaderMembersByCardId;
+
+  records.forEach(record => {
+    const { listType, id, item, index, seriesKey } = record;
+    const bucket = seriesKey ? seriesBuckets.get(seriesKey) : null;
+    const hideCard = Boolean(bucket && bucket.leaderId && bucket.leaderId !== id);
+    
+    let displayItem = item;
+    let displayEntryId = id;
+    
+    if (!hideCard && bucket && bucket.leaderId === id) {
+      const entries = leaderMembersByCardId.get(id) || [];
+      const active = resolveSeriesDisplayEntry(listType, id, entries);
+      if (active && active.item) {
+        displayItem = active.item;
+        displayEntryId = active.id;
+      }
+    }
+
+    if (!hideCard) {
+      allEntries.push({
+        listType,
+        id,
+        item,
+        displayItem,
+        displayEntryId,
+        positionIndex: index,
+      });
+    }
+  });
+
   return allEntries;
 }
 
@@ -3136,6 +3201,7 @@ function buildUnifiedCard(entry) {
   if (isCollapsibleList(listType)) {
     return buildCollapsibleMovieCard(listType, id, displayItem, positionIndex, {
       displayEntryId,
+      isUnified: true,
     });
   }
   return buildStandardCard(listType, id, displayItem);
@@ -3285,17 +3351,28 @@ function buildCollapsibleMovieCard(listType, id, item, positionIndex = 0, option
   if (interactive) {
     card.addEventListener('click', () => toggleCardExpansion(listType, id));
   }
-  renderMovieCardContent(card, listType, id, item, displayEntryId);
+  if (options.isUnified) {
+    card.dataset.isUnified = 'true';
+  }
+  renderMovieCardContent(card, listType, id, item, displayEntryId, options);
   ensureCardTitleResizeListener(card);
   return card;
 }
 
-function renderMovieCardContent(card, listType, cardId, item, entryId = cardId) {
+function renderMovieCardContent(card, listType, cardId, item, entryId = cardId, options = {}) {
   if (!card) return;
   card.dataset.entryId = entryId;
   card.querySelectorAll('.movie-card-summary, .movie-card-details').forEach(el => el.remove());
   const isExpanded = card.classList.contains('expanded');
-  const baseSeriesEntries = isCollapsibleList(listType) ? getSeriesGroupEntries(listType, cardId) : null;
+  
+  const isUnified = options.isUnified || card.dataset.isUnified === 'true';
+  let baseSeriesEntries = null;
+  if (isUnified && seriesGroups.unified) {
+    baseSeriesEntries = seriesGroups.unified.get(cardId) || null;
+  } else if (isCollapsibleList(listType)) {
+    baseSeriesEntries = getSeriesGroupEntries(listType, cardId);
+  }
+
   const seriesEntries = mergeSeriesEntriesAcrossLists(listType, cardId, item, baseSeriesEntries);
   const summary = buildMovieCardSummary(listType, item, { cardId, entryId, seriesEntries, isExpanded });
   const details = buildMovieCardDetails(listType, cardId, entryId, item, { seriesEntries, isExpanded });
