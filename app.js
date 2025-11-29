@@ -436,10 +436,8 @@ const WHEEL_SPIN_AUDIO_SRC = 'spin-boost.mp3';
 const WHEEL_AUDIO_MUTE_KEY = '__THE_LIST_WHEEL_MUTE__';
 let wheelSpinAudio = null;
 let wheelAudioMuted = safeStorageGet(WHEEL_AUDIO_MUTE_KEY) === '1';
-const FINISH_TIME_YEAR_THRESHOLD_MINUTES = 524160;
-const FINISH_TIME_CELEBRATION_DURATION_MS = 4000;
-let finishTimeCelebrationTriggered = false;
-let finishTimeCelebrationAudio = null;
+// Wheel audio should only run during an active spin, so we do not keep additional
+// celebration audio outside the spinner lifecycle.
 let notificationPopoverOpen = false;
 const addModalTrigger = document.getElementById('open-add-modal');
 const addFormTemplatesContainer = document.getElementById('add-form-templates');
@@ -2081,11 +2079,9 @@ function updateLibraryRuntimeStats() {
 
   if (stats.totalMinutes > 0) {
     animateRuntimeProgression(runtimeChip, stats.totalMinutes);
-    handleFinishTimeAudioTrigger(stats.totalMinutes);
   } else {
     const valueEl = runtimeChip.querySelector('.library-stat-value');
     if (valueEl) valueEl.textContent = 'Runtime info unavailable';
-    handleFinishTimeAudioTrigger(0);
   }
 
   const runtimeSummaryText = stats.totalMinutes > 0
@@ -7657,67 +7653,6 @@ function stopWheelSpinAudio() {
   }
 }
 
-function stopFinishTimeCelebrationAudio() {
-  if (!finishTimeCelebrationAudio) return;
-  try {
-    finishTimeCelebrationAudio.pause();
-  } catch (err) {
-    console.warn('Finish time celebration audio stop failed', err);
-  }
-  finishTimeCelebrationAudio = null;
-}
-
-function playFinishTimeCelebrationSound() {
-  if (wheelAudioMuted) return;
-  if (typeof Audio === 'undefined') return;
-  try {
-    stopFinishTimeCelebrationAudio();
-    const celebratoryAudio = new Audio(WHEEL_SPIN_AUDIO_SRC);
-    celebratoryAudio.volume = 0.7;
-    celebratoryAudio.play().catch(err => {
-      console.warn('Finish time celebration audio blocked', err);
-    });
-    finishTimeCelebrationAudio = celebratoryAudio;
-    const cleanup = () => {
-      if (finishTimeCelebrationAudio === celebratoryAudio) {
-        finishTimeCelebrationAudio = null;
-      }
-    };
-    celebratoryAudio.addEventListener('ended', cleanup, { once: true });
-    setTimeout(() => {
-      if (finishTimeCelebrationAudio === celebratoryAudio) {
-        celebratoryAudio.pause();
-        cleanup();
-      }
-    }, FINISH_TIME_CELEBRATION_DURATION_MS);
-  } catch (err) {
-    console.warn('Finish time celebration audio failed', err);
-  }
-}
-
-function handleFinishTimeAudioTrigger(totalMinutes) {
-  if (!Number.isFinite(totalMinutes)) return;
-  if (wheelAudioMuted) {
-    stopFinishTimeCelebrationAudio();
-    finishTimeCelebrationTriggered = false;
-    return;
-  }
-  const threshold = FINISH_TIME_YEAR_THRESHOLD_MINUTES;
-  if (totalMinutes >= threshold) {
-    if (!finishTimeCelebrationTriggered) {
-      finishTimeCelebrationTriggered = true;
-      const wheelAudio = wheelSpinAudio;
-      if (wheelAudio && !wheelAudio.paused) {
-        return;
-      }
-      playFinishTimeCelebrationSound();
-    }
-  } else {
-    finishTimeCelebrationTriggered = false;
-    stopFinishTimeCelebrationAudio();
-  }
-}
-
 function updateWheelMuteButtonState(button) {
   if (!button) return;
   const label = wheelAudioMuted ? 'Unmute Sound' : 'Mute Sound';
@@ -7730,7 +7665,6 @@ function toggleWheelAudioMute(button) {
   safeStorageSet(WHEEL_AUDIO_MUTE_KEY, wheelAudioMuted ? '1' : '0');
   if (wheelAudioMuted) {
     stopWheelSpinAudio();
-    stopFinishTimeCelebrationAudio();
   }
   updateWheelMuteButtonState(button);
 }
