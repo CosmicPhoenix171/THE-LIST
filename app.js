@@ -8086,7 +8086,11 @@ async function maybeShowRelatedSuggestions(listType, currentItem) {
     if (!identity) return;
     const details = await fetchTmdbFranchiseDetails(identity.mediaType, identity.tmdbId);
     if (!details) return;
-    const rawEntries = collectRecommendationEntries(details, identity.mediaType);
+    let rawEntries = collectRecommendationEntries(details, identity.mediaType);
+    if ((!rawEntries || !rawEntries.length) && identity.mediaType === 'movie' && details.belongs_to_collection?.id) {
+      const collectionEntries = await fetchTmdbCollectionMovies(details.belongs_to_collection.id);
+      rawEntries = collectionEntries.map(entry => ({ ...entry, relation: 'collection' }));
+    }
     if (!rawEntries.length) return;
     const filtered = filterKeywordEntriesAgainstLibrary(rawEntries, currentItem, listType);
     if (!filtered.length) return;
@@ -8422,23 +8426,37 @@ async function quickAddSuggestion(sourceListType, sourceItem, suggestion) {
 }
 
 function applySeriesMergeMetadata(payload, targetListType, sourceItem, sourceListType) {
-  if (!payload || !sourceItem || !sourceItem.seriesName) return;
-  if (targetListType !== sourceListType) return;
-  const normalizedSeriesKey = normalizeTitleKey(sourceItem.seriesName);
+  if (!payload || !sourceItem) return;
+  const resolvedSeriesName = sourceItem.seriesName
+    || sourceItem._tmdbCollectionInfo?.collectionName
+    || sourceItem.title
+    || '';
+  const normalizedSeriesKey = normalizeTitleKey(resolvedSeriesName);
   if (!normalizedSeriesKey) return;
-  payload.seriesName = sourceItem.seriesName;
-  const existingEntries = Object.values(listCaches[targetListType] || {}).filter(entry => normalizeTitleKey(entry.seriesName || '') === normalizedSeriesKey);
-  if (sourceItem && targetListType === sourceListType) {
-    existingEntries.push(sourceItem);
-  }
-  const maxOrder = existingEntries.reduce((max, entry) => {
+  payload.seriesName = resolvedSeriesName;
+  const relatedEntries = [];
+  const seenSeriesEntries = new Set();
+  const enqueueEntry = (entry, type) => {
+    if (!entry) return;
+    if (normalizeTitleKey(entry.seriesName || '') !== normalizedSeriesKey) return;
+    const mediaLabel = type === 'tvShows' ? 'tv' : (type === 'anime' ? 'anime' : 'movie');
+    const entryKey = buildFranchiseEntryKey(mediaLabel, entry) || `${mediaLabel}:${entry.title || ''}:${entry.createdAt || ''}`;
+    if (seenSeriesEntries.has(entryKey)) return;
+    seenSeriesEntries.add(entryKey);
+    relatedEntries.push(entry);
+  };
+  ['movies', 'tvShows', 'anime'].forEach(type => {
+    Object.values(listCaches[type] || {}).forEach(entry => enqueueEntry(entry, type));
+  });
+  enqueueEntry(sourceItem, sourceListType);
+  const maxOrder = relatedEntries.reduce((max, entry) => {
     const value = numericSeriesOrder(entry.seriesOrder);
     if (value === null || Number.isNaN(value)) return max;
     return Math.max(max, value);
   }, 0);
   const nextOrder = maxOrder + 1;
   payload.seriesOrder = nextOrder;
-  const projectedSize = Math.max(existingEntries.length + 1, Number(sourceItem.seriesSize) || 0, nextOrder);
+  const projectedSize = Math.max(relatedEntries.length + 1, Number(sourceItem.seriesSize) || 0, nextOrder);
   payload.seriesSize = projectedSize;
 }
 
