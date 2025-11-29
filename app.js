@@ -135,6 +135,8 @@ const franchiseDragState = {
   placeholder: null,
 };
 let franchiseDragEventsBound = false;
+const DRAG_SCROLL_EDGE_PX = 80;
+const DRAG_SCROLL_STEP_PX = 18;
 const FRANCHISE_MEDIA_LABELS = {
   movie: 'Movie',
   season: 'Season',
@@ -502,6 +504,9 @@ const tmEasterEgg = (() => {
   const supportDistanceEpsilon = 0.75;
   const spawnMinDelay = 320;
   const spawnMaxDelay = 900;
+  const collisionIterations = 4;
+  const maxVerticalSpeed = 24;
+  const maxHorizontalSpeed = 12;
 
   const seasonThemes = {
     winter: {
@@ -631,7 +636,10 @@ const tmEasterEgg = (() => {
     sprite.el.style.transform = `translate(-50%, -50%) rotate(${sprite.rotation}deg)`;
   }
 
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
   function resolveCollisions() {
+    let resolvedAny = false;
     for (let i = 0; i < sprites.length; i++) {
       for (let j = i + 1; j < sprites.length; j++) {
         const a = sprites[i];
@@ -647,6 +655,7 @@ const tmEasterEgg = (() => {
           if (ny < 0) b.supported = true;
         }
         if (dist >= minDist) continue;
+        resolvedAny = true;
         const overlap = (minDist - dist) / 2;
         a.x -= nx * overlap;
         a.y -= ny * overlap;
@@ -670,6 +679,7 @@ const tmEasterEgg = (() => {
         if (ny < -supportAngleThreshold) b.supported = true;
       }
     }
+    return resolvedAny;
   }
 
   function tick() {
@@ -681,6 +691,8 @@ const tmEasterEgg = (() => {
       if (!sprite.resting) {
         sprite.vy += gravity;
         sprite.vx *= friction;
+        sprite.vx = clamp(sprite.vx, -maxHorizontalSpeed, maxHorizontalSpeed);
+        sprite.vy = clamp(sprite.vy, -maxVerticalSpeed, maxVerticalSpeed);
         sprite.x += sprite.vx;
         sprite.y += sprite.vy;
       }
@@ -701,7 +713,9 @@ const tmEasterEgg = (() => {
         sprite.supported = true;
       }
     });
-    resolveCollisions();
+    for (let iter = 0; iter < collisionIterations; iter++) {
+      if (!resolveCollisions()) break; // extra passes keep sprites from tunneling
+    }
     sprites.forEach(sprite => {
       const settledVertically = Math.abs(sprite.vy) < settleThreshold;
       const settledHorizontally = Math.abs(sprite.vx) < settleThreshold;
@@ -2431,6 +2445,7 @@ function handleFranchiseDragOver(event) {
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = 'move';
   }
+  autoScrollDuringDrag(event);
   const placeholder = getFranchiseDragPlaceholder();
   if (placeholder.parentElement !== track) {
     track.appendChild(placeholder);
@@ -2609,6 +2624,33 @@ function arraysShallowEqual(a, b) {
     if (a[i] !== b[i]) return false;
   }
   return true;
+}
+
+function autoScrollDuringDrag(event, container = null) {
+  if (!event) return;
+  const clientY = event.clientY;
+  if (clientY === undefined || clientY === null) return;
+  if (container && container instanceof Element) {
+    const rect = container.getBoundingClientRect();
+    if (!rect || rect.height <= 0) {
+      return;
+    }
+    if (clientY < rect.top + DRAG_SCROLL_EDGE_PX) {
+      container.scrollTop -= DRAG_SCROLL_STEP_PX;
+      return;
+    }
+    if (clientY > rect.bottom - DRAG_SCROLL_EDGE_PX) {
+      container.scrollTop += DRAG_SCROLL_STEP_PX;
+    }
+    return;
+  }
+  const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 0;
+  if (!viewportHeight) return;
+  if (clientY < DRAG_SCROLL_EDGE_PX) {
+    window.scrollBy(0, -DRAG_SCROLL_STEP_PX);
+  } else if (clientY > viewportHeight - DRAG_SCROLL_EDGE_PX) {
+    window.scrollBy(0, DRAG_SCROLL_STEP_PX);
+  }
 }
 
 function normalizeFranchiseCollection(raw) {
@@ -4501,6 +4543,11 @@ function handleSeriesTreeDragOver(event) {
     return;
   }
   event.preventDefault();
+  const scrollContainer = list.closest('.series-tree-scroll') || list.parentElement;
+  if (scrollContainer instanceof Element) {
+    autoScrollDuringDrag(event, scrollContainer);
+  }
+  autoScrollDuringDrag(event);
   const placeholder = getSeriesTreePlaceholder();
   if (placeholder.parentElement !== list) {
     list.appendChild(placeholder);
