@@ -3008,6 +3008,7 @@ function matchesUnifiedSearch(item, query) {
     item.director,
     item.author,
     Array.isArray(item.actors) ? item.actors.join(' ') : item.actors,
+    Array.isArray(item.genres) ? item.genres.join(' ') : item.genres,
     Array.isArray(item.animeGenres) ? item.animeGenres.join(' ') : item.animeGenres,
   ];
   return fields.some(field => field && String(field).toLowerCase().includes(query));
@@ -3688,6 +3689,11 @@ function buildMovieCardDetails(listType, cardId, entryId, item, context = {}) {
   const extendedMeta = buildMovieExtendedMeta(item);
   if (extendedMeta) {
     infoStack.appendChild(extendedMeta);
+  }
+
+  const genreRow = buildMovieGenreRow(item);
+  if (genreRow) {
+    infoStack.appendChild(genreRow);
   }
 
   const seriesLine = buildSeriesLine(item);
@@ -4992,6 +4998,18 @@ function buildMovieExtendedMeta(item) {
   return createEl('div', 'movie-card-extra-meta', { text: parts.join(' • ') });
 }
 
+function buildMovieGenreRow(item) {
+  if (!item) return null;
+  let genres = [];
+  if (Array.isArray(item.genres)) {
+    genres = item.genres.filter(Boolean).map(value => String(value).trim()).filter(Boolean);
+  } else if (typeof item.genres === 'string') {
+    genres = item.genres.split(',').map(part => part.trim()).filter(Boolean);
+  }
+  if (!genres.length) return null;
+  return createEl('div', 'movie-genres', { text: `Genres: ${genres.join(', ')}` });
+}
+
 function buildSeriesLine(item, className = 'series-line') {
   if (!item.seriesName) return null;
   return createEl('div', className, { text: item.seriesName });
@@ -5888,6 +5906,9 @@ function deriveMetadataAssignments(metadata, existing = {}, options = {}) {
   if (Array.isArray(metadata.AnimeGenres) && metadata.AnimeGenres.length) {
     setField('animeGenres', metadata.AnimeGenres);
   }
+  if (Array.isArray(metadata.Genres) && metadata.Genres.length) {
+    setField('genres', metadata.Genres);
+  }
   if (metadata.AniListUrl) {
     setField('aniListUrl', metadata.AniListUrl);
   }
@@ -6527,6 +6548,9 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
   if (!detail) return null;
   const poster = detail.poster_path ? `https://image.tmdb.org/t/p/w500${detail.poster_path}` : '';
   const releaseDate = mediaType === 'movie' ? detail.release_date : detail.first_air_date;
+  const genreNames = Array.isArray(detail.genres)
+    ? detail.genres.map(entry => (entry && typeof entry.name === 'string') ? entry.name.trim() : '').filter(Boolean)
+    : [];
   const keywordSource = mediaType === 'movie'
     ? detail.keywords?.keywords
     : detail.keywords?.results;
@@ -6594,6 +6618,7 @@ function mapTmdbDetailToMetadata(detail, mediaType) {
     TvEpisodeRuntime: tvEpisodeRuntime,
     TvStatus: tvStatus,
     TvSeasonSummaries: tvSeasonSummaries,
+    Genres: genreNames,
     Keywords: keywordNames,
     HasAnimeKeyword: hasAnimeKeyword,
   };
