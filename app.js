@@ -3502,9 +3502,11 @@ function buildMovieCardInfo(listType, item, context = {}) {
   if (isCollapsibleList(listType)) {
     const badges = buildMediaSummaryBadges(listType, item, { ...context, listType });
     if (badges) info.appendChild(badges);
-    const inlineActions = buildMovieCardActions(listType, context.entryId || context.cardId || '', item, { variant: 'inline' });
-    if (inlineActions) {
-      info.appendChild(inlineActions);
+    if (context.isExpanded) {
+      const inlineActions = buildMovieCardActions(listType, context.entryId || context.cardId || '', item, { variant: 'inline' });
+      if (inlineActions) {
+        info.appendChild(inlineActions);
+      }
     }
   }
 
