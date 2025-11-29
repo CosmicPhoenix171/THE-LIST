@@ -7344,6 +7344,59 @@ async function deleteSeriesEntries(listType, seriesName) {
   }
 }
 
+async function mergeSeriesEntriesByName(seriesName) {
+  const targetName = (seriesName || '').trim();
+  if (!targetName) {
+    alert('Series name is required to merge.');
+    return;
+  }
+  if (!currentUser) {
+    alert('Not signed in');
+    return;
+  }
+  const normalized = normalizeTitleKey(targetName);
+  if (!normalized) {
+    alert('Series name is required to merge.');
+    return;
+  }
+  const entries = [];
+  COLLAPSIBLE_LISTS.forEach(type => {
+    const store = listCaches[type] || {};
+    Object.entries(store).forEach(([id, entry]) => {
+      if (!entry) return;
+      if (normalizeTitleKey(entry.seriesName || '') !== normalized) return;
+      entries.push({ listType: type, id, item: entry });
+    });
+  });
+  if (!entries.length) {
+    alert(`No entries found for "${targetName}".`);
+    return;
+  }
+  const confirmed = confirm(`Merge ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} into "${targetName}" and re-number the series?`);
+  if (!confirmed) return;
+  entries.sort(compareSeriesEntries);
+  const listTypesToRebalance = new Set();
+  const seriesSize = entries.length;
+  try {
+    await Promise.all(entries.map((entry, index) => {
+      const payload = {
+        seriesName: targetName,
+        seriesOrder: index + 1,
+        seriesSize,
+      };
+      listTypesToRebalance.add(entry.listType);
+      return updateItem(entry.listType, entry.id, payload).then(() => {
+        updateLocalItemCaches(entry.listType, entry.id, payload);
+      });
+    }));
+    await Promise.all(Array.from(listTypesToRebalance).map(type => rebalanceSeriesOrders(type, targetName)));
+    alert(`Merged ${seriesSize} entr${seriesSize === 1 ? 'y' : 'ies'} in "${targetName}".`);
+  } catch (err) {
+    console.error('Series merge failed', err);
+    alert('Unable to merge this series right now. Please try again.');
+  }
+}
+
 // Open a small modal to edit
 function openEditModal(listType, itemId, item) {
   if (!modalRoot) return;
@@ -7409,6 +7462,10 @@ function openEditModal(listType, itemId, item) {
   refreshBtn.className = 'btn ghost';
   refreshBtn.type = 'button';
   refreshBtn.textContent = 'Refresh Metadata';
+  const mergeSeriesBtn = document.createElement('button');
+  mergeSeriesBtn.className = 'btn warning';
+  mergeSeriesBtn.type = 'button';
+  mergeSeriesBtn.textContent = 'Merge Series';
 
   form.appendChild(typeSelect);
   form.appendChild(titleInput);
@@ -7420,11 +7477,19 @@ function openEditModal(listType, itemId, item) {
   const controls = document.createElement('div');
   controls.style.display = 'flex'; controls.style.gap = '.5rem'; controls.style.justifyContent = 'flex-end';
   controls.appendChild(refreshBtn);
+  controls.appendChild(mergeSeriesBtn);
   controls.appendChild(cancelBtn);
   controls.appendChild(saveBtn);
   form.appendChild(controls);
 
   const originalSeriesName = item.seriesName || '';
+
+  function updateMergeSeriesButtonState() {
+    const hasSeriesName = Boolean((seriesNameInput.value || '').trim());
+    const isBook = typeSelect.value === 'books';
+    mergeSeriesBtn.hidden = !hasSeriesName || isBook;
+    mergeSeriesBtn.disabled = mergeSeriesBtn.hidden;
+  }
 
   function applyTypeUiState(selectedType) {
     const placeholder = creatorPlaceholderMap[selectedType] || 'Creator';
@@ -7432,11 +7497,15 @@ function openEditModal(listType, itemId, item) {
     const isBook = selectedType === 'books';
     seriesNameInput.hidden = isBook;
     seriesOrderInput.hidden = isBook;
+    updateMergeSeriesButtonState();
   }
 
   applyTypeUiState(listType);
   typeSelect.addEventListener('change', () => {
     applyTypeUiState(typeSelect.value);
+  });
+  seriesNameInput.addEventListener('input', () => {
+    updateMergeSeriesButtonState();
   });
 
   refreshBtn.addEventListener('click', () => {
@@ -7447,6 +7516,25 @@ function openEditModal(listType, itemId, item) {
       year: lookupYear,
       button: refreshBtn,
     });
+  });
+
+  mergeSeriesBtn.addEventListener('click', async (event) => {
+    event.preventDefault();
+    const targetSeriesName = (seriesNameInput.value || '').trim();
+    if (!targetSeriesName) {
+      alert('Enter a series name before merging.');
+      return;
+    }
+    const previousLabel = mergeSeriesBtn.textContent;
+    mergeSeriesBtn.disabled = true;
+    mergeSeriesBtn.textContent = 'Merging...';
+    try {
+      await mergeSeriesEntriesByName(targetSeriesName);
+    } finally {
+      mergeSeriesBtn.disabled = false;
+      mergeSeriesBtn.textContent = previousLabel;
+      updateMergeSeriesButtonState();
+    }
   });
 
   form.addEventListener('submit', async (ev) => {
