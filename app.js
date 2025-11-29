@@ -166,8 +166,8 @@ const RUNTIME_THRESHOLDS = {
   MINUTES: { max: 60, color: 'minutes', label: 'minutes' },
   HOURS: { max: 1440, color: 'hours', label: 'hours' },
   DAYS: { max: 10080, color: 'days', label: 'days' },
-  WEEKS: { max: 43200, color: 'weeks', label: 'weeks' },
-  MONTHS: { max: 525600, color: 'months', label: 'months' },
+  WEEKS: { max: 40320, color: 'weeks', label: 'weeks' },
+  MONTHS: { max: 524160, color: 'months', label: 'months' },
   YEARS: { color: 'years', label: 'years' }
 };
 
@@ -294,8 +294,8 @@ function getRuntimeUnitBreakdown(totalMinutes) {
   const minutesPerHour = 60;
   const minutesPerDay = minutesPerHour * 24;
   const minutesPerWeek = minutesPerDay * 7;
-  const minutesPerMonth = minutesPerDay * 30;
-  const minutesPerYear = minutesPerDay * 365;
+  const minutesPerMonth = minutesPerDay * 28;
+  const minutesPerYear = minutesPerMonth * 13;
   let remaining = Math.max(0, Math.floor(totalMinutes));
   const years = Math.floor(remaining / minutesPerYear);
   remaining -= years * minutesPerYear;
@@ -343,8 +343,8 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
     { unit: 'hours', threshold: 60, divisor: 60, max: 24, className: 'runtime-hours' },
     { unit: 'days', threshold: 1440, divisor: 1440, max: 7, className: 'runtime-days' },
     { unit: 'weeks', threshold: 10080, divisor: 10080, max: 4, className: 'runtime-weeks' },
-    { unit: 'months', threshold: 43200, divisor: 43200, max: 12, className: 'runtime-months' },
-    { unit: 'years', threshold: 525600, divisor: 525600, max: Infinity, className: 'runtime-years' }
+    { unit: 'months', threshold: 40320, divisor: 40320, max: 13, className: 'runtime-months' },
+    { unit: 'years', threshold: 524160, divisor: 524160, max: Infinity, className: 'runtime-years' }
   ];
 
   const sequence = [];
@@ -5959,8 +5959,8 @@ function formatDurationUnit(value, unitLabel, keepZero = false) {
 function breakdownDurationMinutes(totalMinutes) {
   const minutesPerHour = 60;
   const minutesPerDay = minutesPerHour * 24;
-  const minutesPerMonth = minutesPerDay * 30;
-  const minutesPerYear = minutesPerDay * 365;
+  const minutesPerMonth = minutesPerDay * 28;
+  const minutesPerYear = minutesPerMonth * 13;
   let remaining = Math.max(0, Math.floor(totalMinutes));
   const years = Math.floor(remaining / minutesPerYear);
   remaining -= years * minutesPerYear;
