@@ -7344,7 +7344,7 @@ async function deleteSeriesEntries(listType, seriesName) {
   }
 }
 
-async function mergeSeriesEntriesByName(seriesName) {
+async function mergeSeriesEntriesByName(seriesName, fallbackSeriesName = '') {
   const targetName = (seriesName || '').trim();
   if (!targetName) {
     alert('Series name is required to merge.');
@@ -7354,8 +7354,12 @@ async function mergeSeriesEntriesByName(seriesName) {
     alert('Not signed in');
     return;
   }
-  const normalized = normalizeTitleKey(targetName);
-  if (!normalized) {
+  const normalizedTargets = new Set();
+  const primaryNormalized = normalizeTitleKey(targetName);
+  if (primaryNormalized) normalizedTargets.add(primaryNormalized);
+  const fallbackNormalized = normalizeTitleKey(fallbackSeriesName || '');
+  if (fallbackNormalized) normalizedTargets.add(fallbackNormalized);
+  if (!normalizedTargets.size) {
     alert('Series name is required to merge.');
     return;
   }
@@ -7364,7 +7368,8 @@ async function mergeSeriesEntriesByName(seriesName) {
     const store = listCaches[type] || {};
     Object.entries(store).forEach(([id, entry]) => {
       if (!entry) return;
-      if (normalizeTitleKey(entry.seriesName || '') !== normalized) return;
+      const entryKey = normalizeTitleKey(entry.seriesName || '');
+      if (!entryKey || !normalizedTargets.has(entryKey)) return;
       entries.push({ listType: type, id, item: entry });
     });
   });
@@ -7529,7 +7534,7 @@ function openEditModal(listType, itemId, item) {
     mergeSeriesBtn.disabled = true;
     mergeSeriesBtn.textContent = 'Merging...';
     try {
-      await mergeSeriesEntriesByName(targetSeriesName);
+      await mergeSeriesEntriesByName(targetSeriesName, originalSeriesName);
     } finally {
       mergeSeriesBtn.disabled = false;
       mergeSeriesBtn.textContent = previousLabel;
