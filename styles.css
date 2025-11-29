@@ -229,7 +229,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .type-filter[data-type-toggle="anime"],.add-type-tab[data-type="anime"]{--type-accent-color:var(--anime-pill-color)}
 .type-filter[data-type-toggle="books"],.add-type-tab[data-type="books"]{--type-accent-color:var(--books-pill-color)}
 :is(.type-filter[data-type-toggle],.add-type-tab[data-type]){border-color:var(--type-accent-color)}
-.add-modal-form{margin-top:.35rem;overflow-y:auto;padding-right:.35rem;max-height:100%}
+.add-modal-form{margin-top:.35rem;overflow-y:auto;overflow-x:hidden;padding-right:0;max-height:100%}
 .add-modal-form .add-panel{box-shadow:none}
 .wheel-modal .wheel-area{margin-top:.75rem}
 .wheel-modal .wheel-result{max-height:50vh;overflow:auto}
@@ -244,9 +244,14 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .add-form input:focus,.add-form select:focus,.add-form textarea:focus{
   outline:none;border-color:var(--primary-300);box-shadow:0 0 0 3px rgba(61,169,245,0.16);
 }
-.add-form textarea{grid-column:1 / -1;min-height:90px}
+.add-form textarea{grid-column:1 / span 3;min-height:110px}
 .add-form select{grid-column:4}
-.add-form button{grid-column:1 / -1;justify-self:flex-end;min-width:180px}
+.add-form button{
+  grid-column:4;
+  align-self:stretch;
+  width:100%;
+  min-width:0;
+}
 .add-form input[name="seriesName"]{grid-column:1 / 3}
 .add-form input[name="seriesOrder"]{grid-column:3}
 
@@ -717,6 +722,12 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   .library-filter-bar{grid-template-columns:1fr;padding:.85rem}
   .type-filter-group{justify-content:flex-start}
   .add-form{grid-template-columns:minmax(220px,1fr) 1fr;}
+  .add-form textarea{grid-column:1 / -1}
+  .add-form button{
+    grid-column:1 / -1;
+    align-self:flex-end;
+    justify-self:stretch;
+  }
   .add-form select{grid-column:1 / -1}
   .movies-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
   .card.collapsible.movie-card{grid-column:auto}
