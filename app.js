@@ -4927,6 +4927,69 @@ function updateCachedSeriesOrderValue(entry, newOrder) {
   });
 }
 
+async function rebalanceSeriesOrders(listType, seriesName) {
+  if (!listType) return;
+  const normalized = normalizeTitleKey(seriesName || '');
+  if (!normalized) return;
+  const caches = [listCaches[listType] || {}, finishedCaches[listType] || {}];
+  const collected = [];
+  caches.forEach(cache => {
+    Object.entries(cache).forEach(([id, item]) => {
+      if (!item) return;
+      if (normalizeTitleKey(item.seriesName || '') !== normalized) return;
+      collected.push({
+        id,
+        item,
+        listType,
+        order: numericSeriesOrder(item.seriesOrder),
+      });
+    });
+  });
+  if (!collected.length) return;
+  collected.sort(compareSeriesEntries);
+  const orderMap = new Map();
+  const updateTasks = [];
+  collected.forEach((entry, index) => {
+    const newOrder = index + 1;
+    const entryKey = buildSeriesEntryKey(entry.listType || listType, entry.id, entry.item);
+    orderMap.set(entryKey, newOrder);
+    if (entry.item.seriesOrder === newOrder) {
+      return;
+    }
+    entry.item.seriesOrder = newOrder;
+    updateTasks.push(updateItem(listType, entry.id, { seriesOrder: newOrder }).catch(err => {
+      console.warn('Failed to normalize series order', err);
+    }));
+  });
+  applySeriesOrderSnapshotUpdates(listType, orderMap);
+  invalidateSeriesCrossListCache();
+  scheduleCrossSeriesRefresh();
+  if (updateTasks.length) {
+    await Promise.allSettled(updateTasks);
+  }
+}
+
+function applySeriesOrderSnapshotUpdates(defaultListType, orderMap) {
+  if (!orderMap || !orderMap.size) return;
+  const applyToStore = (store, fallbackListType) => {
+    if (!store) return;
+    store.forEach(entries => {
+      entries.forEach(entry => {
+        if (!entry) return;
+        const key = buildSeriesEntryKey(entry.listType || fallbackListType, entry.id, entry.item);
+        if (!orderMap.has(key)) return;
+        const nextOrder = orderMap.get(key);
+        entry.order = nextOrder;
+        if (entry.item) {
+          entry.item.seriesOrder = nextOrder;
+        }
+      });
+    });
+  };
+  applyToStore(seriesGroups[defaultListType], defaultListType);
+  applyToStore(seriesGroups.unified, defaultListType);
+}
+
 function buildSeriesTreePoster(item) {
   const wrapper = createEl('div', 'series-tree-poster');
   if (item.poster) {
@@ -7608,6 +7671,8 @@ function openEditModal(listType, itemId, item) {
   controls.appendChild(saveBtn);
   form.appendChild(controls);
 
+  const originalSeriesName = item.seriesName || '';
+
   function applyTypeUiState(selectedType) {
     const placeholder = creatorPlaceholderMap[selectedType] || 'Creator';
     creatorInput.placeholder = placeholder;
@@ -7664,6 +7729,18 @@ function openEditModal(listType, itemId, item) {
     try {
       if (targetListType === listType) {
         await updateItem(listType, itemId, payload);
+        if (!isBooksTarget) {
+          const rebalanceJobs = [];
+          if (originalSeriesName && originalSeriesName !== (payload.seriesName || '')) {
+            rebalanceJobs.push(rebalanceSeriesOrders(listType, originalSeriesName));
+          }
+          if (payload.seriesName) {
+            rebalanceJobs.push(rebalanceSeriesOrders(listType, payload.seriesName));
+          }
+          if (rebalanceJobs.length) {
+            await Promise.all(rebalanceJobs);
+          }
+        }
       } else {
         const transferData = { ...item, ...payload };
         transferData.createdAt = transferData.createdAt || Date.now();
