@@ -3373,9 +3373,12 @@ function renderMovieCardContent(card, listType, cardId, item, entryId = cardId, 
     baseSeriesEntries = getSeriesGroupEntries(listType, cardId);
   }
 
+  const contentListType = options.contentListType || listType;
   const seriesEntries = mergeSeriesEntriesAcrossLists(listType, cardId, item, baseSeriesEntries);
-  const summary = buildMovieCardSummary(listType, item, { cardId, entryId, seriesEntries, isExpanded });
-  const details = buildMovieCardDetails(listType, cardId, entryId, item, { seriesEntries, isExpanded });
+  const context = { cardId, entryId, seriesEntries, isExpanded, listType: contentListType };
+  
+  const summary = buildMovieCardSummary(contentListType, item, context);
+  const details = buildMovieCardDetails(contentListType, cardId, entryId, item, context);
   card.insertBefore(summary, card.firstChild || null);
   card.appendChild(details);
   restoreActiveSeasonEditor(card);
@@ -4660,6 +4663,21 @@ function buildSeriesTreeNode(listType, entry, fallbackIndex = 0) {
   }
 
   node.appendChild(body);
+  
+  node.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const card = node.closest('.card');
+    if (card) {
+      const cardListType = card.dataset.listType;
+      const cardId = card.dataset.id;
+      const isUnified = card.dataset.isUnified === 'true';
+      renderMovieCardContent(card, cardListType, cardId, item, entry.id, { 
+        isUnified,
+        contentListType: entryListType 
+      });
+    }
+  });
+
   return node;
 }
 
