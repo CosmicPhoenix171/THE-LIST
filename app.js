@@ -132,8 +132,7 @@ const FINISH_RATING_MAX = 10;
 const RUNTIME_THRESHOLDS = {
   MINUTES: { max: 60, color: 'minutes', label: 'minutes' },
   HOURS: { max: 1440, color: 'hours', label: 'hours' },
-  DAYS: { max: 10080, color: 'days', label: 'days' },
-  WEEKS: { max: 40320, color: 'weeks', label: 'weeks' },
+  DAYS: { max: 40320, color: 'days', label: 'days' },
   MONTHS: { max: 524160, color: 'months', label: 'months' },
   YEARS: { color: 'years', label: 'years' }
 };
@@ -142,7 +141,6 @@ const RUNTIME_PILL_UNITS = [
   { key: 'minutes', label: 'Minutes' },
   { key: 'hours', label: 'Hours' },
   { key: 'days', label: 'Days' },
-  { key: 'weeks', label: 'Weeks' },
   { key: 'months', label: 'Months' },
   { key: 'years', label: 'Years' }
 ];
@@ -230,7 +228,6 @@ function getRuntimeThresholdClass(totalMinutes) {
   if (totalMinutes < RUNTIME_THRESHOLDS.MINUTES.max) return 'runtime-minutes';
   if (totalMinutes < RUNTIME_THRESHOLDS.HOURS.max) return 'runtime-hours';
   if (totalMinutes < RUNTIME_THRESHOLDS.DAYS.max) return 'runtime-days';
-  if (totalMinutes < RUNTIME_THRESHOLDS.WEEKS.max) return 'runtime-weeks';
   if (totalMinutes < RUNTIME_THRESHOLDS.MONTHS.max) return 'runtime-months';
   return 'runtime-years';
 }
@@ -240,7 +237,6 @@ function createRuntimePillValueMap() {
     minutes: 0,
     hours: 0,
     days: 0,
-    weeks: 0,
     months: 0,
     years: 0,
   };
@@ -260,7 +256,6 @@ function formatRuntimePillNumber(value) {
 function getRuntimeUnitBreakdown(totalMinutes) {
   const minutesPerHour = 60;
   const minutesPerDay = minutesPerHour * 24;
-  const minutesPerWeek = minutesPerDay * 7;
   const minutesPerMonth = minutesPerDay * 28;
   const minutesPerYear = minutesPerMonth * 13;
   let remaining = Math.max(0, Math.floor(totalMinutes));
@@ -268,14 +263,12 @@ function getRuntimeUnitBreakdown(totalMinutes) {
   remaining -= years * minutesPerYear;
   const months = Math.floor(remaining / minutesPerMonth);
   remaining -= months * minutesPerMonth;
-  const weeks = Math.floor(remaining / minutesPerWeek);
-  remaining -= weeks * minutesPerWeek;
   const days = Math.floor(remaining / minutesPerDay);
   remaining -= days * minutesPerDay;
   const hours = Math.floor(remaining / minutesPerHour);
   remaining -= hours * minutesPerHour;
   const minutes = remaining;
-  return { minutes, hours, days, weeks, months, years };
+  return { minutes, hours, days, months, years };
 }
 
 function renderRuntimePillsDisplay(valueMap = createRuntimePillValueMap(), visibilityMap = {}, activeUnit = null) {
@@ -308,8 +301,7 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   const definitions = [
     { unit: 'minutes', threshold: 0, divisor: 1, max: 60, className: 'runtime-minutes' },
     { unit: 'hours', threshold: 60, divisor: 60, max: 24, className: 'runtime-hours' },
-    { unit: 'days', threshold: 1440, divisor: 1440, max: 7, className: 'runtime-days' },
-    { unit: 'weeks', threshold: 10080, divisor: 10080, max: 4, className: 'runtime-weeks' },
+    { unit: 'days', threshold: 1440, divisor: 1440, max: 28, className: 'runtime-days' },
     { unit: 'months', threshold: 40320, divisor: 40320, max: 13, className: 'runtime-months' },
     { unit: 'years', threshold: 524160, divisor: 524160, max: Infinity, className: 'runtime-years' }
   ];
@@ -5652,26 +5644,16 @@ function formatRuntimeDuration(totalMinutes) {
 function formatRuntimeDurationDetailed(totalMinutes, forceShow = {}) {
   if ((!totalMinutes || totalMinutes <= 0) && Object.keys(forceShow).length === 0) return '';
   const breakdown = breakdownDurationMinutes(totalMinutes);
-  
-  // Extract weeks from days
-  let weeks = 0;
-  if (breakdown.days >= 7) {
-    weeks = Math.floor(breakdown.days / 7);
-    breakdown.days = breakdown.days % 7;
-  }
-  breakdown.weeks = weeks;
 
   const parts = [];
   const hasYears = breakdown.years > 0 || forceShow.years;
   const hasMonths = breakdown.months > 0 || forceShow.months;
-  const hasWeeks = breakdown.weeks > 0 || forceShow.weeks;
   const hasDays = breakdown.days > 0 || forceShow.days;
   const hasHours = breakdown.hours > 0 || forceShow.hours;
   const hasMinutes = true; // Always show minutes if we are showing anything
   
   if (hasYears) parts.push(formatDurationUnit(breakdown.years, 'year', true));
   if (hasMonths) parts.push(formatDurationUnit(breakdown.months, 'month', true));
-  if (hasWeeks) parts.push(formatDurationUnit(breakdown.weeks, 'week', true));
   if (hasDays) parts.push(formatDurationUnit(breakdown.days, 'day', true));
   if (hasHours) parts.push(formatDurationUnit(breakdown.hours, 'hour', true));
   if (hasMinutes) parts.push(formatDurationUnit(breakdown.minutes, 'minute', true));
