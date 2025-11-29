@@ -5463,6 +5463,7 @@ async function addItemFromForm(listType, form) {
     if (shouldPromptCollection || shouldPromptKeywords) {
       await promptAddMissingCollectionParts(listType, shouldPromptCollection ? movieCollectionInfo : null, item, keywordPromptContext);
     }
+    await maybeShowRelatedSuggestions(listType, item);
     form.reset();
     form.__selectedMetadata = null;
     delete form.dataset.selectedImdbId;
@@ -8066,6 +8067,380 @@ function renderWheelWinnerFromLookup(listType, finalEntry, candidateMap, rawData
 }
 
 // --- Sequel / Prequel Lookup Logic (TMDb only) ---
+
+function buildRelatedSuggestionKey(entry) {
+  if (!entry) return '';
+  const mediaType = entry.mediaType || (entry.Type === 'series' ? 'tv' : 'movie');
+  const id = entry.id || entry.tmdbId || entry.TmdbID || entry.TmdbId || entry.imdbID || '';
+  if (id) return `${mediaType || 'movie'}:${id}`;
+  const fallbackTitle = normalizeTitleKey(entry.title || entry.name || entry.Title || '');
+  const fallbackYear = entry.year || entry.Year || '';
+  return `${mediaType || 'movie'}:${fallbackTitle}:${fallbackYear}`;
+}
+
+async function maybeShowRelatedSuggestions(listType, currentItem) {
+  if (!TMDB_API_KEY) return;
+  if (!currentItem || !['movies', 'tvShows'].includes(listType)) return;
+  try {
+    const identity = await ensureTmdbIdentity(listType, currentItem);
+    if (!identity) return;
+    const details = await fetchTmdbFranchiseDetails(identity.mediaType, identity.tmdbId);
+    if (!details) return;
+    const rawEntries = collectRecommendationEntries(details, identity.mediaType);
+    if (!rawEntries.length) return;
+    const filtered = filterKeywordEntriesAgainstLibrary(rawEntries, currentItem, listType);
+    if (!filtered.length) return;
+    const prioritized = filtered
+      .slice()
+      .sort((a, b) => {
+        const relationScore = (a.relation === 'recommendation' ? 0 : 1) - (b.relation === 'recommendation' ? 0 : 1);
+        if (relationScore !== 0) return relationScore;
+        const popA = Number(a.popularity) || 0;
+        const popB = Number(b.popularity) || 0;
+        if (popA !== popB) return popB - popA;
+        return (b.voteAverage || 0) - (a.voteAverage || 0);
+      })
+      .slice(0, 8);
+    if (!prioritized.length) return;
+    buildRelatedSuggestionsModal({
+      sourceListType: listType,
+      currentItem,
+      entries: prioritized,
+    });
+  } catch (err) {
+    console.warn('Unable to load TMDb related suggestions', err);
+  }
+}
+
+function buildRelatedSuggestionsModal({ sourceListType, currentItem, entries = [] } = {}) {
+  if (!modalRoot || !Array.isArray(entries) || !entries.length) return;
+  closeAddModal();
+  closeWheelModal();
+  modalRoot.innerHTML = '';
+
+  const selection = new Set();
+  const processedKeys = new Set();
+  const entryByKey = new Map();
+  const cardMap = new Map();
+  let isProcessing = false;
+
+  entries.forEach(entry => {
+    const key = buildRelatedSuggestionKey(entry);
+    if (key) entryByKey.set(key, entry);
+  });
+
+  const backdrop = createEl('div', 'modal-backdrop related-suggestions-backdrop');
+  const modal = createEl('div', 'modal related-suggestions-modal');
+  const header = createEl('div', 'related-suggestions-header');
+  const headingText = currentItem && currentItem.title
+    ? `Similar picks for ${currentItem.title}`
+    : 'Similar picks';
+  header.appendChild(createEl('h3', '', { text: headingText }));
+  const subtitleText = entries.length > 1
+    ? 'TMDb recommends these titles. Select any you want to add right now.'
+    : 'TMDb found one more title you might want to track.';
+  header.appendChild(createEl('p', 'related-suggestions-subtitle', { text: subtitleText }));
+  if (currentItem && currentItem.seriesName && sourceListType) {
+    header.appendChild(createEl('p', 'related-suggestions-note', {
+      text: `Quick-added titles will join the "${currentItem.seriesName}" series in your ${MEDIA_TYPE_LABELS[sourceListType] || 'list'}.`,
+    }));
+  }
+  modal.appendChild(header);
+
+  const grid = createEl('div', 'related-suggestions-grid');
+  entries.forEach(entry => {
+    const key = buildRelatedSuggestionKey(entry);
+    if (!key) return;
+    const card = createRelatedSuggestionCard(entry, key);
+    if (card) grid.appendChild(card);
+  });
+  modal.appendChild(grid);
+
+  const footer = createEl('div', 'related-suggestions-footer');
+  const bulkControls = createEl('div', 'related-suggestions-footer-left');
+  const selectAllBtn = createEl('button', 'btn ghost small', { text: 'Select All' });
+  bulkControls.appendChild(selectAllBtn);
+  footer.appendChild(bulkControls);
+
+  const footerActions = createEl('div', 'related-suggestions-footer-actions');
+  const addSelectedBtn = createEl('button', 'btn primary', { text: 'Add Selected' });
+  addSelectedBtn.disabled = true;
+  const skipBtn = createEl('button', 'btn secondary', { text: 'Skip' });
+  footerActions.appendChild(addSelectedBtn);
+  footerActions.appendChild(skipBtn);
+  footer.appendChild(footerActions);
+  modal.appendChild(footer);
+
+  backdrop.appendChild(modal);
+  modalRoot.appendChild(backdrop);
+
+  function closeModal() {
+    modalRoot.innerHTML = '';
+  }
+
+  function createRelatedSuggestionCard(entry, key) {
+    const card = createEl('article', 'related-suggestion-card');
+    card.dataset.suggestionKey = key;
+    card.dataset.state = 'idle';
+
+    const checkboxWrap = createEl('label', 'suggestion-checkbox');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.addEventListener('change', () => toggleSelection(key, checkbox.checked));
+    checkboxWrap.appendChild(checkbox);
+    card.appendChild(checkboxWrap);
+
+    const posterWrap = createEl('div', 'related-suggestion-poster');
+    if (entry.poster) {
+      const img = document.createElement('img');
+      img.src = entry.poster;
+      img.alt = `${entry.title} poster`;
+      posterWrap.appendChild(img);
+    } else {
+      posterWrap.textContent = 'No art';
+    }
+    card.appendChild(posterWrap);
+
+    const body = createEl('div', 'related-suggestion-body');
+    const titleRow = createEl('div', 'related-suggestion-title-row');
+    titleRow.appendChild(createEl('strong', 'related-suggestion-title', { text: entry.title }));
+    const relationLabel = entry.relation === 'recommendation' ? 'Recommended' : 'Similar';
+    titleRow.appendChild(createEl('span', 'suggestion-badge', { text: relationLabel }));
+    body.appendChild(titleRow);
+
+    const meta = createEl('div', 'related-suggestion-meta');
+    if (entry.year) meta.appendChild(createEl('span', '', { text: entry.year }));
+    meta.appendChild(createEl('span', '', { text: entry.mediaType === 'tv' ? 'TV' : 'Movie' }));
+    if (entry.voteAverage) meta.appendChild(createEl('span', '', { text: `${entry.voteAverage.toFixed ? entry.voteAverage.toFixed(1) : entry.voteAverage}/10` }));
+    body.appendChild(meta);
+
+    if (entry.overview) {
+      body.appendChild(createEl('p', 'related-suggestion-overview', { text: truncateText(entry.overview, 180) }));
+    }
+
+    const actions = createEl('div', 'related-suggestion-actions');
+    const quickAddBtn = createEl('button', 'btn success small', { text: 'Add' });
+    quickAddBtn.addEventListener('click', () => processBatch([entry]));
+    const tmdbLink = document.createElement('a');
+    tmdbLink.href = `https://www.themoviedb.org/${entry.mediaType === 'tv' ? 'tv' : 'movie'}/${entry.id}`;
+    tmdbLink.target = '_blank';
+    tmdbLink.rel = 'noopener noreferrer';
+    tmdbLink.className = 'meta-link';
+    tmdbLink.textContent = 'TMDb';
+    actions.appendChild(quickAddBtn);
+    actions.appendChild(tmdbLink);
+    body.appendChild(actions);
+
+    const status = createEl('div', 'related-suggestion-status', { text: '' });
+    body.appendChild(status);
+    card.appendChild(body);
+
+    cardMap.set(key, { card, checkbox, quickAddBtn, status });
+    return card;
+  }
+
+  function toggleSelection(key, shouldSelect) {
+    if (processedKeys.has(key)) return;
+    if (shouldSelect) {
+      selection.add(key);
+    } else {
+      selection.delete(key);
+    }
+    updateSelectionState();
+  }
+
+  function updateSelectionState() {
+    const count = selection.size;
+    addSelectedBtn.textContent = count ? `Add Selected (${count})` : 'Add Selected';
+    addSelectedBtn.disabled = count === 0 || isProcessing;
+    const pendingKeys = entries
+      .map(entry => buildRelatedSuggestionKey(entry))
+      .filter(key => key && !processedKeys.has(key));
+    const allSelected = pendingKeys.length > 0 && pendingKeys.every(key => selection.has(key));
+    selectAllBtn.textContent = allSelected ? 'Clear Selection' : 'Select All';
+    selectAllBtn.disabled = pendingKeys.length === 0 || isProcessing;
+  }
+
+  function markCardState(key, state, message) {
+    const entryRefs = cardMap.get(key);
+    if (!entryRefs) return;
+    const { card, checkbox, quickAddBtn, status } = entryRefs;
+    card.dataset.state = state;
+    if (status) status.textContent = message || '';
+    if (state === 'busy') {
+      quickAddBtn.disabled = true;
+      checkbox.disabled = true;
+      return;
+    }
+    if (state === 'idle') {
+      if (status) status.textContent = '';
+      quickAddBtn.disabled = false;
+      checkbox.disabled = processedKeys.has(key);
+      return;
+    }
+    if (state === 'added' || state === 'duplicate') {
+      quickAddBtn.disabled = true;
+      checkbox.checked = false;
+      checkbox.disabled = true;
+      return;
+    }
+    if (state === 'error') {
+      quickAddBtn.disabled = false;
+      checkbox.disabled = false;
+    }
+  }
+
+  async function processBatch(batchEntries) {
+    if (!Array.isArray(batchEntries) || !batchEntries.length) return;
+    const keys = batchEntries.map(entry => buildRelatedSuggestionKey(entry)).filter(Boolean);
+    keys.forEach(key => markCardState(key, 'busy'));
+    isProcessing = true;
+    updateSelectionState();
+    const results = await handleQuickAddSuggestions(sourceListType, currentItem, batchEntries);
+    const processedSet = new Set(results.map(result => result.key).filter(Boolean));
+    results.forEach(result => {
+      const { key, status, reason } = result;
+      if (!key) return;
+      if (status === 'added') {
+        processedKeys.add(key);
+        markCardState(key, 'added', 'Added to list');
+      } else if (status === 'duplicate') {
+        processedKeys.add(key);
+        markCardState(key, 'duplicate', 'Already on your list');
+      } else {
+        markCardState(key, 'error', reason || 'Unable to add');
+      }
+      selection.delete(key);
+    });
+    keys.forEach(key => {
+      if (processedSet.has(key)) return;
+      markCardState(key, 'error', 'Unable to add');
+      selection.delete(key);
+    });
+    isProcessing = false;
+    updateSelectionState();
+    // If we processed everything, auto-close the modal to keep flow moving.
+    const hasPending = entries.some(entry => {
+      const key = buildRelatedSuggestionKey(entry);
+      return key && !processedKeys.has(key);
+    });
+    if (!hasPending) closeModal();
+  }
+
+  function handleSelectAll() {
+    if (isProcessing) return;
+    const pendingKeys = entries
+      .map(entry => buildRelatedSuggestionKey(entry))
+      .filter(key => key && !processedKeys.has(key));
+    if (!pendingKeys.length) return;
+    const shouldSelectAll = !pendingKeys.every(key => selection.has(key));
+    pendingKeys.forEach(key => {
+      const refs = cardMap.get(key);
+      if (!refs || refs.checkbox.disabled) return;
+      refs.checkbox.checked = shouldSelectAll;
+      if (shouldSelectAll) selection.add(key); else selection.delete(key);
+    });
+    updateSelectionState();
+  }
+
+  addSelectedBtn.addEventListener('click', () => {
+    if (!selection.size || isProcessing) return;
+    const batch = Array.from(selection)
+      .map(key => entryByKey.get(key))
+      .filter(Boolean);
+    processBatch(batch);
+  });
+  selectAllBtn.addEventListener('click', handleSelectAll);
+  skipBtn.addEventListener('click', closeModal);
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop && !isProcessing) closeModal();
+  });
+
+  updateSelectionState();
+}
+
+async function handleQuickAddSuggestions(sourceListType, sourceItem, suggestions = []) {
+  if (!Array.isArray(suggestions) || !suggestions.length) return [];
+  const results = [];
+  for (const suggestion of suggestions) {
+    const key = buildRelatedSuggestionKey(suggestion);
+    if (!key) continue;
+    try {
+      const outcome = await quickAddSuggestion(sourceListType, sourceItem, suggestion);
+      results.push({ key, status: outcome.status, reason: outcome.reason || '' });
+    } catch (err) {
+      console.warn('Quick add suggestion failed', suggestion?.title, err);
+      results.push({ key, status: 'error', reason: err?.message || 'Unable to add' });
+    }
+  }
+  return results;
+}
+
+async function quickAddSuggestion(sourceListType, sourceItem, suggestion) {
+  const targetListType = suggestion.mediaType === 'tv' ? 'tvShows' : 'movies';
+  const payload = {
+    title: suggestion.title,
+    createdAt: Date.now(),
+    year: suggestion.year || '',
+    tmdbId: suggestion.id || suggestion.tmdbId || null,
+    recommendationParentTitle: sourceItem?.title || '',
+    recommendationRelation: suggestion.relation || '',
+  };
+  if (!payload.title) {
+    return { status: 'error', reason: 'Missing title' };
+  }
+  if (!payload.tmdbId) {
+    return { status: 'error', reason: 'Missing TMDb id' };
+  }
+  if (sourceItem && sourceItem.seriesName) {
+    applySeriesMergeMetadata(payload, targetListType, sourceItem, sourceListType);
+  }
+  if (isDuplicateCandidate(targetListType, payload)) {
+    return { status: 'duplicate' };
+  }
+  try {
+    const metadata = await fetchTmdbMetadata(targetListType, {
+      title: suggestion.title,
+      year: suggestion.year,
+      tmdbId: suggestion.id,
+    });
+    if (metadata) {
+      const updates = deriveMetadataAssignments(metadata, payload, {
+        overwrite: true,
+        fallbackTitle: suggestion.title,
+        fallbackYear: suggestion.year,
+        listType: targetListType,
+      });
+      Object.assign(payload, updates);
+    }
+    await addItem(targetListType, payload);
+    return { status: 'added', targetListType };
+  } catch (err) {
+    console.warn('Unable to quick add suggestion', suggestion?.title, err);
+    return { status: 'error', reason: err?.message || 'Unable to add suggestion' };
+  }
+}
+
+function applySeriesMergeMetadata(payload, targetListType, sourceItem, sourceListType) {
+  if (!payload || !sourceItem || !sourceItem.seriesName) return;
+  if (targetListType !== sourceListType) return;
+  const normalizedSeriesKey = normalizeTitleKey(sourceItem.seriesName);
+  if (!normalizedSeriesKey) return;
+  payload.seriesName = sourceItem.seriesName;
+  const existingEntries = Object.values(listCaches[targetListType] || {}).filter(entry => normalizeTitleKey(entry.seriesName || '') === normalizedSeriesKey);
+  if (sourceItem && targetListType === sourceListType) {
+    existingEntries.push(sourceItem);
+  }
+  const maxOrder = existingEntries.reduce((max, entry) => {
+    const value = numericSeriesOrder(entry.seriesOrder);
+    if (value === null || Number.isNaN(value)) return max;
+    return Math.max(max, value);
+  }, 0);
+  const nextOrder = maxOrder + 1;
+  payload.seriesOrder = nextOrder;
+  const projectedSize = Math.max(existingEntries.length + 1, Number(sourceItem.seriesSize) || 0, nextOrder);
+  payload.seriesSize = projectedSize;
+}
 
 function buildRelatedModal(currentItem, related) {
   if (!modalRoot) return;
