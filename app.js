@@ -111,6 +111,15 @@ const seriesGroups = {};
 const crossListSeriesCache = new Map();
 let seriesIndexVersion = 0;
 let crossSeriesRefreshScheduled = false;
+const seriesTreeDragState = {
+  activeNode: null,
+  listElement: null,
+  placeholder: null,
+  cardId: null,
+  listType: null,
+  cardElement: null,
+};
+let seriesTreeDragEventsBound = false;
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
@@ -119,16 +128,16 @@ const franchiseState = {
   loaded: false,
   records: [],
 };
-const franchiseDragState = {
+const franchiseState = {
   activeEntryId: null,
   activeFranchiseId: null,
   activeTrack: null,
-  placeholder: null,
+const franchiseDragState = {
 };
 let franchiseDragEventsBound = false;
+let franchiseOrderLabelMode = 'manual';
 const FRANCHISE_MEDIA_LABELS = {
   movie: 'Movie',
-  tv: 'TV Series',
   season: 'Season',
   special: 'Special',
 };
@@ -2328,8 +2337,9 @@ function buildFranchiseTimelineEntry(record, entry) {
   entryEl.setAttribute('draggable', 'true');
 
   const header = createEl('div', 'franchise-entry-header');
-  if (entry.orderLabel) {
-    header.appendChild(createEl('span', 'franchise-entry-order', { text: entry.orderLabel }));
+  const orderLabel = resolveFranchiseEntryOrderLabel(record, entry);
+  if (orderLabel) {
+    header.appendChild(createEl('span', 'franchise-entry-order', { text: orderLabel }));
   }
   header.appendChild(createEl('span', 'franchise-entry-badge', { text: entry.badgeLabel || FRANCHISE_MEDIA_LABELS[entry.mediaType] || 'Entry' }));
   entryEl.appendChild(header);
@@ -2360,6 +2370,21 @@ function buildFranchiseTimelineEntry(record, entry) {
   }
 
   return entryEl;
+}
+
+function resolveFranchiseEntryOrderLabel(record, entry) {
+  if (!record || record.orderMode !== 'auto') {
+    return entry?.orderLabel || '';
+  }
+  if (!entry || !entry.id) {
+    return entry?.orderLabel || '';
+  }
+  const entries = Array.isArray(record.entries) ? record.entries : [];
+  const position = entries.findIndex(item => item && item.id === entry.id);
+  if (position === -1) {
+    return entry.orderLabel || '';
+  }
+  return `#${position + 1}`;
 }
 
 function ensureFranchiseDragEvents() {
@@ -2561,6 +2586,7 @@ function applyFranchiseEntryOrder(franchiseId, orderedEntryIds) {
   });
   record.entries = orderedEntries;
   record.entryOrder = orderedEntryIds.slice();
+  record.orderMode = 'auto';
   renderFranchiseShelf();
   persistFranchiseEntryOrder(franchiseId, orderedEntryIds);
 }
@@ -2570,6 +2596,10 @@ function persistFranchiseEntryOrder(franchiseId, orderedEntryIds) {
   const path = ref(db, `users/${currentUser.uid}/franchises/${franchiseId}/entryOrder`);
   set(path, orderedEntryIds).catch(err => {
     console.warn('Failed to save franchise entry order', err);
+  });
+  const modePath = ref(db, `users/${currentUser.uid}/franchises/${franchiseId}/orderMode`);
+  set(modePath, 'auto').catch(err => {
+    console.warn('Failed to save franchise order mode', err);
   });
 }
 
@@ -2599,6 +2629,8 @@ function normalizeFranchiseRecord(source, fallbackIndex = 0) {
   if (!source) return null;
   const id = source.id || source.franchiseId || `franchise-${fallbackIndex + 1}`;
   const entryOrder = Array.isArray(source.entryOrder) ? source.entryOrder.filter(Boolean) : null;
+  const inferredMode = entryOrder && entryOrder.length ? 'auto' : 'manual';
+  const orderMode = source.orderMode === 'auto' ? 'auto' : (source.orderMode === 'manual' ? 'manual' : inferredMode);
   const entries = normalizeFranchiseEntries(source.entries || source.timeline || source.parts || source.mediaItems || [], entryOrder);
   const record = {
     id,
@@ -2609,6 +2641,7 @@ function normalizeFranchiseRecord(source, fallbackIndex = 0) {
     updatedAt: Number(source.updatedAt || source.updated || source.timestamp || 0) || 0,
     entries,
     entryOrder,
+    orderMode,
   };
   record.stats = computeFranchiseStats(entries);
   return record;
@@ -3338,12 +3371,13 @@ function buildMovieCardInfo(listType, item, context = {}) {
   if (ratingBadge) {
     header.appendChild(ratingBadge);
   }
-  info.appendChild(header);
 
   if (isCollapsibleList(listType)) {
     const badges = buildMediaSummaryBadges(listType, item, { ...context, listType });
     if (badges) info.appendChild(badges);
   }
+
+  info.appendChild(header);
 
   return info;
 }
@@ -4226,6 +4260,8 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
   block.appendChild(buildSeriesTreeHeader(entries.length));
 
   const list = createEl('div', 'series-tree-list');
+  list.dataset.cardId = cardId;
+  list.dataset.listType = listType;
   entries.forEach((entry, index) => {
     const node = buildSeriesTreeNode(listType, entry, index);
     if (node) {
@@ -4237,6 +4273,7 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
   const listWrapper = createEl('div', 'series-tree-scroll');
   listWrapper.appendChild(list);
   block.appendChild(listWrapper);
+  ensureSeriesTreeDragEvents();
   return block;
 }
 
@@ -4372,6 +4409,8 @@ function buildSeriesTreeNode(listType, entry, fallbackIndex = 0) {
   const entryListType = entry.listType || listType;
   const node = createEl('div', 'series-tree-node');
   node.dataset.entryId = entry.id || '';
+  node.dataset.listType = entryListType || '';
+  node.setAttribute('draggable', 'true');
 
   const orderLabel = resolveSeriesNodeOrder(entry, fallbackIndex);
   node.appendChild(createEl('div', 'series-tree-order', { text: `#${orderLabel}` }));
@@ -4423,6 +4462,239 @@ function resolveSeriesNodeOrder(entry, fallbackIndex = 0) {
     return numericOrder;
   }
   return fallbackIndex + 1;
+}
+
+function ensureSeriesTreeDragEvents() {
+  if (seriesTreeDragEventsBound) return;
+  document.addEventListener('dragstart', handleSeriesTreeDragStart);
+  document.addEventListener('dragover', handleSeriesTreeDragOver);
+  document.addEventListener('drop', handleSeriesTreeDrop);
+  document.addEventListener('dragend', handleSeriesTreeDragEnd);
+  seriesTreeDragEventsBound = true;
+}
+
+function handleSeriesTreeDragStart(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const node = target?.closest('.series-tree-node');
+  if (!node || node.classList.contains('series-tree-placeholder')) return;
+  const list = node.closest('.series-tree-list');
+  if (!list || list.children.length <= 1) return;
+  seriesTreeDragState.activeNode = node;
+  seriesTreeDragState.listElement = list;
+  seriesTreeDragState.placeholder = null;
+  seriesTreeDragState.cardId = list.dataset.cardId || node.closest('.series-tree')?.dataset.cardId || '';
+  seriesTreeDragState.listType = list.dataset.listType || node.closest('.series-tree')?.dataset.listType || '';
+  seriesTreeDragState.cardElement = node.closest('.card.collapsible.movie-card');
+  node.classList.add('is-dragging');
+  list.classList.add('is-dragging');
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', node.dataset.entryId || '');
+  }
+}
+
+function handleSeriesTreeDragOver(event) {
+  if (!seriesTreeDragState.activeNode) return;
+  const list = seriesTreeDragState.listElement;
+  if (!list) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target && !target.closest('.series-tree-list') && target !== list) {
+    return;
+  }
+  event.preventDefault();
+  const placeholder = getSeriesTreePlaceholder();
+  if (placeholder.parentElement !== list) {
+    list.appendChild(placeholder);
+  }
+  let targetNode = target?.closest('.series-tree-node');
+  if (!targetNode || targetNode === placeholder) {
+    targetNode = getSeriesTreeNodeFromPosition(list, event.clientY);
+    if (!targetNode) {
+      list.appendChild(placeholder);
+      return;
+    }
+  }
+  if (targetNode === seriesTreeDragState.activeNode) return;
+  const rect = targetNode.getBoundingClientRect();
+  const insertBefore = event.clientY < rect.top + rect.height / 2;
+  if (insertBefore) {
+    list.insertBefore(placeholder, targetNode);
+  } else {
+    list.insertBefore(placeholder, targetNode.nextSibling);
+  }
+}
+
+function handleSeriesTreeDrop(event) {
+  if (!seriesTreeDragState.activeNode) return;
+  const list = seriesTreeDragState.listElement;
+  if (!list) {
+    clearSeriesTreeDragState();
+    return;
+  }
+  const target = event.target instanceof Element ? event.target : null;
+  if (target && !target.closest('.series-tree-list') && target !== list) {
+    clearSeriesTreeDragState();
+    return;
+  }
+  event.preventDefault();
+  const orderedIds = computeSeriesTreeDropOrder();
+  const listType = seriesTreeDragState.listType;
+  const cardId = seriesTreeDragState.cardId;
+  const cardElement = seriesTreeDragState.cardElement;
+  clearSeriesTreeDragState();
+  if (orderedIds && orderedIds.length) {
+    applySeriesTreeReorder(listType, cardId, orderedIds, cardElement);
+  }
+}
+
+function handleSeriesTreeDragEnd() {
+  clearSeriesTreeDragState();
+}
+
+function getSeriesTreePlaceholder() {
+  if (seriesTreeDragState.placeholder) return seriesTreeDragState.placeholder;
+  const placeholder = document.createElement('div');
+  placeholder.className = 'series-tree-node series-tree-placeholder';
+  placeholder.setAttribute('draggable', 'false');
+  placeholder.textContent = 'Drop here';
+  seriesTreeDragState.placeholder = placeholder;
+  return placeholder;
+}
+
+function removeSeriesTreePlaceholder() {
+  const placeholder = seriesTreeDragState.placeholder;
+  if (placeholder && placeholder.parentElement) {
+    placeholder.parentElement.removeChild(placeholder);
+  }
+}
+
+function getSeriesTreeNodeFromPosition(list, clientY) {
+  if (!list || clientY === undefined || clientY === null) return null;
+  const nodes = Array.from(list.querySelectorAll('.series-tree-node'))
+    .filter(node => !node.classList.contains('series-tree-placeholder'));
+  if (!nodes.length) return null;
+  let closest = null;
+  let smallest = Infinity;
+  nodes.forEach(node => {
+    if (node.classList.contains('is-dragging')) return;
+    const rect = node.getBoundingClientRect();
+    const center = rect.top + rect.height / 2;
+    const delta = Math.abs(clientY - center);
+    if (delta < smallest) {
+      smallest = delta;
+      closest = node;
+    }
+  });
+  return closest;
+}
+
+function computeSeriesTreeDropOrder() {
+  const list = seriesTreeDragState.listElement;
+  const placeholder = seriesTreeDragState.placeholder;
+  const movingId = seriesTreeDragState.activeNode?.dataset.entryId;
+  if (!list || !movingId) return null;
+  const currentIds = Array.from(list.querySelectorAll('.series-tree-node'))
+    .filter(node => !node.classList.contains('series-tree-placeholder'))
+    .map(node => node.dataset.entryId)
+    .filter(Boolean);
+  if (!placeholder || placeholder.parentElement !== list) {
+    return currentIds;
+  }
+  let insertionIndex = 0;
+  for (const child of Array.from(list.children)) {
+    if (child === placeholder) {
+      break;
+    }
+    if (child.classList && child.classList.contains('series-tree-node') && !child.classList.contains('series-tree-placeholder')) {
+      insertionIndex += 1;
+    }
+  }
+  insertionIndex = Math.max(0, Math.min(currentIds.length, insertionIndex));
+  const withoutMoving = currentIds.filter(id => id !== movingId);
+  withoutMoving.splice(insertionIndex, 0, movingId);
+  return withoutMoving;
+}
+
+function clearSeriesTreeDragState() {
+  removeSeriesTreePlaceholder();
+  if (seriesTreeDragState.activeNode) {
+    seriesTreeDragState.activeNode.classList.remove('is-dragging');
+  }
+  if (seriesTreeDragState.listElement) {
+    seriesTreeDragState.listElement.classList.remove('is-dragging');
+  }
+  seriesTreeDragState.activeNode = null;
+  seriesTreeDragState.listElement = null;
+  seriesTreeDragState.placeholder = null;
+  seriesTreeDragState.cardId = null;
+  seriesTreeDragState.listType = null;
+  seriesTreeDragState.cardElement = null;
+}
+
+function applySeriesTreeReorder(listType, cardId, orderedEntryIds, cardElement) {
+  if (!listType || !cardId || !Array.isArray(orderedEntryIds) || !orderedEntryIds.length) return;
+  const store = seriesGroups[listType];
+  if (!store) return;
+  const entries = store.get(cardId);
+  if (!entries || !entries.length) return;
+  const entryMap = new Map(entries.map(entry => [entry.id, entry]));
+  const orderSet = new Set(orderedEntryIds);
+  const reordered = [];
+  const changed = [];
+  orderedEntryIds.forEach((entryId, index) => {
+    const entry = entryMap.get(entryId);
+    if (!entry) return;
+    const newOrder = index + 1;
+    if (entry.order !== newOrder) {
+      changed.push({ entry, newOrder });
+    }
+    entry.order = newOrder;
+    if (entry.item) {
+      entry.item.seriesOrder = newOrder;
+    }
+    updateCachedSeriesOrderValue(entry, newOrder);
+    reordered.push(entry);
+  });
+  entryMap.forEach((entry, entryId) => {
+    if (!orderSet.has(entryId)) {
+      reordered.push(entry);
+    }
+  });
+  store.set(cardId, reordered);
+  if (changed.length) {
+    persistSeriesTreeOrderUpdates(changed);
+  }
+  invalidateSeriesCrossListCache();
+  if (cardElement) {
+    refreshSeriesCardContent(cardElement);
+  } else {
+    scheduleCrossSeriesRefresh();
+  }
+}
+
+function persistSeriesTreeOrderUpdates(changedEntries) {
+  if (!currentUser || !db || !Array.isArray(changedEntries) || !changedEntries.length) return;
+  const tasks = changedEntries.map(({ entry, newOrder }) => {
+    if (!entry || !entry.listType || !entry.id) return null;
+    return updateItem(entry.listType, entry.id, { seriesOrder: newOrder }).catch(err => {
+      console.warn('Failed to update series order', err);
+    });
+  }).filter(Boolean);
+  if (tasks.length) {
+    Promise.allSettled(tasks).catch(err => {
+      console.warn('Series order persistence failed', err);
+    });
+  }
+}
+
+function updateCachedSeriesOrderValue(entry, newOrder) {
+  if (!entry || !entry.listType || !entry.id) return;
+  [listCaches, finishedCaches].forEach(cacheMap => {
+    const store = cacheMap && cacheMap[entry.listType];
+    if (store && store[entry.id]) {
+      store[entry.id].seriesOrder = newOrder;
+    }
+  });
 }
 
 function buildSeriesTreePoster(item) {

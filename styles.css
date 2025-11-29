@@ -165,6 +165,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .franchise-entry.is-dragging{opacity:.35;cursor:grabbing}
 .franchise-track.is-dragging{outline:1px dashed rgba(125,242,201,0.35);outline-offset:6px}
 .franchise-entry-placeholder{border:1px dashed rgba(125,242,201,0.5);background:rgba(125,242,201,0.08);color:var(--text-500);min-width:190px;min-height:120px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:600;letter-spacing:.04em;text-transform:uppercase;pointer-events:none}
+.franchise-entry-placeholder .franchise-entry-order{display:none}
 .franchise-entry-placeholder span{pointer-events:none}
 .franchise-legend{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.25rem;color:var(--text-500);font-size:.78rem}
 .franchise-legend span{display:flex;align-items:center;gap:.25rem}
@@ -379,9 +380,6 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   --deck-step:35px;
   --deck-hover-step:60px;
 }
-.card.collapsible.movie-card.expanded .artwork-stack.artwork-deck-expanded:hover{
-  overflow:visible;
-}
 .card.collapsible.movie-card.expanded .artwork-stack.artwork-deck-expanded .artwork-stack-item{
   position:absolute;
   top:0;
@@ -538,6 +536,11 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .series-tree-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.12);border-radius:999px}
 .series-tree-list{display:flex;flex-direction:column;gap:.65rem}
 .series-tree-node{display:grid;grid-template-columns:48px 70px minmax(0,1fr);gap:.75rem;align-items:flex-start;background:rgba(2,8,14,0.45);border:1px solid rgba(255,255,255,0.04);border-radius:12px;padding:.65rem .8rem}
+.series-tree-node[draggable="true"]{cursor:grab}
+.series-tree-node.is-dragging{opacity:.35;cursor:grabbing}
+.series-tree-list.is-dragging{outline:1px dashed rgba(125,242,201,0.35);outline-offset:6px}
+.series-tree-placeholder{display:grid;grid-template-columns:48px 70px minmax(0,1fr);gap:.75rem;align-items:center;border:1px dashed rgba(125,242,201,0.5);border-radius:12px;padding:.65rem .8rem;color:var(--text-500);text-transform:uppercase;font-weight:600;letter-spacing:.08em;background:rgba(125,242,201,0.08);pointer-events:none}
+.series-tree-placeholder .series-tree-order,.series-tree-placeholder .series-tree-poster,.series-tree-placeholder .series-tree-body{display:none}
 .series-tree-order{font-weight:700;font-size:.85rem;color:var(--text-500);letter-spacing:.05em;text-align:center;align-self:flex-start;padding-top:.2rem}
 .series-tree-poster{width:70px;height:100px;border-radius:10px;overflow:hidden;box-shadow:0 8px 20px rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08)}
 .series-tree-poster img{display:block;width:100%;height:100%;object-fit:cover}
