@@ -54,6 +54,7 @@ const ANIME_STATUS_PRIORITY = {
   FINISHED: 2,
   UNKNOWN: 1,
 };
+const ANIME_KEYWORD_REGEX = /\banime\b/i;
 const NOTIFICATION_STORAGE_KEY = '__THE_LIST_NOTIFICATIONS__';
 const MAX_PERSISTED_NOTIFICATIONS = 50;
 const NOTIFICATION_SEEN_KEY = '__THE_LIST_NOTIFICATIONS_SEEN__';
@@ -1912,7 +1913,7 @@ function renderUnifiedLibrary() {
 
   const unifiedEntries = collectUnifiedEntries();
   const activeTypes = unifiedFilters.types;
-  let filtered = unifiedEntries.filter(entry => activeTypes.has(entry.listType));
+  let filtered = unifiedEntries.filter(entry => matchesUnifiedTypeFilters(entry, activeTypes));
   const query = unifiedFilters.search;
   if (query) {
     filtered = filtered.filter(entry => matchesUnifiedSearch(entry.displayItem, query));
@@ -2986,6 +2987,16 @@ function isAnimeMovieEntry(item) {
   return format === 'MOVIE' || format === 'FILM';
 }
 
+function matchesUnifiedTypeFilters(entry, activeTypes) {
+  if (!entry || !activeTypes || activeTypes.size === 0) return false;
+  if (activeTypes.has(entry.listType)) return true;
+  if (activeTypes.has('anime')) {
+    const candidate = entry.displayItem || entry.item;
+    if (itemHasAnimeKeyword(candidate)) return true;
+  }
+  return false;
+}
+
 function matchesUnifiedSearch(item, query) {
   if (!query) return true;
   if (!item) return false;
@@ -3000,6 +3011,17 @@ function matchesUnifiedSearch(item, query) {
     Array.isArray(item.animeGenres) ? item.animeGenres.join(' ') : item.animeGenres,
   ];
   return fields.some(field => field && String(field).toLowerCase().includes(query));
+}
+
+function itemHasAnimeKeyword(item) {
+  if (!item) return false;
+  const candidates = [
+    item.franchiseKeywordName,
+    item.keywordName,
+    item.franchiseKeywordLabel,
+    Array.isArray(item.keywords) ? item.keywords.join(' ') : item.keywords,
+  ];
+  return candidates.some(value => typeof value === 'string' && ANIME_KEYWORD_REGEX.test(value));
 }
 
 
@@ -3412,6 +3434,10 @@ function resolveSeriesCardTitleParts(item, context = {}) {
 function buildMediaSummaryBadges(listType, item, context = {}) {
   if (!item) return null;
   const chips = collectMediaBadgeChips(listType, item, context);
+  const flaggedAnime = itemHasAnimeKeyword(item);
+  if (flaggedAnime && !chips.some(chip => typeof chip === 'string' && chip.toLowerCase() === 'anime')) {
+    chips.unshift('Anime');
+  }
   if (!chips.length) return null;
   const isTv = listType === 'tvShows';
   const rowClass = isTv ? 'tv-summary-badges' : 'anime-summary-badges';
@@ -3423,7 +3449,13 @@ function buildMediaSummaryBadges(listType, item, context = {}) {
   if (context.listType) {
     row.dataset.listType = context.listType;
   }
-  chips.forEach(text => row.appendChild(createEl('span', chipClass, { text })));
+  if (flaggedAnime) {
+    row.dataset.animeKeyword = 'true';
+  }
+  chips.forEach(text => {
+    const isAnimeChip = flaggedAnime && text === 'Anime';
+    row.appendChild(createEl('span', isAnimeChip ? 'anime-chip' : chipClass, { text }));
+  });
   return row;
 }
 
