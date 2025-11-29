@@ -43,40 +43,9 @@ const TMDB_KEYWORD_DISCOVER_PAGE_LIMIT = 3;
 const TMDB_KEYWORD_DISCOVER_MAX_RESULTS = 40;
 const GOOGLE_BOOKS_API_KEY = '';
 const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
-const JIKAN_API_BASE_URL = 'https://api.jikan.moe/v4';
 const LIST_LOAD_STAGGER_MS = 600;
-const JIKAN_REQUEST_MIN_DELAY_MS = 500;
-const JIKAN_RETRY_BASE_DELAY_MS = 1500;
-const JIKAN_MAX_RETRIES = 2;
-const MYANIMELIST_ANIME_URL = 'https://myanimelist.net/anime';
 const METADATA_SCHEMA_VERSION = 4;
 const APP_VERSION = 'test-pages-2025.11.15';
-const ANIME_FRANCHISE_RELATION_TYPES = new Set([
-  'SEQUEL',
-  'PREQUEL',
-  'MAIN_STORY',
-  'SIDE_STORY',
-  'ALTERNATIVE',
-  'SPIN_OFF',
-  'COMPILATION',
-  'CONTAINS',
-  'PARENT',
-  'CHILD',
-  'OTHER'
-]);
-const ANIME_FRANCHISE_ALLOWED_FORMATS = new Set([
-  'TV',
-  'TV_SHORT',
-  'ONA',
-  'OVA',
-  'MOVIE',
-  'SPECIAL'
-]);
-const ANIME_FRANCHISE_MAX_DEPTH = 4;
-const ANIME_FRANCHISE_MAX_ENTRIES = 25;
-const ANIME_FRANCHISE_SCAN_SERIES_LIMIT = 4;
-const ANIME_FRANCHISE_RESCAN_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const ANIME_FRANCHISE_IGNORE_KEY = '__THE_LIST_ANIME_IGNORE__';
 const ANIME_STATUS_PRIORITY = {
   RELEASING: 6,
   NOT_YET_RELEASED: 5,
@@ -102,8 +71,9 @@ const sortModes = { movies: 'title', tvShows: 'title', anime: 'title', books: 't
 const listCaches = {};
 const finishedCaches = {};
 const metadataRefreshInflight = new Set();
-const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'anime', 'books']);
+const AUTOCOMPLETE_LISTS = new Set(['movies', 'tvShows', 'books']);
 const PRIMARY_LIST_TYPES = ['movies', 'tvShows', 'anime', 'books'];
+const ADD_MODAL_LIST_TYPES = ['movies', 'tvShows', 'books'];
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
 let activeSeasonEditor = null;
@@ -493,14 +463,6 @@ if (addFormTemplatesContainer) {
   });
 }
 let activeAddModal = null;
-
-let animeFranchiseScanTimer = null;
-let animeFranchiseScanInflight = false;
-let animeFranchiseLastScanSignature = '';
-let animeFranchiseLastScanTime = 0;
-let pendingAnimeScanData = null;
-const animeFranchiseMissingHashes = new Map();
-const animeFranchiseIgnoredIds = loadAnimeFranchiseIgnoredIds();
 
 const tmEasterEgg = (() => {
   const sprites = [];
@@ -917,9 +879,9 @@ function setupAddModal() {
   addModalTrigger.addEventListener('click', () => openAddModal());
 }
 
-function openAddModal(initialType = PRIMARY_LIST_TYPES[0]) {
+function openAddModal(initialType = ADD_MODAL_LIST_TYPES[0]) {
   if (!modalRoot) return;
-  const defaultType = PRIMARY_LIST_TYPES.includes(initialType) ? initialType : PRIMARY_LIST_TYPES[0];
+  const defaultType = ADD_MODAL_LIST_TYPES.includes(initialType) ? initialType : ADD_MODAL_LIST_TYPES[0];
   closeAddModal();
   closeWheelModal();
 
@@ -950,7 +912,7 @@ function openAddModal(initialType = PRIMARY_LIST_TYPES[0]) {
   const tabs = document.createElement('div');
   tabs.className = 'add-type-tabs';
   const tabButtons = new Map();
-  PRIMARY_LIST_TYPES.forEach(type => {
+  ADD_MODAL_LIST_TYPES.forEach(type => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'add-type-tab';
@@ -1023,7 +985,7 @@ function destroyActiveAddModalForm() {
 
 function setActiveAddModalType(listType) {
   if (!activeAddModal) return;
-  const targetType = PRIMARY_LIST_TYPES.includes(listType) ? listType : PRIMARY_LIST_TYPES[0];
+  const targetType = ADD_MODAL_LIST_TYPES.includes(listType) ? listType : ADD_MODAL_LIST_TYPES[0];
   const template = addFormTemplateMap[targetType];
   if (!template) return;
 
@@ -1299,106 +1261,6 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywor
 // ============================================================================
 // Feature 8: Anime Franchise Automations
 // ============================================================================
-
-function formatAnimeFranchiseEntryLabel(entry) {
-  if (!entry) return 'Untitled entry';
-  const labelParts = [];
-  if (entry.seriesOrder !== undefined && entry.seriesOrder !== null) {
-    labelParts.push(`#${entry.seriesOrder}`);
-  }
-  labelParts.push(entry.title || 'Untitled');
-  const meta = [];
-  if (entry.format) meta.push(entry.format);
-  if (entry.year) meta.push(entry.year);
-  if (entry.relationType && entry.relationType !== 'ROOT') {
-    const pretty = entry.relationType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, ch => ch.toUpperCase());
-    meta.push(pretty);
-  }
-  const metaText = meta.length ? ` (${meta.join(' • ')})` : '';
-  return `${labelParts.filter(Boolean).join(' ')}${metaText}`;
-}
-
-function promptAnimeFranchiseSelection(plan, { rootAniListId, title } = {}) {
-  if (!plan || !Array.isArray(plan.entries)) return Promise.resolve([]);
-  const rootIdStr = rootAniListId ? String(rootAniListId) : '';
-  const selectable = plan.entries.filter(entry => {
-    if (!entry || entry.aniListId === undefined || entry.aniListId === null) return false;
-    if (rootIdStr && String(entry.aniListId) === rootIdStr) return false;
-    return true;
-  });
-  if (!selectable.length) return Promise.resolve([]);
-  if (!modalRoot) {
-    return Promise.resolve(selectable.map(entry => entry.aniListId));
-  }
-  closeAddModal();
-  closeWheelModal();
-  return new Promise(resolve => {
-    modalRoot.innerHTML = '';
-    const backdrop = document.createElement('div');
-    backdrop.className = 'modal-backdrop';
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    const displayName = plan.seriesName || title || 'this franchise';
-    const heading = document.createElement('h3');
-    heading.textContent = `Add related anime for "${displayName}"?`;
-    modal.appendChild(heading);
-    const sub = document.createElement('p');
-    sub.textContent = 'Choose which sequels, movies, and specials to add alongside this entry.';
-    modal.appendChild(sub);
-    const list = document.createElement('div');
-    list.style.maxHeight = '260px';
-    list.style.overflowY = 'auto';
-    list.style.marginTop = '.5rem';
-    list.style.display = 'flex';
-    list.style.flexDirection = 'column';
-    list.style.gap = '.35rem';
-    const checkboxes = [];
-    selectable.forEach(entry => {
-      const row = document.createElement('label');
-      row.style.display = 'flex';
-      row.style.alignItems = 'center';
-      row.style.gap = '.5rem';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = true;
-      cb.value = String(entry.aniListId);
-      row.appendChild(cb);
-      const text = document.createElement('span');
-      text.textContent = formatAnimeFranchiseEntryLabel(entry);
-      row.appendChild(text);
-      list.appendChild(row);
-      checkboxes.push(cb);
-    });
-    modal.appendChild(list);
-    const actions = document.createElement('div');
-    actions.style.display = 'flex';
-    actions.style.gap = '.5rem';
-    actions.style.marginTop = '1rem';
-    const close = (result) => {
-      modalRoot.innerHTML = '';
-      resolve(result);
-    };
-    const addBtn = document.createElement('button');
-    addBtn.className = 'btn primary';
-    addBtn.textContent = 'Add Selected';
-    addBtn.addEventListener('click', () => {
-      const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
-      close(selected);
-    });
-    const skipBtn = document.createElement('button');
-    skipBtn.className = 'btn secondary';
-    skipBtn.textContent = 'Skip';
-    skipBtn.addEventListener('click', () => close([]));
-    actions.appendChild(addBtn);
-    actions.appendChild(skipBtn);
-    modal.appendChild(actions);
-    backdrop.appendChild(modal);
-    modalRoot.appendChild(backdrop);
-    backdrop.addEventListener('click', (event) => {
-      if (event.target === backdrop) close([]);
-    });
-  });
-}
 
 function pushNotification({ title, message } = {}) {
   if (!title && !message) return;
@@ -1975,9 +1837,6 @@ function loadList(listType) {
     const data = snap.val() || {};
     renderList(listType, data);
     maybeRefreshMetadata(listType, data);
-    if (listType === 'anime') {
-      scheduleAnimeFranchiseScan(data);
-    }
   }, (err) => {
     console.error('DB read error', err);
     if (listContainer) {
@@ -5506,52 +5365,19 @@ async function addItemFromForm(listType, form) {
     let metadata = form.__selectedMetadata || null;
     const selectedImdbId = form.dataset.selectedImdbId || '';
     const selectedTmdbId = form.dataset.selectedTmdbId || '';
-    const selectedAniListId = form.dataset.selectedAnilistId || '';
     const selectedGoogleBookId = form.dataset.selectedGoogleBookId || '';
     const selectedGoogleIsbn = form.dataset.selectedGoogleIsbn || '';
-    const supportsMetadata = ['movies', 'tvShows', 'anime', 'books'].includes(listType);
-    const useAniList = listType === 'anime';
+    const supportsMetadata = ['movies', 'tvShows', 'books'].includes(listType);
     const useGoogleBooks = listType === 'books';
-    const hasMetadataProvider = useAniList || useGoogleBooks || Boolean(TMDB_API_KEY);
-    let animeFranchisePlan = null;
-    let animeFranchiseSelectionIds = null;
-    let aniListTargetId = useAniList ? (selectedAniListId || '') : '';
+    const hasMetadataProvider = useGoogleBooks || Boolean(TMDB_API_KEY);
     let movieCollectionInfo = null;
     if (!metadata && supportsMetadata) {
-      if (useAniList) {
-        metadata = await fetchAniListMetadata({ aniListId: selectedAniListId, title, year });
-      } else if (useGoogleBooks) {
+      if (useGoogleBooks) {
         metadata = await fetchGoogleBooksMetadata({ volumeId: selectedGoogleBookId, title, author: creatorValue, isbn: selectedGoogleIsbn });
       } else if (!hasMetadataProvider) {
         maybeWarnAboutTmdbKey();
       } else {
         metadata = await fetchTmdbMetadata(listType, { title, year, imdbId: selectedImdbId, tmdbId: selectedTmdbId });
-      }
-    }
-    if (useAniList) {
-      if (!aniListTargetId && metadata && metadata.AniListId) {
-        aniListTargetId = metadata.AniListId;
-      }
-      if (aniListTargetId) {
-        try {
-          animeFranchisePlan = await fetchAniListFranchisePlan({
-            aniListId: aniListTargetId,
-            preferredSeriesName: seriesNameValue || (metadata && metadata.Title) || title,
-          });
-        } catch (err) {
-          console.warn('Unable to build MyAnimeList franchise plan', err);
-        }
-      }
-    }
-    if (useAniList && animeFranchisePlan && Array.isArray(animeFranchisePlan.entries)) {
-      try {
-        animeFranchiseSelectionIds = await promptAnimeFranchiseSelection(animeFranchisePlan, {
-          rootAniListId: aniListTargetId || (metadata && metadata.AniListId) || '',
-          title,
-        });
-      } catch (err) {
-        console.warn('Franchise selection prompt failed', err);
-        animeFranchiseSelectionIds = null;
       }
     }
 
@@ -5602,24 +5428,6 @@ async function addItemFromForm(listType, form) {
         });
         Object.assign(item, metadataUpdates);
       }
-      if (useAniList) {
-        if (!item.seriesName) {
-          const derivedSeriesName = (animeFranchisePlan && animeFranchisePlan.seriesName) || (metadata && metadata.Title) || title;
-          if (derivedSeriesName) item.seriesName = derivedSeriesName;
-        }
-        if (animeFranchisePlan && Array.isArray(animeFranchisePlan.entries) && animeFranchisePlan.entries.length) {
-          const rootEntry = aniListTargetId
-            ? animeFranchisePlan.entries.find(entry => entry && entry.aniListId && String(entry.aniListId) === String(aniListTargetId))
-            : null;
-          if (rootEntry && rootEntry.seriesOrder !== undefined && rootEntry.seriesOrder !== null) {
-            const hasExistingOrder = item.seriesOrder !== undefined && item.seriesOrder !== null;
-            if (!hasExistingOrder) {
-              item.seriesOrder = rootEntry.seriesOrder;
-            }
-          }
-          item.seriesSize = animeFranchisePlan.entries.length;
-        }
-      }
     }
 
     if (isDuplicateCandidate(listType, item)) {
@@ -5654,21 +5462,6 @@ async function addItemFromForm(listType, form) {
 
     await addItem(listType, item);
 
-    if (listType === 'anime' && animeFranchisePlan) {
-      const allowAutoAdd = animeFranchiseSelectionIds === null || (Array.isArray(animeFranchiseSelectionIds) && animeFranchiseSelectionIds.length > 0);
-      try {
-        if (allowAutoAdd) {
-          await autoAddAnimeFranchiseEntries(
-            animeFranchisePlan,
-            aniListTargetId || (metadata && metadata.AniListId),
-            Array.isArray(animeFranchiseSelectionIds) ? animeFranchiseSelectionIds : undefined,
-          );
-        }
-      } catch (err) {
-        console.warn('Unable to auto-add related anime entries', err);
-      }
-    }
-
     let keywordPromptContext = null;
     if (franchiseKeywordInfo && Array.isArray(franchiseKeywordEntryCandidates) && franchiseKeywordEntryCandidates.length) {
       const filtered = filterKeywordEntriesAgainstLibrary(franchiseKeywordEntryCandidates, item, listType);
@@ -5691,7 +5484,6 @@ async function addItemFromForm(listType, form) {
     form.__selectedMetadata = null;
     delete form.dataset.selectedImdbId;
     delete form.dataset.selectedTmdbId;
-    delete form.dataset.selectedAnilistId;
     delete form.dataset.selectedGoogleBookId;
     delete form.dataset.selectedGoogleIsbn;
     hideTitleSuggestions(form);
@@ -6364,44 +6156,9 @@ function refreshTmdbMetadataForItem(listType, itemId, item, missingFields = []) 
   });
 }
 
-function refreshAniListMetadataForItem(itemId, item) {
-  const listType = 'anime';
-  const key = `${listType}:${itemId}`;
-  if (metadataRefreshInflight.has(key)) return;
-  metadataRefreshInflight.add(key);
-  const lookup = {
-    aniListId: item.aniListId || item.anilistId || item.AniListId || '',
-    title: item.title || '',
-    year: item.year || '',
-  };
-  fetchAniListMetadata(lookup).then(metadata => {
-    if (!metadata) return;
-    const updates = deriveMetadataAssignments(metadata, item, {
-      overwrite: false,
-      fallbackTitle: item.title || '',
-      fallbackYear: item.year || '',
-      listType,
-    });
-    if (Object.keys(updates).length === 0) return;
-    console.debug('[MyAnimeList] Applying updates for', `${listType}:${itemId}`, updates);
-    return updateItem(listType, itemId, updates);
-  }).catch(err => {
-    console.warn('MyAnimeList metadata refresh failed', err);
-  }).finally(() => {
-    metadataRefreshInflight.delete(key);
-  });
-}
-
 function maybeRefreshMetadata(listType, data) {
   if (!currentUser) return;
-  if (!['movies', 'tvShows', 'anime'].includes(listType)) return;
-  if (listType === 'anime') {
-    Object.entries(data || {}).forEach(([id, item]) => {
-      if (!needsMetadataRefresh(listType, item)) return;
-      refreshAniListMetadataForItem(id, item);
-    });
-    return;
-  }
+  if (!['movies', 'tvShows'].includes(listType)) return;
 
   if (!TMDB_API_KEY) {
     return;
@@ -6511,11 +6268,6 @@ function renderTitleSuggestions(container, suggestions, onSelect) {
     note.className = 'suggestions-note';
     note.textContent = 'Suggestions powered by TMDb.';
     container.appendChild(note);
-  } else if (provider === 'anilist' || provider === 'jikan') {
-    const note = document.createElement('div');
-    note.className = 'suggestions-note';
-    note.textContent = 'Suggestions powered by MyAnimeList via Jikan.';
-    container.appendChild(note);
   } else if (provider === 'googleBooks') {
     const note = document.createElement('div');
     note.className = 'suggestions-note';
@@ -6597,9 +6349,8 @@ function setupFormAutocomplete(form, listType) {
     return;
   }
 
-  const useAniList = listType === 'anime';
   const useGoogleBooks = listType === 'books';
-  const hasSuggestionProvider = useAniList || useGoogleBooks || Boolean(TMDB_API_KEY);
+  const hasSuggestionProvider = useGoogleBooks || Boolean(TMDB_API_KEY);
   if (!hasSuggestionProvider) {
     maybeWarnAboutTmdbKey();
     return;
@@ -6621,11 +6372,9 @@ function setupFormAutocomplete(form, listType) {
 
   const performSearch = debounce(async (query) => {
     const currentToken = ++lastFetchToken;
-    const results = useAniList
-      ? await fetchAniListSuggestions(query)
-      : useGoogleBooks
-        ? await fetchGoogleBooksSuggestions(query)
-        : await fetchTmdbSuggestions(listType, query);
+    const results = useGoogleBooks
+      ? await fetchGoogleBooksSuggestions(query)
+      : await fetchTmdbSuggestions(listType, query);
     if (currentToken !== lastFetchToken) return;
     renderTitleSuggestions(suggestionsEl, results, async (suggestion) => {
       titleInput.value = suggestion.title || '';
@@ -6634,43 +6383,19 @@ function setupFormAutocomplete(form, listType) {
         yearInput.value = suggestionYear;
       }
       form.__selectedMetadata = null;
-      if (!useAniList && !useGoogleBooks && suggestion.imdbID) {
+      if (!useGoogleBooks && suggestion.imdbID) {
         form.dataset.selectedImdbId = suggestion.imdbID;
-      } else if (!useAniList && !useGoogleBooks) {
+      } else if (!useGoogleBooks) {
         delete form.dataset.selectedImdbId;
       }
-      if (!useAniList && !useGoogleBooks && suggestion.tmdbId) {
+      if (!useGoogleBooks && suggestion.tmdbId) {
         form.dataset.selectedTmdbId = suggestion.tmdbId;
-      } else if (!useAniList && !useGoogleBooks) {
+      } else if (!useGoogleBooks) {
         delete form.dataset.selectedTmdbId;
       }
-      if (useAniList) {
+      if (useGoogleBooks) {
         delete form.dataset.selectedImdbId;
         delete form.dataset.selectedTmdbId;
-        if (suggestion.anilistId) {
-          form.dataset.selectedAnilistId = suggestion.anilistId;
-        } else {
-          delete form.dataset.selectedAnilistId;
-        }
-        try {
-          const detail = await fetchAniListMetadata({ aniListId: suggestion.anilistId, title: suggestion.title, year: suggestionYear });
-          if (detail) {
-            form.__selectedMetadata = detail;
-            if (yearInput && detail.Year) {
-              const detailYear = extractPrimaryYear(detail.Year);
-              if (detailYear) yearInput.value = detailYear;
-            }
-            if (creatorInput && (!creatorInput.value || creatorInput.value === '') && detail.Director) {
-              creatorInput.value = detail.Director;
-            }
-          }
-        } catch (err) {
-          console.warn('Unable to prefill MyAnimeList metadata', err);
-        }
-      } else if (useGoogleBooks) {
-        delete form.dataset.selectedImdbId;
-        delete form.dataset.selectedTmdbId;
-        delete form.dataset.selectedAnilistId;
         if (suggestion.googleBooksId) {
           form.dataset.selectedGoogleBookId = suggestion.googleBooksId;
         } else {
@@ -6734,7 +6459,6 @@ function setupFormAutocomplete(form, listType) {
     form.__selectedMetadata = null;
     delete form.dataset.selectedImdbId;
     delete form.dataset.selectedTmdbId;
-    delete form.dataset.selectedAnilistId;
     delete form.dataset.selectedGoogleBookId;
     delete form.dataset.selectedGoogleIsbn;
     if (query.length < 3) {
@@ -7583,13 +7307,6 @@ function deleteItem(listType, itemId, options = {}) {
   const { fromFinished = false } = options;
   if (!confirm('Delete this item?')) return;
   const cacheSource = fromFinished ? finishedCaches : listCaches;
-  if (listType === 'anime' && cacheSource[listType] && cacheSource[listType][itemId]) {
-    const target = cacheSource[listType][itemId];
-    const aniListId = getAniListIdFromItem(target);
-    if (aniListId) {
-      rememberIgnoredAniListId(aniListId);
-    }
-  }
   const basePath = fromFinished
     ? `users/${currentUser.uid}/finished/${listType}`
     : `users/${currentUser.uid}/${listType}`;
@@ -7814,9 +7531,13 @@ function openEditModal(listType, itemId, item) {
 }
 
 async function refreshItemMetadata(listType, itemId, item, options = {}) {
-  const supported = new Set(['movies', 'tvShows', 'anime', 'books']);
+  const supported = new Set(['movies', 'tvShows', 'books']);
   if (!supported.has(listType)) {
-    alert('Metadata refresh is only available for movies, TV, anime, or books.');
+    alert('Metadata refresh is only available for movies, TV, or books.');
+    return;
+  }
+  if (listType === 'anime') {
+    alert('Anime metadata refresh is no longer supported.');
     return;
   }
   const { title = '', year = '', button = null } = options;
@@ -7843,13 +7564,7 @@ async function refreshItemMetadata(listType, itemId, item, options = {}) {
   setButtonState(true);
   try {
     let metadata = null;
-    if (listType === 'anime') {
-      metadata = await fetchAniListMetadata({
-        aniListId: getAniListIdFromItem(item),
-        title: lookupTitle,
-        year: lookupYear,
-      });
-    } else if (listType === 'books') {
+    if (listType === 'books') {
       metadata = await fetchGoogleBooksMetadata({
         volumeId: item.googleBooksId || '',
         title: lookupTitle,
