@@ -179,7 +179,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 
 .add-form{
   display:grid;
-  grid-template-columns:minmax(220px,2fr) minmax(110px,.85fr) minmax(180px,1.1fr) 190px;
+  grid-template-columns:minmax(220px,2fr) minmax(110px,.85fr) minmax(180px,1.1fr) minmax(140px,1fr);
   gap:.75rem;
   align-items:start;
   background:var(--surface-700);
