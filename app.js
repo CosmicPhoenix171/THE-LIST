@@ -2359,6 +2359,7 @@ function ensureFranchiseDragEvents() {
   franchiseShelfEl.addEventListener('dragover', handleFranchiseDragOver);
   franchiseShelfEl.addEventListener('drop', handleFranchiseDrop);
   franchiseShelfEl.addEventListener('dragend', handleFranchiseDragEnd);
+  franchiseShelfEl.addEventListener('wheel', handleFranchiseWheelScroll, { passive: false });
   franchiseDragEventsBound = true;
 }
 
@@ -2528,6 +2529,18 @@ function clearFranchiseDragState() {
   franchiseDragState.activeEntryId = null;
   franchiseDragState.activeFranchiseId = null;
   franchiseDragState.activeTrack = null;
+}
+
+function handleFranchiseWheelScroll(event) {
+  if (!franchiseDragState.activeEntryId) return;
+  const target = event.target instanceof Element ? event.target : null;
+  const track = target?.closest('.franchise-track');
+  if (!track) return;
+  const delta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
+  if (!delta) return;
+  // Convert vertical wheel input into horizontal scroll while dragging.
+  event.preventDefault();
+  track.scrollLeft += delta;
 }
 
 function applyFranchiseEntryOrder(franchiseId, orderedEntryIds) {
