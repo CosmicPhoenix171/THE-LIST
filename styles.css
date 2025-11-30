@@ -182,7 +182,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   position: fixed;
   top: 80px;
   bottom: 0;
-  width: min(160px, 18vw);
+  width: auto;
   height: auto;
   z-index: 1000;
 }
