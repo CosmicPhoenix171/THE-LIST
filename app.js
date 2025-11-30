@@ -9428,3 +9428,28 @@ async function autoAddTmdbKeywordEntries(franchiseLabel, keywordInfo, entries, o
   }
 }
 
+// ============================================================================
+// Random Ad Selection
+// ============================================================================
+
+function initializeRandomAds() {
+  const adImages = [
+    'ads/ad1.png',
+    // Add more ad images here as you add them to the ads folder
+  ];
+  
+  const randomAdSrc = adImages[Math.floor(Math.random() * adImages.length)];
+  
+  document.querySelectorAll('.fake-ad-image').forEach(img => {
+    img.src = randomAdSrc;
+  });
+}
+
+// Initialize ads when page loads
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeRandomAds);
+} else {
+  initializeRandomAds();
+}
+
+
