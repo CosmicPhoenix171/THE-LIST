@@ -4596,11 +4596,6 @@ function handleSeriesTreeDragOver(event) {
     return;
   }
   event.preventDefault();
-  const scrollContainer = list.closest('.series-tree-scroll') || list.parentElement;
-  if (scrollContainer instanceof Element) {
-    autoScrollDuringDrag(event, scrollContainer);
-  }
-  autoScrollDuringDrag(event);
   const placeholder = getSeriesTreePlaceholder();
   if (placeholder.parentElement !== list) {
     list.appendChild(placeholder);
