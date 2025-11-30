@@ -179,7 +179,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 
 .add-form{
   display:grid;
-  grid-template-columns:minmax(220px,1.8fr) 120px 200px minmax(160px,1fr);
+  grid-template-columns:minmax(220px,2fr) minmax(110px,.85fr) minmax(180px,1.1fr) 190px;
   gap:.75rem;
   align-items:start;
   background:var(--surface-700);
@@ -244,14 +244,13 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .add-form input:focus,.add-form select:focus,.add-form textarea:focus{
   outline:none;border-color:var(--primary-300);box-shadow:0 0 0 3px rgba(61,169,245,0.16);
 }
-.add-form textarea{grid-column:1 / -1;min-height:110px;resize:vertical}
-.add-form select{grid-column:4}
+.add-form textarea{grid-column:1 / span 3;min-height:110px;min-width:0;resize:vertical}
+.add-form select{grid-column:4;min-width:0}
 .add-form button{
-  grid-column:1 / -1;
-  justify-self:flex-end;
-  min-width:160px;
-  max-width:100%;
-  align-self:flex-end;
+  grid-column:4;
+  width:100%;
+  min-width:0;
+  align-self:start;
 }
 .add-form input[name="seriesName"]{grid-column:1 / 3}
 .add-form input[name="seriesOrder"]{grid-column:3}
@@ -725,6 +724,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   .add-form{grid-template-columns:minmax(220px,1fr) 1fr;}
   .add-form textarea{grid-column:1 / -1}
   .add-form button{
+    grid-column:1 / -1;
     width:100%;
     justify-self:stretch;
   }
