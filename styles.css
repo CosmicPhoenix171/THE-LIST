@@ -177,6 +177,71 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   .franchise-card-title{max-width:66%}
 }
 
+/* Base container for skyscraper ads */
+.skyscraper-ad {
+  position: fixed;
+  top: 80px;
+  width: 160px;
+  height: 600px;
+  z-index: 1000;
+}
+
+/* Side placement */
+.right-ad { right: 10px; }
+.left-ad { left: 10px; }
+
+/* Shared ad styling */
+.fake-ad-content {
+  position: relative;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #222, #444);
+  color: #fff;
+  font-family: system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+}
+
+.fake-ad-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.7;
+}
+
+/* Button */
+.fake-ad-content button {
+  margin-top: 8px;
+  padding: 8px;
+  width: 100%;
+  border: none;
+  border-radius: 4px;
+  background: #ffb31a;
+  color: #111;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* Eldritch flavor */
+.eldritch-ad {
+  background: radial-gradient(circle at top, #4bffb5 0, #111 45%, #000 100%);
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+}
+
+.eldritch-ad button {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 0 10px rgba(75, 255, 181, 0.4);
+}
+
+.eldritch-ad button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(75, 255, 181, 0.8);
+}
+
 .add-form{
   display:grid;
   grid-template-columns:minmax(220px,2fr) minmax(110px,.85fr) minmax(180px,1.1fr) minmax(140px,1fr);
