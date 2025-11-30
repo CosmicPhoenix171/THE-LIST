@@ -235,22 +235,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 }
 
 /* Button */
-/* Eldritch flavor */
-.eldritch-ad {
-  isolation: isolate;
-}
-
-.eldritch-ad::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at top, rgba(75, 255, 181, 0.25) 0, rgba(17, 17, 17, 0.65) 50%, rgba(0, 0, 0, 0.9) 100%);
-  pointer-events: none;
-  mix-blend-mode: multiply;
-  z-index: 1;
-}
-
-/* no CTA button; pure artwork */
+/* Eldritch flavor - no overlay, pure artwork */
 
 .add-form{
   display:grid;
