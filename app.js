@@ -4763,8 +4763,8 @@ function sortSeriesTreeByYear(listType, cardId) {
   const entries = store.get(cardId);
   if (!entries || entries.length <= 1) return;
   const sorted = entries.slice().sort((a, b) => {
-    const yearA = parseInt(a.item?.year, 10) || 9999;
-    const yearB = parseInt(b.item?.year, 10) || 9999;
+    const yearA = parseInt(sanitizeYear(a.item?.year || ''), 10) || 9999;
+    const yearB = parseInt(sanitizeYear(b.item?.year || ''), 10) || 9999;
     if (yearA !== yearB) return yearA - yearB;
     return (a.order || 0) - (b.order || 0);
   });
