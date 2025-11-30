@@ -181,9 +181,8 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .skyscraper-ad {
   position: fixed;
   top: 80px;
+  bottom: 0;
   width: min(160px, 18vw);
-  aspect-ratio: 160 / 600;
-  max-height: 600px;
   height: auto;
   z-index: 1000;
 }
