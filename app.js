@@ -9435,6 +9435,11 @@ async function autoAddTmdbKeywordEntries(franchiseLabel, keywordInfo, entries, o
 function initializeRandomAds() {
   const adImages = [
     'ads/ad1.png',
+    'ads/ad2.png',
+    'ads/ad3.png',
+    'ads/ad4.png',
+    'ads/ad5.png',
+    'ads/ad6.png',
     // Add more ad images here as you add them to the ads folder
   ];
   
