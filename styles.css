@@ -78,7 +78,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .tab.active{color:#0b141d;background:linear-gradient(135deg,var(--accent-300),#50c9ff);border-color:transparent;font-weight:600;box-shadow:0 10px 26px rgba(80,201,255,0.25)}
 .tab:focus{outline:2px solid rgba(101,183,247,0.25)}
 
-.main{padding:1.25rem max(1.5rem, calc(18vw + 20px)) 2rem;max-width:900px;margin:0 auto}
+.main{padding:1.25rem 1.5rem 2rem;max-width:1100px;margin:0 auto}
 .section{padding:1.25rem 0}
 .section h2{font-size:1.35rem;font-weight:700;margin:0 0 .9rem;letter-spacing:.25px}
 .library-header{display:flex;flex-direction:column;gap:.25rem;margin-bottom:.9rem}
@@ -185,6 +185,14 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   width: auto;
   height: auto;
   z-index: 1000;
+  display: none;
+}
+
+/* Only show ads on wide screens with space */
+@media (min-width: 1400px) {
+  .skyscraper-ad {
+    display: block;
+  }
 }
 
 /* Side placement */
@@ -825,7 +833,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 @media (max-width:720px){
   .topbar{flex-direction:column;align-items:flex-start;gap:.6rem;padding:1rem}
   .tabs{padding:.75rem 1rem .4rem}
-  .main{padding:1rem max(1.1rem, calc(18vw + 10px)) 2rem}
+  .main{padding:1rem 1.1rem 2rem}
   .filter-bar{flex-direction:column;align-items:stretch}
   .add-form{grid-template-columns:1fr;}
   .add-form button{width:100%;justify-self:stretch}
