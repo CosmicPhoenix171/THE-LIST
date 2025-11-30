@@ -9432,22 +9432,31 @@ async function autoAddTmdbKeywordEntries(franchiseLabel, keywordInfo, entries, o
 // Random Ad Selection
 // ============================================================================
 
-function initializeRandomAds() {
-  const adImages = [
-    'ads/ad1.png',
-    'ads/ad2.png',
-    'ads/ad3.png',
-    'ads/ad4.png',
-    'ads/ad5.png',
-    'ads/ad6.png',
-    // Add more ad images here as you add them to the ads folder
-  ];
+const adImages = [
+  'ads/ad1.png',
+  'ads/ad2.png',
+  'ads/ad3.png',
+  'ads/ad4.png',
+  'ads/ad5.png',
+  'ads/ad6.png',
+  'ads/ad7.png',
+  // Add more ad images here as you add them to the ads folder
+];
+
+function cycleRandomAd() {
+  if (!adImages.length) return;
   
   const randomAdSrc = adImages[Math.floor(Math.random() * adImages.length)];
   
   document.querySelectorAll('.fake-ad-image').forEach(img => {
     img.src = randomAdSrc;
   });
+}
+
+function initializeRandomAds() {
+  cycleRandomAd();
+  // Cycle to a new random ad every 60 seconds
+  setInterval(cycleRandomAd, 60000);
 }
 
 // Initialize ads when page loads
