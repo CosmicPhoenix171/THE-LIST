@@ -4335,7 +4335,7 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
   const block = createEl('div', 'series-tree detail-block');
   block.dataset.cardId = cardId;
   block.dataset.listType = listType;
-  block.appendChild(buildSeriesTreeHeader(entries.length));
+  block.appendChild(buildSeriesTreeHeader(entries.length, listType, cardId));
 
   const list = createEl('div', 'series-tree-list');
   list.dataset.cardId = cardId;
@@ -4355,10 +4355,16 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
   return block;
 }
 
-function buildSeriesTreeHeader(count) {
+function buildSeriesTreeHeader(count, listType, cardId) {
   const heading = createEl('div', 'series-tree-heading');
   heading.appendChild(createEl('div', 'series-tree-heading-title', { text: 'Franchise order' }));
-  heading.appendChild(createEl('div', 'series-tree-heading-count', { text: `${count} ${count === 1 ? 'entry' : 'entries'}` }));
+  const rightSide = createEl('div', 'series-tree-heading-right');
+  rightSide.appendChild(createEl('div', 'series-tree-heading-count', { text: `${count} ${count === 1 ? 'entry' : 'entries'}` }));
+  const sortBtn = createEl('button', 'btn ghost series-tree-sort-btn', { text: 'Sort by Year' });
+  sortBtn.type = 'button';
+  sortBtn.addEventListener('click', () => sortSeriesTreeByYear(listType, cardId));
+  rightSide.appendChild(sortBtn);
+  heading.appendChild(rightSide);
   return heading;
 }
 
@@ -4747,6 +4753,24 @@ function enableSeriesTreeWheelScroll() {
 function disableSeriesTreeWheelScroll() {
   if (seriesTreeWheelUnsubscribe) {
     seriesTreeWheelUnsubscribe();
+  }
+}
+
+function sortSeriesTreeByYear(listType, cardId) {
+  if (!listType || !cardId) return;
+  const store = seriesGroups[listType];
+  if (!store) return;
+  const entries = store.get(cardId);
+  if (!entries || entries.length <= 1) return;
+  const sorted = entries.slice().sort((a, b) => {
+    const yearA = parseInt(a.item?.year, 10) || 9999;
+    const yearB = parseInt(b.item?.year, 10) || 9999;
+    if (yearA !== yearB) return yearA - yearB;
+    return (a.order || 0) - (b.order || 0);
+  });
+  const orderedIds = sorted.map(entry => entry.id).filter(Boolean);
+  if (orderedIds.length) {
+    applySeriesTreeReorder(listType, cardId, orderedIds, null);
   }
 }
 
