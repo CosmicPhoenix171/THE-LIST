@@ -106,6 +106,7 @@ const franchiseDragState = {
   placeholder: null,
 };
 let franchiseDragEventsBound = false;
+let franchiseWheelUnsubscribe = null;
 const DRAG_SCROLL_EDGE_PX = 80;
 const DRAG_SCROLL_STEP_PX = 18;
 const FRANCHISE_MEDIA_LABELS = {
@@ -2359,7 +2360,6 @@ function ensureFranchiseDragEvents() {
   franchiseShelfEl.addEventListener('dragover', handleFranchiseDragOver);
   franchiseShelfEl.addEventListener('drop', handleFranchiseDrop);
   franchiseShelfEl.addEventListener('dragend', handleFranchiseDragEnd);
-  franchiseShelfEl.addEventListener('wheel', handleFranchiseWheelScroll, { passive: false });
   franchiseDragEventsBound = true;
 }
 
@@ -2384,6 +2384,7 @@ function handleFranchiseDragStart(event) {
   removeFranchisePlaceholder();
   entry.classList.add('is-dragging');
   track.classList.add('is-dragging');
+  enableFranchiseWheelScroll();
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', franchiseDragState.activeEntryId || '');
@@ -2526,21 +2527,32 @@ function clearFranchiseDragState() {
   if (franchiseDragState.activeTrack) {
     franchiseDragState.activeTrack.classList.remove('is-dragging');
   }
+  disableFranchiseWheelScroll();
   franchiseDragState.activeEntryId = null;
   franchiseDragState.activeFranchiseId = null;
   franchiseDragState.activeTrack = null;
 }
 
-function handleFranchiseWheelScroll(event) {
-  if (!franchiseDragState.activeEntryId) return;
-  const target = event.target instanceof Element ? event.target : null;
-  const track = target?.closest('.franchise-track');
-  if (!track) return;
-  const delta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
-  if (!delta) return;
-  // Convert vertical wheel input into horizontal scroll while dragging.
-  event.preventDefault();
-  track.scrollLeft += delta;
+function enableFranchiseWheelScroll() {
+  if (franchiseWheelUnsubscribe) return;
+  const handler = (event) => {
+    if (!franchiseDragState.activeEntryId || !franchiseDragState.activeTrack) return;
+    const delta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
+    if (!delta) return;
+    event.preventDefault();
+    franchiseDragState.activeTrack.scrollLeft += delta;
+  };
+  window.addEventListener('wheel', handler, { passive: false });
+  franchiseWheelUnsubscribe = () => {
+    window.removeEventListener('wheel', handler);
+    franchiseWheelUnsubscribe = null;
+  };
+}
+
+function disableFranchiseWheelScroll() {
+  if (franchiseWheelUnsubscribe) {
+    franchiseWheelUnsubscribe();
+  }
 }
 
 function applyFranchiseEntryOrder(franchiseId, orderedEntryIds) {
