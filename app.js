@@ -89,6 +89,9 @@ const seriesTreeDragState = {
   cardId: null,
   listType: null,
   cardElement: null,
+  entries: null,
+  entryMap: null,
+  activeEntryKey: null,
 };
 let seriesTreeDragEventsBound = false;
 let seriesTreeWheelUnsubscribe = null;
@@ -4327,9 +4330,7 @@ function formatAnimeRuntimeLabel(item) {
 }
 
 function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
-  const entries = Array.isArray(providedEntries) && providedEntries.length
-    ? providedEntries
-    : getSeriesGroupEntries(listType, cardId);
+  const entries = getSeriesTreeEntries(listType, cardId, { sourceEntries: providedEntries });
   if (!entries || entries.length <= 1) return null;
 
   const block = createEl('div', 'series-tree detail-block');
@@ -4431,6 +4432,19 @@ function mergeSeriesEntriesAcrossLists(listType, cardId, displayItem, primaryEnt
   return merged;
 }
 
+function getSeriesTreeEntries(listType, cardId, options = {}) {
+  if (!listType || !cardId) return [];
+  const { sourceEntries = null, displayItem = null } = options;
+  if (Array.isArray(sourceEntries) && sourceEntries.length) {
+    return sourceEntries;
+  }
+  const store = seriesGroups[listType];
+  const baseEntries = store?.get(cardId) || null;
+  const resolvedItem = displayItem || resolveCardRenderItem(listType, cardId, cardId);
+  const merged = mergeSeriesEntriesAcrossLists(listType, cardId, resolvedItem, baseEntries);
+  return Array.isArray(merged) ? merged : [];
+}
+
 function resolveSeriesNameFromEntries(entries, fallbackItem) {
   if (Array.isArray(entries)) {
     for (const entry of entries) {
@@ -4452,6 +4466,12 @@ function buildSeriesEntryKey(listType, entryId, item) {
   const titleKey = titleSortKey(item?.title || '');
   const yearKey = sanitizeYear(item?.year || '') || '----';
   return `${safeType}:${titleKey}:${yearKey}`;
+}
+
+function buildSeriesTreeNodeKey(entry, fallbackListType) {
+  const sourceType = entry?.listType || fallbackListType || 'unknown';
+  const entryId = entry?.id || 'unknown';
+  return `${sourceType}::${entryId}`;
 }
 
 function compareSeriesEntries(a, b) {
@@ -4494,6 +4514,7 @@ function buildSeriesTreeNode(listType, entry, fallbackIndex = 0) {
   const node = createEl('div', 'series-tree-node');
   node.dataset.entryId = entry.id || '';
   node.dataset.listType = entryListType || '';
+  node.dataset.entryKey = buildSeriesTreeNodeKey(entry, listType);
   node.setAttribute('draggable', 'true');
 
   const orderLabel = resolveSeriesNodeOrder(entry, fallbackIndex);
@@ -4578,12 +4599,20 @@ function handleSeriesTreeDragStart(event) {
   if (!node || node.classList.contains('series-tree-placeholder')) return;
   const list = node.closest('.series-tree-list');
   if (!list || list.children.length <= 1) return;
+  const listType = list.dataset.listType || node.closest('.series-tree')?.dataset.listType || '';
+  const cardId = list.dataset.cardId || node.closest('.series-tree')?.dataset.cardId || '';
+  const entries = getSeriesTreeEntries(listType, cardId);
+  if (!entries.length) return;
+  const entryMap = new Map(entries.map(entry => [buildSeriesTreeNodeKey(entry, listType), entry]));
   seriesTreeDragState.activeNode = node;
   seriesTreeDragState.listElement = list;
   seriesTreeDragState.placeholder = null;
-  seriesTreeDragState.cardId = list.dataset.cardId || node.closest('.series-tree')?.dataset.cardId || '';
-  seriesTreeDragState.listType = list.dataset.listType || node.closest('.series-tree')?.dataset.listType || '';
+  seriesTreeDragState.cardId = cardId;
+  seriesTreeDragState.listType = listType;
   seriesTreeDragState.cardElement = node.closest('.card.collapsible.movie-card');
+  seriesTreeDragState.entries = entries;
+  seriesTreeDragState.entryMap = entryMap;
+  seriesTreeDragState.activeEntryKey = node.dataset.entryKey || node.dataset.entryId || '';
   node.classList.add('is-dragging');
   list.classList.add('is-dragging');
   enableSeriesTreeWheelScroll();
@@ -4637,13 +4666,25 @@ function handleSeriesTreeDrop(event) {
     return;
   }
   event.preventDefault();
-  const orderedIds = computeSeriesTreeDropOrder();
+  const orderedKeys = computeSeriesTreeDropOrder();
   const listType = seriesTreeDragState.listType;
   const cardId = seriesTreeDragState.cardId;
   const cardElement = seriesTreeDragState.cardElement;
+  const entryMap = seriesTreeDragState.entryMap;
+  let orderedEntries = null;
+  if (orderedKeys && orderedKeys.length) {
+    orderedEntries = orderedKeys
+      .map(key => entryMap?.get(key) || null)
+      .filter(Boolean);
+    if ((!orderedEntries || !orderedEntries.length) && listType && cardId) {
+      const fallbackEntries = getSeriesTreeEntries(listType, cardId);
+      const fallbackMap = new Map(fallbackEntries.map(entry => [buildSeriesTreeNodeKey(entry, listType), entry]));
+      orderedEntries = orderedKeys.map(key => fallbackMap.get(key)).filter(Boolean);
+    }
+  }
   clearSeriesTreeDragState();
-  if (orderedIds && orderedIds.length) {
-    applySeriesTreeReorder(listType, cardId, orderedIds, cardElement);
+  if (orderedEntries && orderedEntries.length) {
+    applySeriesTreeReorder(listType, cardId, orderedEntries, cardElement);
   }
 }
 
@@ -4691,14 +4732,17 @@ function getSeriesTreeNodeFromPosition(list, clientY) {
 function computeSeriesTreeDropOrder() {
   const list = seriesTreeDragState.listElement;
   const placeholder = seriesTreeDragState.placeholder;
-  const movingId = seriesTreeDragState.activeNode?.dataset.entryId;
-  if (!list || !movingId) return null;
-  const currentIds = Array.from(list.querySelectorAll('.series-tree-node'))
-    .filter(node => !node.classList.contains('series-tree-placeholder'))
-    .map(node => node.dataset.entryId)
+  const movingKey = seriesTreeDragState.activeEntryKey
+    || seriesTreeDragState.activeNode?.dataset.entryKey
+    || seriesTreeDragState.activeNode?.dataset.entryId;
+  if (!list || !movingKey) return null;
+  const nodes = Array.from(list.querySelectorAll('.series-tree-node'))
+    .filter(node => !node.classList.contains('series-tree-placeholder'));
+  const currentKeys = nodes
+    .map(node => node.dataset.entryKey || node.dataset.entryId)
     .filter(Boolean);
   if (!placeholder || placeholder.parentElement !== list) {
-    return currentIds;
+    return currentKeys;
   }
   let insertionIndex = 0;
   for (const child of Array.from(list.children)) {
@@ -4709,9 +4753,9 @@ function computeSeriesTreeDropOrder() {
       insertionIndex += 1;
     }
   }
-  insertionIndex = Math.max(0, Math.min(currentIds.length, insertionIndex));
-  const withoutMoving = currentIds.filter(id => id !== movingId);
-  withoutMoving.splice(insertionIndex, 0, movingId);
+  insertionIndex = Math.max(0, Math.min(currentKeys.length, insertionIndex));
+  const withoutMoving = currentKeys.filter(key => key !== movingKey);
+  withoutMoving.splice(insertionIndex, 0, movingKey);
   return withoutMoving;
 }
 
@@ -4730,6 +4774,9 @@ function clearSeriesTreeDragState() {
   seriesTreeDragState.cardId = null;
   seriesTreeDragState.listType = null;
   seriesTreeDragState.cardElement = null;
+  seriesTreeDragState.entries = null;
+  seriesTreeDragState.entryMap = null;
+  seriesTreeDragState.activeEntryKey = null;
 }
 
 function enableSeriesTreeWheelScroll() {
@@ -4760,7 +4807,8 @@ function sortSeriesTreeByYear(listType, cardId) {
   if (!listType || !cardId) return;
   const store = seriesGroups[listType];
   if (!store) return;
-  const entries = store.get(cardId);
+  const baseEntries = store.get(cardId);
+  const entries = getSeriesTreeEntries(listType, cardId, { sourceEntries: baseEntries });
   if (!entries || entries.length <= 1) return;
   const sorted = entries.slice().sort((a, b) => {
     const yearA = parseInt(sanitizeYear(a.item?.year || ''), 10) || 9999;
@@ -4768,45 +4816,47 @@ function sortSeriesTreeByYear(listType, cardId) {
     if (yearA !== yearB) return yearA - yearB;
     return (a.order || 0) - (b.order || 0);
   });
-  const orderedIds = sorted.map(entry => entry.id).filter(Boolean);
-  if (orderedIds.length) {
+  if (sorted.length) {
     const cardElement = document.querySelector(`.card.collapsible.movie-card[data-card-id="${cardId}"]`);
-    applySeriesTreeReorder(listType, cardId, orderedIds, cardElement);
+    applySeriesTreeReorder(listType, cardId, sorted, cardElement);
   }
 }
 
-function applySeriesTreeReorder(listType, cardId, orderedEntryIds, cardElement) {
-  if (!listType || !cardId || !Array.isArray(orderedEntryIds) || !orderedEntryIds.length) return;
-  const store = seriesGroups[listType];
-  if (!store) return;
-  const entries = store.get(cardId);
-  if (!entries || !entries.length) return;
-  const entryMap = new Map(entries.map(entry => [entry.id, entry]));
-  const orderSet = new Set(orderedEntryIds);
-  const reordered = [];
-  const changed = [];
-  orderedEntryIds.forEach((entryId, index) => {
-    const entry = entryMap.get(entryId);
-    if (!entry) return;
+function applySeriesTreeReorder(listType, cardId, orderedEntries, cardElement) {
+  if (!listType || !cardId || !Array.isArray(orderedEntries) || !orderedEntries.length) return;
+  const orderUpdates = [];
+  const orderMap = new Map();
+  orderedEntries.forEach((entry, index) => {
+    if (!entry || !entry.id) return;
     const newOrder = index + 1;
+    const entryListType = entry.listType || listType;
+    orderMap.set(buildSeriesEntryKey(entryListType, entry.id, entry.item), newOrder);
     if (entry.order !== newOrder) {
-      changed.push({ entry, newOrder });
+      orderUpdates.push({ entry, newOrder });
     }
     entry.order = newOrder;
     if (entry.item) {
       entry.item.seriesOrder = newOrder;
     }
     updateCachedSeriesOrderValue(entry, newOrder);
-    reordered.push(entry);
   });
-  entryMap.forEach((entry, entryId) => {
-    if (!orderSet.has(entryId)) {
-      reordered.push(entry);
-    }
-  });
-  store.set(cardId, reordered);
-  if (changed.length) {
-    persistSeriesTreeOrderUpdates(changed);
+  if (!orderMap.size) return;
+  const store = seriesGroups[listType];
+  if (store && store.has(cardId)) {
+    const existing = store.get(cardId) || [];
+    existing.sort((a, b) => {
+      const keyA = buildSeriesEntryKey(a.listType || listType, a.id, a.item);
+      const keyB = buildSeriesEntryKey(b.listType || listType, b.id, b.item);
+      const orderA = orderMap.get(keyA) || Number.MAX_SAFE_INTEGER;
+      const orderB = orderMap.get(keyB) || Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      return compareSeriesEntries(a, b);
+    });
+    store.set(cardId, existing);
+  }
+  applySeriesOrderSnapshotUpdates(listType, orderMap);
+  if (orderUpdates.length) {
+    persistSeriesTreeOrderUpdates(orderUpdates);
   }
   invalidateSeriesCrossListCache();
   if (cardElement) {
