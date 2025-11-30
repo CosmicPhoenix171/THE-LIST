@@ -4768,27 +4768,10 @@ function sortSeriesTreeByYear(listType, cardId) {
     if (yearA !== yearB) return yearA - yearB;
     return (a.order || 0) - (b.order || 0);
   });
-  const updates = [];
-  const entryMap = new Map(entries.map(entry => [entry.id, entry]));
-  sorted.forEach((sortedEntry, index) => {
-    const newOrder = index + 1;
-    const originalEntry = entryMap.get(sortedEntry.id);
-    if (originalEntry && originalEntry.order !== newOrder) {
-      updates.push({ entry: originalEntry, newOrder });
-    }
-  });
-  if (updates.length) {
-    updates.forEach(({ entry, newOrder }) => {
-      entry.order = newOrder;
-      if (entry.item) {
-        entry.item.seriesOrder = newOrder;
-      }
-      updateCachedSeriesOrderValue(entry, newOrder);
-    });
-    store.set(cardId, sorted);
-    persistSeriesTreeOrderUpdates(updates);
-    invalidateSeriesCrossListCache();
-    scheduleCrossSeriesRefresh();
+  const orderedIds = sorted.map(entry => entry.id).filter(Boolean);
+  if (orderedIds.length) {
+    const cardElement = document.querySelector(`.card.collapsible.movie-card[data-card-id="${cardId}"]`);
+    applySeriesTreeReorder(listType, cardId, orderedIds, cardElement);
   }
 }
 
