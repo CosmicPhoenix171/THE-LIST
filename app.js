@@ -91,6 +91,7 @@ const seriesTreeDragState = {
   cardElement: null,
 };
 let seriesTreeDragEventsBound = false;
+let seriesTreeWheelUnsubscribe = null;
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
@@ -4579,6 +4580,7 @@ function handleSeriesTreeDragStart(event) {
   seriesTreeDragState.cardElement = node.closest('.card.collapsible.movie-card');
   node.classList.add('is-dragging');
   list.classList.add('is-dragging');
+  enableSeriesTreeWheelScroll();
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', node.dataset.entryId || '');
@@ -4720,12 +4722,37 @@ function clearSeriesTreeDragState() {
   if (seriesTreeDragState.listElement) {
     seriesTreeDragState.listElement.classList.remove('is-dragging');
   }
+  disableSeriesTreeWheelScroll();
   seriesTreeDragState.activeNode = null;
   seriesTreeDragState.listElement = null;
   seriesTreeDragState.placeholder = null;
   seriesTreeDragState.cardId = null;
   seriesTreeDragState.listType = null;
   seriesTreeDragState.cardElement = null;
+}
+
+function enableSeriesTreeWheelScroll() {
+  if (seriesTreeWheelUnsubscribe) return;
+  const handler = (event) => {
+    if (!seriesTreeDragState.activeNode || !seriesTreeDragState.listElement) return;
+    const scrollContainer = seriesTreeDragState.listElement.closest('.series-tree-scroll');
+    if (!scrollContainer) return;
+    const delta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
+    if (!delta) return;
+    event.preventDefault();
+    scrollContainer.scrollTop += delta;
+  };
+  window.addEventListener('wheel', handler, { passive: false });
+  seriesTreeWheelUnsubscribe = () => {
+    window.removeEventListener('wheel', handler);
+    seriesTreeWheelUnsubscribe = null;
+  };
+}
+
+function disableSeriesTreeWheelScroll() {
+  if (seriesTreeWheelUnsubscribe) {
+    seriesTreeWheelUnsubscribe();
+  }
 }
 
 function applySeriesTreeReorder(listType, cardId, orderedEntryIds, cardElement) {
