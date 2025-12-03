@@ -46,7 +46,7 @@ const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
 const LIST_LOAD_STAGGER_MS = 600;
 const METADATA_SCHEMA_VERSION = 4;
 const APP_VERSION = 'test-pages-2025.11.15';
-const BUG_REPORT_URL = 'https://github.com/CosmicPhoenix171/THE-LIST/issues/new/choose';
+const BUG_REPORT_STORAGE_KEY = '__THE_LIST_BUGS__';
 const ANIME_STATUS_PRIORITY = {
   RELEASING: 6,
   NOT_YET_RELEASED: 5,
@@ -128,6 +128,8 @@ const unifiedFilters = {
   search: '',
   types: new Set(PRIMARY_LIST_TYPES),
 };
+let bugReports = [];
+let bugPopoverOpen = false;
 const MEDIA_TYPE_LABELS = {
   movies: 'Movies',
   tvShows: 'TV Shows',
@@ -683,6 +685,11 @@ const franchiseShelfEl = document.getElementById('franchise-shelf');
 const franchiseMetaEl = document.getElementById('franchise-meta');
 const libraryStatsSummaryEl = document.getElementById('library-stats-summary');
 const bugReportBtn = document.getElementById('report-bug');
+const bugReportPopover = document.getElementById('bug-report-popover');
+const bugReportForm = document.getElementById('bug-report-form');
+const bugReportInput = document.getElementById('bug-report-input');
+const bugReportListEl = document.getElementById('bug-report-list');
+const bugReportCloseBtn = document.getElementById('bug-report-close');
 const unifiedSearchInput = document.getElementById('library-search');
 const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
 const finishedFilterToggle = document.getElementById('finished-filter-toggle');
@@ -1714,12 +1721,19 @@ function initNotificationBell() {
 }
 
 function initBugReportButton() {
-  if (!bugReportBtn) return;
-  bugReportBtn.addEventListener('click', () => {
-    const target = BUG_REPORT_URL || '';
-    if (!target) return;
-    window.open(target, '_blank', 'noopener,noreferrer');
-  });
+  if (!bugReportBtn || !bugReportPopover) return;
+  bugReports = loadStoredBugReports();
+  renderBugReportList();
+  bugReportBtn.addEventListener('click', () => toggleBugPopover());
+  if (bugReportCloseBtn) {
+    bugReportCloseBtn.addEventListener('click', () => closeBugPopover());
+  }
+  if (bugReportForm) {
+    bugReportForm.addEventListener('submit', handleBugReportSubmit);
+  }
+  bugReportListEl?.addEventListener('click', handleBugListClick);
+  document.addEventListener('click', handleBugDocumentClick);
+  document.addEventListener('keydown', handleBugKeydown);
 }
 
 function toggleNotificationPopover(forceState) {
@@ -1771,6 +1785,128 @@ function updateNotificationEmptyState() {
   if (!notificationEmptyStateEl || !notificationCenter) return;
   const hasNotifications = Boolean(notificationCenter.querySelector('.notification-card'));
   notificationEmptyStateEl.classList.toggle('hidden', hasNotifications);
+}
+
+function toggleBugPopover(forceState) {
+  const targetState = typeof forceState === 'boolean' ? forceState : !bugPopoverOpen;
+  setBugPopoverState(targetState);
+}
+
+function closeBugPopover() {
+  setBugPopoverState(false);
+}
+
+function setBugPopoverState(isOpen) {
+  if (!bugReportPopover || !bugReportBtn) return;
+  bugPopoverOpen = Boolean(isOpen);
+  bugReportPopover.classList.toggle('hidden', !bugPopoverOpen);
+  bugReportBtn.setAttribute('aria-expanded', bugPopoverOpen ? 'true' : 'false');
+  if (bugPopoverOpen) {
+    bugReportPopover.focus();
+  }
+}
+
+function handleBugDocumentClick(event) {
+  if (!bugPopoverOpen) return;
+  if (bugReportPopover?.contains(event.target) || bugReportBtn?.contains(event.target)) return;
+  closeBugPopover();
+}
+
+function handleBugKeydown(event) {
+  if (event.key !== 'Escape' || !bugPopoverOpen) return;
+  closeBugPopover();
+  bugReportBtn?.focus();
+}
+
+function handleBugReportSubmit(event) {
+  event.preventDefault();
+  if (!bugReportInput) return;
+  const value = bugReportInput.value.trim();
+  if (!value) return;
+  const record = {
+    id: `bug_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    message: value,
+    createdAt: Date.now(),
+  };
+  bugReports = [record, ...bugReports];
+  persistBugReports();
+  renderBugReportList();
+  bugReportForm?.reset();
+  bugReportInput.focus();
+}
+
+function handleBugListClick(event) {
+  const target = event.target;
+  if (!target || !target.matches('[data-role="bug-remove"]')) return;
+  const reportId = target.getAttribute('data-bug-id');
+  if (!reportId) return;
+  removeBugReport(reportId);
+}
+
+function renderBugReportList() {
+  if (!bugReportListEl) return;
+  if (!bugReports.length) {
+    bugReportListEl.innerHTML = '<div class="bug-report-empty">No bug reports yet.</div>';
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  bugReports.forEach(report => {
+    const entry = document.createElement('div');
+    entry.className = 'bug-report-entry';
+    const message = document.createElement('p');
+    message.textContent = report.message;
+    const footer = document.createElement('footer');
+    const timestamp = document.createElement('span');
+    timestamp.textContent = new Date(report.createdAt).toLocaleString();
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Remove';
+    removeBtn.dataset.role = 'bug-remove';
+    removeBtn.setAttribute('data-bug-id', report.id);
+    footer.appendChild(timestamp);
+    footer.appendChild(removeBtn);
+    entry.appendChild(message);
+    entry.appendChild(footer);
+    fragment.appendChild(entry);
+  });
+  bugReportListEl.innerHTML = '';
+  bugReportListEl.appendChild(fragment);
+}
+
+function removeBugReport(reportId) {
+  const next = bugReports.filter(report => report.id !== reportId);
+  if (next.length === bugReports.length) return;
+  bugReports = next;
+  persistBugReports();
+  renderBugReportList();
+}
+
+function loadStoredBugReports() {
+  const raw = safeLocalStorageGet(BUG_REPORT_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(entry => ({
+      id: entry.id || `bug_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      message: String(entry.message || '').trim(),
+      createdAt: Number(entry.createdAt) || Date.now(),
+    })).filter(entry => entry.message);
+  } catch (_) {
+    return [];
+  }
+}
+
+function persistBugReports() {
+  try {
+    if (!bugReports.length) {
+      safeLocalStorageRemove(BUG_REPORT_STORAGE_KEY);
+      return;
+    }
+    safeLocalStorageSet(BUG_REPORT_STORAGE_KEY, JSON.stringify(bugReports));
+  } catch (_) {
+    /* ignore */
+  }
 }
 
 function signOut() {

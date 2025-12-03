@@ -32,9 +32,24 @@
               <div id="notification-empty-state" class="notification-empty">No notifications yet.</div>
             </div>
           </div>
-          <button id="report-bug" class="icon-btn bug-report-btn" type="button" aria-label="Report a bug" title="Report a bug">
+          <div class="bug-report-shell">
+            <button id="report-bug" class="icon-btn bug-report-btn" type="button" aria-label="Report a bug" aria-expanded="false" aria-controls="bug-report-popover" title="Report a bug">
             <img src="bug.png" alt="" aria-hidden="true" />
-          </button>
+            </button>
+            <div id="bug-report-popover" class="bug-report-popover hidden" role="dialog" aria-modal="false" aria-label="Report a bug" tabindex="-1">
+              <div class="bug-report-header">
+                <h3>Report a bug</h3>
+                <button type="button" class="icon-btn bug-close-btn" id="bug-report-close" aria-label="Close bug report panel">
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <form id="bug-report-form" class="bug-report-form">
+                <textarea id="bug-report-input" placeholder="Describe what went wrong..." rows="3" required></textarea>
+                <button type="submit" class="btn primary">Report bug</button>
+              </form>
+              <div class="bug-report-list" id="bug-report-list" aria-live="polite"></div>
+            </div>
+          </div>
           <span id="user-name"></span>
           <button id="back-to-top" class="btn ghost hidden" type="button">Back to top</button>
           <button id="sign-out" class="btn secondary">Sign out</button>
