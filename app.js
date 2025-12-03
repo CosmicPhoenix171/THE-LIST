@@ -9794,7 +9794,7 @@ const adImages = [
   'ads/ad4.png',
   'ads/ad5.png',
   'ads/ad6.png',
-  'ads/ad7.png',=
+  'ads/ad7.png',
   // Add more ad images here as you add them to the ads folder
 ];
 
