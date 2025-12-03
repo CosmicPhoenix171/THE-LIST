@@ -1827,6 +1827,7 @@ function handleBugReportSubmit(event) {
     id: `bug_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     message: value,
     createdAt: Date.now(),
+    author: currentUser?.displayName || currentUser?.email || 'Anonymous',
   };
   bugReports = [record, ...bugReports];
   persistBugReports();
@@ -1856,14 +1857,15 @@ function renderBugReportList() {
     const message = document.createElement('p');
     message.textContent = report.message;
     const footer = document.createElement('footer');
-    const timestamp = document.createElement('span');
-    timestamp.textContent = new Date(report.createdAt).toLocaleString();
+    const meta = document.createElement('span');
+    const timestamp = new Date(report.createdAt).toLocaleString();
+    meta.textContent = `${report.author || 'Anonymous'} • ${timestamp}`;
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.textContent = 'Remove';
     removeBtn.dataset.role = 'bug-remove';
     removeBtn.setAttribute('data-bug-id', report.id);
-    footer.appendChild(timestamp);
+    footer.appendChild(meta);
     footer.appendChild(removeBtn);
     entry.appendChild(message);
     entry.appendChild(footer);
@@ -1891,6 +1893,7 @@ function loadStoredBugReports() {
       id: entry.id || `bug_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       message: String(entry.message || '').trim(),
       createdAt: Number(entry.createdAt) || Date.now(),
+      author: String(entry.author || 'Anonymous'),
     })).filter(entry => entry.message);
   } catch (_) {
     return [];

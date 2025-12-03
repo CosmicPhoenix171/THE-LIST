@@ -39,6 +39,7 @@ body{
   color:var(--text-100);
   -webkit-font-smoothing:antialiased;
 }
+#app{position:relative;z-index:1}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 
 .centered-screen{display:flex;align-items:center;justify-content:center;height:100vh;padding:1rem}
@@ -185,7 +186,8 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   bottom: 0;
   width: 320px;
   height: auto;
-  z-index: 1000;
+  z-index: 0;
+  pointer-events: none;
   display: none;
 }
 
