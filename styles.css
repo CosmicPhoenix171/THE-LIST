@@ -591,6 +591,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 
 .icon-btn{border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text-100);border-radius:50%;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;position:relative;transition:background .18s ease,border-color .18s ease,transform .12s ease}
 .icon-btn:hover{background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.18);transform:translateY(-1px)}
+.bug-report-btn img{width:24px;height:24px;object-fit:contain;display:block}
 .notification-shell{position:relative;display:flex;align-items:center}
 .notification-bell{padding:0}
 .notification-bell .bell-icon{width:22px;height:22px;fill:var(--text-300)}

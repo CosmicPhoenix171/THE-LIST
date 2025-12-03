@@ -46,6 +46,7 @@ const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
 const LIST_LOAD_STAGGER_MS = 600;
 const METADATA_SCHEMA_VERSION = 4;
 const APP_VERSION = 'test-pages-2025.11.15';
+const BUG_REPORT_URL = 'https://github.com/CosmicPhoenix171/THE-LIST/issues/new/choose';
 const ANIME_STATUS_PRIORITY = {
   RELEASING: 6,
   NOT_YET_RELEASED: 5,
@@ -681,6 +682,7 @@ const franchiseSectionEl = document.getElementById('franchise-section');
 const franchiseShelfEl = document.getElementById('franchise-shelf');
 const franchiseMetaEl = document.getElementById('franchise-meta');
 const libraryStatsSummaryEl = document.getElementById('library-stats-summary');
+const bugReportBtn = document.getElementById('report-bug');
 const unifiedSearchInput = document.getElementById('library-search');
 const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
 const finishedFilterToggle = document.getElementById('finished-filter-toggle');
@@ -1709,6 +1711,15 @@ function initNotificationBell() {
   document.addEventListener('keydown', handleNotificationKeydown);
   updateNotificationBadge();
   updateNotificationEmptyState();
+}
+
+function initBugReportButton() {
+  if (!bugReportBtn) return;
+  bugReportBtn.addEventListener('click', () => {
+    const target = BUG_REPORT_URL || '';
+    if (!target) return;
+    window.open(target, '_blank', 'noopener,noreferrer');
+  });
 }
 
 function toggleNotificationPopover(forceState) {
@@ -9312,6 +9323,7 @@ if (auth) {
 tmEasterEgg.bindTriggers();
 initUnifiedLibraryControls();
 initNotificationBell();
+initBugReportButton();
 renderUnifiedLibrary();
 
 function updateListStats(listType, entries) {
