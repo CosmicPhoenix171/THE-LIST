@@ -344,6 +344,10 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .suggestions .empty{padding:.6rem .7rem;color:var(--text-500);font-size:.85rem}
 
 .list{display:grid;gap:.8rem}
+.virtual-scroll-root{position:relative;display:block}
+.virtual-scroll-spacer{width:100%;pointer-events:none}
+.virtualized-standard-list{display:grid;gap:.8rem;margin:0;padding:0}
+.virtualized-grid{content-visibility:auto}
 .movies-grid{
   --movie-card-min-width:220px;
   --movie-card-gap:1rem;

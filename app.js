@@ -151,6 +151,264 @@ const RUNTIME_PILL_UNITS = [
   { key: 'years', label: 'Years' }
 ];
 
+// Lists with very large payloads rely on viewport virtualization. Flip
+// window.__THE_LIST_PROFILE__ = true in DevTools to log render timings.
+const VIRTUALIZATION_THRESHOLD = 220;
+const VIRTUALIZATION_OVERSCAN = 6;
+const DEFAULT_VIRTUAL_ROW_HEIGHT = 320;
+const PERF_DEBUG_FLAG = '__THE_LIST_PROFILE__';
+const virtualListControllers = new Map();
+let unifiedVirtualController = null;
+
+function shouldLogPerfEvents() {
+  if (typeof window === 'undefined') return false;
+  const flag = window[PERF_DEBUG_FLAG];
+  return flag === true || flag === '1';
+}
+
+function logRenderMetrics(eventName, meta = {}) {
+  if (!shouldLogPerfEvents()) return;
+  const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  const payload = { ...meta };
+  if (payload.startTime !== undefined) {
+    const duration = Math.max(0, now - payload.startTime);
+    payload.durationMs = Number(duration.toFixed(1));
+    delete payload.startTime;
+  }
+  console.info(`[perf] ${eventName}`, payload);
+}
+
+class VirtualScroller {
+  constructor(container, options = {}) {
+    this.container = container;
+    this.renderItem = options.renderItem;
+    this.estimateHeight = Math.max(options.estimateHeight || DEFAULT_VIRTUAL_ROW_HEIGHT, 120);
+    this.overscan = Math.max(options.overscan ?? VIRTUALIZATION_OVERSCAN, 2);
+    this.hostClass = options.hostClass || '';
+    this.onItemsRendered = options.onItemsRendered || null;
+    this.averageHeight = this.estimateHeight;
+    this.items = [];
+    this.startIndex = 0;
+    this.endIndex = 0;
+    this.measureHandle = null;
+    this.isDestroyed = false;
+
+    this.setupDom();
+    this.bindEvents();
+  }
+
+  setupDom() {
+    if (!this.container) return;
+    this.container.classList.add('virtual-scroll-root');
+    this.topSpacer = document.createElement('div');
+    this.bottomSpacer = document.createElement('div');
+    this.itemsHost = document.createElement('div');
+    if (this.hostClass) {
+      this.itemsHost.className = this.hostClass;
+    }
+    this.topSpacer.className = 'virtual-scroll-spacer';
+    this.bottomSpacer.className = 'virtual-scroll-spacer';
+    this.itemsHost.dataset.virtualHost = 'true';
+    this.itemsHost.style.contain = 'layout paint';
+    this.itemsHost.style.contentVisibility = 'auto';
+    this.container.innerHTML = '';
+    this.container.appendChild(this.topSpacer);
+    this.container.appendChild(this.itemsHost);
+    this.container.appendChild(this.bottomSpacer);
+  }
+
+  bindEvents() {
+    this.handleScroll = this.handleScroll.bind(this);
+    this.handleResize = this.handleResize.bind(this);
+    window.addEventListener('scroll', this.handleScroll, { passive: true });
+    window.addEventListener('resize', this.handleResize, { passive: true });
+  }
+
+  unbindEvents() {
+    window.removeEventListener('scroll', this.handleScroll);
+    window.removeEventListener('resize', this.handleResize);
+  }
+
+  handleResize() {
+    this.scheduleRender();
+  }
+
+  destroy() {
+    this.isDestroyed = true;
+    this.unbindEvents();
+    if (this.measureHandle) {
+      cancelAnimationFrame(this.measureHandle);
+      this.measureHandle = null;
+    }
+    if (this.container) {
+      this.container.classList.remove('virtual-scroll-root');
+      this.container.innerHTML = '';
+    }
+  }
+
+  setItems(entries = []) {
+    this.items = Array.isArray(entries) ? entries : [];
+    this.startIndex = 0;
+    this.endIndex = 0;
+    this.updateSpacers();
+    this.scheduleRender(true);
+  }
+
+  scheduleRender(force = false) {
+    if (this.isDestroyed) return;
+    if (force) {
+      this.renderVisibleRange();
+      return;
+    }
+    if (this.renderScheduled) return;
+    this.renderScheduled = true;
+    requestAnimationFrame(() => {
+      this.renderScheduled = false;
+      this.renderVisibleRange();
+    });
+  }
+
+  getViewportOffsets() {
+    const rect = this.container.getBoundingClientRect();
+    const scrollY = window.scrollY || window.pageYOffset;
+    const top = rect.top + scrollY;
+    const bottom = top + rect.height;
+    return { top, bottom };
+  }
+
+  renderVisibleRange() {
+    if (!this.container || !this.items.length) {
+      this.itemsHost.innerHTML = '';
+      this.updateSpacers();
+      this.onItemsRendered?.(0, 0, []);
+      return;
+    }
+
+    const viewportTop = window.scrollY || window.pageYOffset;
+    const viewportBottom = viewportTop + window.innerHeight;
+    const { top: containerTop, bottom: containerBottom } = this.getViewportOffsets();
+    const startBoundary = Math.max(viewportTop, containerTop);
+    const endBoundary = Math.min(viewportBottom, containerBottom);
+    const relativeTop = Math.max(0, startBoundary - containerTop);
+    const relativeBottom = Math.max(relativeTop + this.estimateHeight, endBoundary - containerTop);
+    const visibleCountEstimate = Math.max(1, Math.ceil((relativeBottom - relativeTop) / this.averageHeight));
+    let nextStart = Math.max(0, Math.floor(relativeTop / this.averageHeight) - this.overscan);
+    let nextEnd = Math.min(this.items.length, nextStart + visibleCountEstimate + this.overscan * 2);
+    if (relativeBottom >= containerBottom - containerTop) {
+      nextEnd = this.items.length;
+    }
+
+    if (nextStart === this.startIndex && nextEnd === this.endIndex) {
+      return;
+    }
+
+    this.startIndex = nextStart;
+    this.endIndex = nextEnd;
+    this.renderWindow();
+  }
+
+  renderWindow() {
+    if (!this.itemsHost) return;
+    this.itemsHost.innerHTML = '';
+    if (this.startIndex >= this.endIndex) {
+      this.updateSpacers();
+      this.onItemsRendered?.(0, 0, []);
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (let i = this.startIndex; i < this.endIndex; i++) {
+      const entry = this.items[i];
+      if (!entry) continue;
+      const node = this.renderItem(entry, i);
+      if (!node) continue;
+      node.dataset.virtualIndex = String(i);
+      fragment.appendChild(node);
+    }
+    this.itemsHost.appendChild(fragment);
+    this.updateSpacers();
+    this.measureRenderedHeights();
+    this.onItemsRendered?.(this.startIndex, this.endIndex, Array.from(this.itemsHost.children));
+  }
+
+  updateSpacers() {
+    const before = this.startIndex * this.averageHeight;
+    const after = Math.max((this.items.length - this.endIndex) * this.averageHeight, 0);
+    if (this.topSpacer) {
+      this.topSpacer.style.height = before ? `${before}px` : '0px';
+    }
+    if (this.bottomSpacer) {
+      this.bottomSpacer.style.height = after ? `${after}px` : '0px';
+    }
+  }
+
+  measureRenderedHeights() {
+    if (!this.itemsHost || !this.itemsHost.children.length) return;
+    if (this.measureHandle) cancelAnimationFrame(this.measureHandle);
+    this.measureHandle = requestAnimationFrame(() => {
+      if (!this.itemsHost || !this.itemsHost.children.length) return;
+      let total = 0;
+      const nodes = Array.from(this.itemsHost.children);
+      nodes.forEach(node => {
+        if (node && node.offsetHeight) {
+          total += node.offsetHeight;
+        }
+      });
+      if (!total) return;
+      const observed = total / nodes.length;
+      if (observed && isFinite(observed)) {
+        this.averageHeight = (this.averageHeight * 0.7) + (observed * 0.3);
+        this.updateSpacers();
+      }
+    });
+  }
+}
+
+function getVirtualListController(key) {
+  return virtualListControllers.get(key) || null;
+}
+
+function ensureVirtualListController(key, container, options) {
+  if (!container) return null;
+  let controller = virtualListControllers.get(key);
+  if (controller && controller.container !== container) {
+    controller.destroy();
+    controller = null;
+  }
+  if (!controller) {
+    controller = new VirtualScroller(container, options);
+    virtualListControllers.set(key, controller);
+  }
+  return controller;
+}
+
+function destroyVirtualListController(key) {
+  const existing = virtualListControllers.get(key);
+  if (existing) {
+    existing.destroy();
+    virtualListControllers.delete(key);
+  }
+}
+
+function ensureUnifiedVirtualizer(container, options) {
+  if (!container) return null;
+  if (unifiedVirtualController && unifiedVirtualController.container !== container) {
+    unifiedVirtualController.destroy();
+    unifiedVirtualController = null;
+  }
+  if (!unifiedVirtualController) {
+    unifiedVirtualController = new VirtualScroller(container, options);
+  }
+  return unifiedVirtualController;
+}
+
+function destroyUnifiedVirtualizer() {
+  if (unifiedVirtualController) {
+    unifiedVirtualController.destroy();
+    unifiedVirtualController = null;
+  }
+}
+
 function getDisplayCacheMap() {
   return showFinishedOnly ? finishedCaches : listCaches;
 }
@@ -1822,12 +2080,14 @@ function createEl(tag, classNames = '', options = {}) {
 
 // Render list items
 function renderList(listType, data) {
+  const renderStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   listCaches[listType] = data;
   invalidateSeriesCrossListCache({ schedule: false });
   const container = document.getElementById(`${listType}-list`);
   if (container) {
     container.innerHTML = '';
   }
+  const virtualKey = `list:${listType}`;
 
   const entries = Object.entries(data || {});
   const supportsActorFilter = listSupportsActorFilter(listType);
@@ -1845,6 +2105,7 @@ function renderList(listType, data) {
     if (container) {
       container.innerHTML = '<div class="small">' + message + '</div>';
     }
+    destroyVirtualListController(virtualKey);
     updateListStats(listType, filtered);
     renderUnifiedLibrary();
     return;
@@ -1884,19 +2145,77 @@ function renderList(listType, data) {
     if (ta < tb) return -1; if (ta > tb) return 1; return 0;
   });
 
+  const shouldVirtualize = filtered.length >= VIRTUALIZATION_THRESHOLD;
+  let usedVirtualization = false;
+
   if (isCollapsibleList(listType) && container) {
-    renderCollapsibleMediaGrid(listType, container, filtered);
+    const prepared = prepareCollapsibleRecords(listType, filtered);
+    const { visibleIds } = prepared;
+    const expandedSet = ensureExpandedSet(listType);
+    expandedSet.forEach(cardId => {
+      if (!visibleIds.has(cardId)) {
+        expandedSet.delete(cardId);
+      }
+    });
+
+    if (shouldVirtualize) {
+      const controller = ensureVirtualListController(virtualKey, container, {
+        estimateHeight: 380,
+        overscan: 8,
+        hostClass: 'movies-grid virtualized-grid',
+        renderItem: (record) => {
+          const card = buildCollapsibleMovieCard(listType, record.id, record.displayItem, record.index, {
+            displayEntryId: record.displayEntryId,
+          });
+          queueCardTitleAutosize(card);
+          return card;
+        },
+        onItemsRendered: () => {
+          updateCollapsibleCardStates(listType);
+        },
+      });
+      controller?.setItems(prepared.displayRecords);
+      usedVirtualization = Boolean(controller);
+      seriesGroups[listType] = prepared.leaderMembersByCardId;
+    } else {
+      destroyVirtualListController(virtualKey);
+      if (container) {
+        renderCollapsibleMediaGrid(listType, container, filtered, prepared);
+      }
+    }
   } else if (container) {
-    renderStandardList(container, listType, filtered);
+    if (shouldVirtualize) {
+      const controller = ensureVirtualListController(virtualKey, container, {
+        estimateHeight: listType === 'books' ? 240 : 300,
+        overscan: 6,
+        hostClass: 'virtualized-standard-list',
+        renderItem: (record) => {
+          const card = buildStandardCard(listType, record.id, record.item);
+          queueCardTitleAutosize(card);
+          return card;
+        },
+      });
+      controller?.setItems(filtered.map(([id, item], index) => ({ id, item, index })));
+      usedVirtualization = Boolean(controller);
+    } else {
+      destroyVirtualListController(virtualKey);
+      renderStandardList(container, listType, filtered);
+    }
   }
 
-  if (listType in expandedCards) {
+  if (!usedVirtualization && listType in expandedCards) {
     updateCollapsibleCardStates(listType);
   }
 
   renderUnifiedLibrary();
   refreshFranchiseLibraryMatches();
   scheduleCrossSeriesRefresh();
+  logRenderMetrics('renderList', {
+    listType,
+    count: filtered.length,
+    usedVirtualization,
+    startTime: renderStart,
+  });
 }
 
 // ============================================================================
@@ -1906,11 +2225,14 @@ function renderList(listType, data) {
 function renderUnifiedLibrary() {
   updateLibraryRuntimeStats();
   if (!combinedListEl) return;
+  const renderStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   const displayCaches = getDisplayCacheMap();
   const hasLoadedAny = PRIMARY_LIST_TYPES.some(type => displayCaches[type] !== undefined);
   if (!hasLoadedAny) {
     const message = showFinishedOnly ? 'Loading finished entries...' : 'Loading your library...';
+    destroyUnifiedVirtualizer();
     combinedListEl.innerHTML = `<div class="small">${message}</div>`;
+    logRenderMetrics('renderUnifiedLibrary', { state: 'loading', count: 0, startTime: renderStart });
     return;
   }
 
@@ -1939,19 +2261,51 @@ function renderUnifiedLibrary() {
     const emptyMessage = showFinishedOnly
       ? 'No finished entries match the current filters yet.'
       : 'No entries match the current filters yet.';
+    destroyUnifiedVirtualizer();
     combinedListEl.innerHTML = `<div class="small">${emptyMessage}</div>`;
+    logRenderMetrics('renderUnifiedLibrary', { state: 'empty', count: 0, startTime: renderStart });
     return;
   }
 
+  const shouldVirtualizeUnified = filtered.length >= VIRTUALIZATION_THRESHOLD;
+  if (shouldVirtualizeUnified) {
+    const controller = ensureUnifiedVirtualizer(combinedListEl, {
+      estimateHeight: 360,
+      overscan: 8,
+      hostClass: 'movies-grid unified-grid virtualized-grid',
+      renderItem: (entry) => {
+        const node = buildUnifiedCard(entry);
+        if (node) {
+          queueCardTitleAutosize(node);
+        }
+        return node;
+      },
+    });
+    controller?.setItems(filtered);
+    logRenderMetrics('renderUnifiedLibrary', {
+      count: filtered.length,
+      usedVirtualization: true,
+      startTime: renderStart,
+    });
+    return;
+  }
+
+  destroyUnifiedVirtualizer();
   combinedListEl.innerHTML = '';
   const grid = createEl('div', 'movies-grid unified-grid');
   filtered.forEach(entry => {
     const node = buildUnifiedCard(entry);
     if (node) {
+      queueCardTitleAutosize(node);
       grid.appendChild(node);
     }
   });
   combinedListEl.appendChild(grid);
+  logRenderMetrics('renderUnifiedLibrary', {
+    count: filtered.length,
+    usedVirtualization: false,
+    startTime: renderStart,
+  });
 }
 
 function collectUnifiedEntries() {
@@ -3156,9 +3510,10 @@ function prepareCollapsibleRecords(listType, entries) {
   return { displayRecords, leaderMembersByCardId, visibleIds };
 }
 
-function renderCollapsibleMediaGrid(listType, container, entries) {
+function renderCollapsibleMediaGrid(listType, container, entries, prepared = null) {
   const grid = createEl('div', 'movies-grid');
-  const { displayRecords, leaderMembersByCardId, visibleIds } = prepareCollapsibleRecords(listType, entries);
+  const preparedRecords = prepared || prepareCollapsibleRecords(listType, entries);
+  const { displayRecords, leaderMembersByCardId, visibleIds } = preparedRecords;
   seriesGroups[listType] = leaderMembersByCardId;
 
   displayRecords.forEach(record => {
@@ -9439,7 +9794,7 @@ const adImages = [
   'ads/ad4.png',
   'ads/ad5.png',
   'ads/ad6.png',
-  'ads/ad7.png',
+  'ads/ad7.png',=
   // Add more ad images here as you add them to the ads folder
 ];
 
