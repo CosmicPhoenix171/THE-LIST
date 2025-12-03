@@ -46,7 +46,8 @@ const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1';
 const LIST_LOAD_STAGGER_MS = 600;
 const METADATA_SCHEMA_VERSION = 4;
 const APP_VERSION = 'test-pages-2025.11.15';
-const BUG_REPORT_STORAGE_KEY = '__THE_LIST_BUGS__';
+const BUG_REPORT_DB_PATH = 'bugReports';
+const BUG_REPORT_ADMIN_NAMES = new Set(['cosmicphoenix 171']);
 const ANIME_STATUS_PRIORITY = {
   RELEASING: 6,
   NOT_YET_RELEASED: 5,
@@ -129,6 +130,9 @@ const unifiedFilters = {
   types: new Set(PRIMARY_LIST_TYPES),
 };
 let bugReports = [];
+let bugReportsLoaded = false;
+let bugReportLoadError = null;
+let bugReportUnsubscribe = null;
 let bugPopoverOpen = false;
 const MEDIA_TYPE_LABELS = {
   movies: 'Movies',
@@ -1722,7 +1726,9 @@ function initNotificationBell() {
 
 function initBugReportButton() {
   if (!bugReportBtn || !bugReportPopover) return;
-  bugReports = loadStoredBugReports();
+  bugReports = [];
+  bugReportsLoaded = false;
+  bugReportLoadError = null;
   renderBugReportList();
   bugReportBtn.addEventListener('click', () => toggleBugPopover());
   if (bugReportCloseBtn) {
@@ -1818,22 +1824,34 @@ function handleBugKeydown(event) {
   bugReportBtn?.focus();
 }
 
-function handleBugReportSubmit(event) {
+async function handleBugReportSubmit(event) {
   event.preventDefault();
   if (!bugReportInput) return;
   const value = bugReportInput.value.trim();
   if (!value) return;
+  if (!currentUser) {
+    alert('Sign in to report bugs.');
+    return;
+  }
+  if (!db) {
+    alert('Bug reporting is unavailable right now. Try again later.');
+    return;
+  }
   const record = {
-    id: `bug_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     message: value,
     createdAt: Date.now(),
-    author: currentUser?.displayName || currentUser?.email || 'Anonymous',
+    author: currentUser.displayName || currentUser.email || 'Anonymous',
+    authorUid: currentUser.uid || '',
+    authorEmail: currentUser.email || '',
   };
-  bugReports = [record, ...bugReports];
-  persistBugReports();
-  renderBugReportList();
-  bugReportForm?.reset();
-  bugReportInput.focus();
+  try {
+    await push(ref(db, BUG_REPORT_DB_PATH), record);
+    bugReportForm?.reset();
+    bugReportInput.focus();
+  } catch (err) {
+    console.error('Bug report submit failed', err);
+    alert('Unable to submit bug report right now. Please try again later.');
+  }
 }
 
 function handleBugListClick(event) {
@@ -1846,6 +1864,18 @@ function handleBugListClick(event) {
 
 function renderBugReportList() {
   if (!bugReportListEl) return;
+  if (!currentUser) {
+    bugReportListEl.innerHTML = '<div class="bug-report-empty">Sign in to view bug reports.</div>';
+    return;
+  }
+  if (bugReportLoadError) {
+    bugReportListEl.innerHTML = `<div class="bug-report-empty">${bugReportLoadError}</div>`;
+    return;
+  }
+  if (!bugReportsLoaded) {
+    bugReportListEl.innerHTML = '<div class="bug-report-empty">Loading bug reports...</div>';
+    return;
+  }
   if (!bugReports.length) {
     bugReportListEl.innerHTML = '<div class="bug-report-empty">No bug reports yet.</div>';
     return;
@@ -1858,15 +1888,18 @@ function renderBugReportList() {
     message.textContent = report.message;
     const footer = document.createElement('footer');
     const meta = document.createElement('span');
-    const timestamp = new Date(report.createdAt).toLocaleString();
+    const timestamp = report.createdAt ? new Date(report.createdAt).toLocaleString() : 'Just now';
     meta.textContent = `${report.author || 'Anonymous'} • ${timestamp}`;
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.textContent = 'Remove';
-    removeBtn.dataset.role = 'bug-remove';
-    removeBtn.setAttribute('data-bug-id', report.id);
     footer.appendChild(meta);
-    footer.appendChild(removeBtn);
+    const canRemove = canCurrentUserRemoveBugReport(report);
+    if (canRemove) {
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = 'Remove';
+      removeBtn.dataset.role = 'bug-remove';
+      removeBtn.setAttribute('data-bug-id', report.id);
+      footer.appendChild(removeBtn);
+    }
     entry.appendChild(message);
     entry.appendChild(footer);
     fragment.appendChild(entry);
@@ -1876,40 +1909,74 @@ function renderBugReportList() {
 }
 
 function removeBugReport(reportId) {
-  const next = bugReports.filter(report => report.id !== reportId);
-  if (next.length === bugReports.length) return;
-  bugReports = next;
-  persistBugReports();
+  if (!reportId || !db) return;
+  const target = bugReports.find(report => report.id === reportId);
+  const canRemove = canCurrentUserRemoveBugReport(target);
+  if (!canRemove) return;
+  const reportRef = ref(db, `${BUG_REPORT_DB_PATH}/${reportId}`);
+  remove(reportRef).catch(err => {
+    console.error('Bug report delete failed', err);
+    alert('Unable to remove this report right now.');
+  });
+}
+
+function isBugReportAdmin(user) {
+  if (!user) return false;
+  const normalized = (user.displayName || '').trim().toLowerCase();
+  return normalized ? BUG_REPORT_ADMIN_NAMES.has(normalized) : false;
+}
+
+function canCurrentUserRemoveBugReport(report) {
+  if (!currentUser || !report) return false;
+  if (isBugReportAdmin(currentUser)) return true;
+  return Boolean(report.authorUid && currentUser.uid === report.authorUid);
+}
+
+function startBugReportSync() {
+  if (!db) return;
+  if (bugReportUnsubscribe) {
+    bugReportUnsubscribe();
+    bugReportUnsubscribe = null;
+  }
+  bugReportLoadError = null;
+  bugReportsLoaded = false;
   renderBugReportList();
-}
-
-function loadStoredBugReports() {
-  const raw = safeLocalStorageGet(BUG_REPORT_STORAGE_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(entry => ({
-      id: entry.id || `bug_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      message: String(entry.message || '').trim(),
-      createdAt: Number(entry.createdAt) || Date.now(),
-      author: String(entry.author || 'Anonymous'),
+  const reportsRef = query(ref(db, BUG_REPORT_DB_PATH), orderByChild('createdAt'));
+  bugReportUnsubscribe = onValue(reportsRef, (snapshot) => {
+    const payload = snapshot.val() || {};
+    const entries = Object.entries(payload).map(([id, value]) => ({
+      id,
+      message: String(value?.message || '').trim(),
+      createdAt: Number(value?.createdAt) || 0,
+      author: value?.author || 'Anonymous',
+      authorUid: value?.authorUid || '',
+      authorEmail: value?.authorEmail || '',
     })).filter(entry => entry.message);
-  } catch (_) {
-    return [];
-  }
+    entries.sort((a, b) => {
+      if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt;
+      return a.id.localeCompare(b.id);
+    });
+    bugReports = entries;
+    bugReportLoadError = null;
+    bugReportsLoaded = true;
+    renderBugReportList();
+  }, (err) => {
+    console.error('Bug report listener error', err);
+    bugReportLoadError = 'Unable to load bug reports right now.';
+    bugReportsLoaded = true;
+    renderBugReportList();
+  });
 }
 
-function persistBugReports() {
-  try {
-    if (!bugReports.length) {
-      safeLocalStorageRemove(BUG_REPORT_STORAGE_KEY);
-      return;
-    }
-    safeLocalStorageSet(BUG_REPORT_STORAGE_KEY, JSON.stringify(bugReports));
-  } catch (_) {
-    /* ignore */
+function stopBugReportSync() {
+  if (bugReportUnsubscribe) {
+    bugReportUnsubscribe();
+    bugReportUnsubscribe = null;
   }
+  bugReports = [];
+  bugReportLoadError = null;
+  bugReportsLoaded = false;
+  renderBugReportList();
 }
 
 function signOut() {
@@ -2001,6 +2068,7 @@ function showAppForUser(user) {
   playTheListIntro();
   loadPrimaryLists();
   loadFranchises();
+  startBugReportSync();
 }
 
 function loadPrimaryLists() {
@@ -2151,6 +2219,7 @@ function updateBackToTopVisibility() {
 
 // Detach all DB listeners
 function detachAllListeners() {
+  stopBugReportSync();
   for (const k in listeners) {
     if (typeof listeners[k] === 'function') listeners[k]();
   }
