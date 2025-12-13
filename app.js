@@ -1445,6 +1445,21 @@ function setActiveAddModalType(listType) {
     setupFormAutocomplete(form, targetType);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
+      // If we are in "finished only" mode, we should probably add to the finished list
+      // or at least warn the user. For now, we'll just add to the main list as requested,
+      // but we could enhance this to support adding directly to finished.
+      // However, the user request is "I can add a movie to the list even if it's on the finished page."
+      // which implies they WANT to add to the main list, but maybe it's not showing up because they are viewing finished?
+      // Or maybe they mean they CAN add it, but they shouldn't be able to if it's already finished?
+      // Assuming the former: "I added it, but I don't see it because I'm on the finished page."
+      
+      // If showFinishedOnly is true, switch it off so the user can see their new item
+      if (showFinishedOnly) {
+        showFinishedOnly = false;
+        if (finishedFilterToggle) finishedFilterToggle.checked = false;
+        renderUnifiedLibrary();
+      }
+      
       await addItemFromForm(targetType, form);
     });
     activeAddModal.currentForm = form;
@@ -6500,10 +6515,22 @@ function signaturesMatch(candidate, existing) {
 
 function isDuplicateCandidate(listType, candidateItem) {
   const cache = listCaches[listType];
-  if (!cache) return false;
+  const finishedCache = finishedCaches[listType];
+  
   const candidateSig = buildComparisonSignature(candidateItem);
   if (!candidateSig) return false;
-  return Object.values(cache).some(existing => signaturesMatch(candidateSig, buildComparisonSignature(existing)));
+
+  // Check main list
+  if (cache && Object.values(cache).some(existing => signaturesMatch(candidateSig, buildComparisonSignature(existing)))) {
+    return true;
+  }
+
+  // Check finished list
+  if (finishedCache && Object.values(finishedCache).some(existing => signaturesMatch(candidateSig, buildComparisonSignature(existing)))) {
+    return true;
+  }
+
+  return false;
 }
 
 function extractPrimaryYear(value) {
