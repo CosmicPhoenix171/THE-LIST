@@ -164,6 +164,7 @@ const VIRTUALIZATION_THRESHOLD = 220;
 const VIRTUALIZATION_OVERSCAN = 6;
 const DEFAULT_VIRTUAL_ROW_HEIGHT = 320;
 const PERF_DEBUG_FLAG = '__THE_LIST_PROFILE__';
+const OFFSCREEN_UNMOUNT_MARGIN = 1200; // px of tolerance before tearing down DOM when list is far offscreen
 const virtualListControllers = new Map();
 let unifiedVirtualController = null;
 
@@ -298,6 +299,18 @@ class VirtualScroller {
     const viewportTop = window.scrollY || window.pageYOffset;
     const viewportBottom = viewportTop + window.innerHeight;
     const { top: containerTop, bottom: containerBottom } = this.getViewportOffsets();
+    const offscreenAbove = containerBottom < viewportTop - OFFSCREEN_UNMOUNT_MARGIN;
+    const offscreenBelow = containerTop > viewportBottom + OFFSCREEN_UNMOUNT_MARGIN;
+    if (offscreenAbove || offscreenBelow) {
+      if (this.itemsHost && this.itemsHost.children.length) {
+        this.itemsHost.innerHTML = '';
+        this.startIndex = 0;
+        this.endIndex = 0;
+        this.updateSpacers();
+        this.onItemsRendered?.(0, 0, []);
+      }
+      return;
+    }
     const startBoundary = Math.max(viewportTop, containerTop);
     const endBoundary = Math.min(viewportBottom, containerBottom);
     const relativeTop = Math.max(0, startBoundary - containerTop);
