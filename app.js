@@ -214,8 +214,8 @@ class VirtualScroller {
     this.isDestroyed = false;
     this.itemsPerRow = 1;
     this.rowObserver = null;
-    this.heightLocked = false;
-
+    // Removed heightLocked to allow dynamic updates
+    
     this.setupDom();
     this.bindEvents();
   }
@@ -401,11 +401,18 @@ class VirtualScroller {
     const relativeTop = Math.max(0, startBoundary - containerTop);
     const relativeBottom = Math.max(relativeTop + this.estimateHeight, endBoundary - containerTop);
     const itemsPerRow = Math.max(1, this.itemsPerRow || 1);
-    const rowHeight = Math.max(1, this.averageHeight);
+    // Use a slightly smaller row height for calculation to ensure we render enough rows
+    // to cover the viewport even if some rows are smaller than average.
+    const safeRowHeight = Math.max(1, this.averageHeight * 0.9);
+    
     const totalRows = Math.max(1, Math.ceil(this.items.length / itemsPerRow));
-    const visibleRows = Math.max(1, Math.ceil((relativeBottom - relativeTop) / rowHeight));
-    const startRow = Math.max(0, Math.floor(relativeTop / rowHeight) - this.overscan);
-    let endRow = Math.min(totalRows, startRow + visibleRows + this.overscan * 2);
+    const visibleRows = Math.max(1, Math.ceil((relativeBottom - relativeTop) / safeRowHeight));
+    
+    // Increase overscan buffer to prevent blank areas during fast scrolling
+    const effectiveOverscan = Math.max(this.overscan, 4);
+    
+    const startRow = Math.max(0, Math.floor(relativeTop / this.averageHeight) - effectiveOverscan);
+    let endRow = Math.min(totalRows, startRow + visibleRows + (effectiveOverscan * 2));
     if (relativeBottom >= containerBottom - containerTop) {
       endRow = totalRows;
     }
@@ -464,7 +471,13 @@ class VirtualScroller {
   updateLayoutMetrics() {
     if (!this.itemsHost) return;
     const hostWidth = this.itemsHost.getBoundingClientRect().width || 0;
-    const sample = this.itemsHost.firstElementChild;
+    // Try to find a valid sample
+    let sample = this.itemsHost.firstElementChild;
+    // If first element is hidden or weird, try next
+    if (sample && sample.getBoundingClientRect().width === 0 && this.itemsHost.children.length > 1) {
+       sample = this.itemsHost.children[1];
+    }
+    
     const sampleWidth = sample ? sample.getBoundingClientRect().width : 0;
     const nextPerRow = sampleWidth && hostWidth ? Math.max(1, Math.floor(hostWidth / sampleWidth)) : 1;
     this.itemsPerRow = nextPerRow;
@@ -472,24 +485,41 @@ class VirtualScroller {
 
   measureRenderedHeights() {
     if (!this.itemsHost || !this.itemsHost.children.length) return;
-    if (this.heightLocked) return;
+    
     if (this.measureHandle) cancelAnimationFrame(this.measureHandle);
     this.measureHandle = requestAnimationFrame(() => {
       if (!this.itemsHost || !this.itemsHost.children.length) return;
+      
+      // Re-check layout metrics in case of resize/reflow
+      this.updateLayoutMetrics();
+
       let total = 0;
       const nodes = Array.from(this.itemsHost.children);
+      let validNodes = 0;
+      
       nodes.forEach(node => {
-        if (node && node.offsetHeight) {
+        if (node && node.offsetHeight > 0) {
           total += node.offsetHeight;
+          validNodes++;
         }
       });
-      if (!total) return;
-      const observed = total / nodes.length;
-      if (observed && isFinite(observed)) {
-        this.averageHeight = observed;
-        this.heightLocked = true;
-        this.updateSpacers();
-      }
+      
+      if (!validNodes) return;
+      
+      // Calculate average item height
+      const avgItemHeight = total / validNodes;
+      
+      // If we have multiple items per row, the "row height" is roughly the item height
+      // (assuming a grid where items in a row are same height).
+      // If items are variable height in a masonry layout, this is more complex, 
+      // but for this app, it's either a list (1 per row) or a grid (uniform rows).
+      
+      // Use a weighted average to smooth out changes and prevent jitter
+      // but allow it to adapt if the content changes significantly (e.g. images load)
+      const alpha = 0.1; 
+      this.averageHeight = (this.averageHeight * (1 - alpha)) + (avgItemHeight * alpha);
+      
+      this.updateSpacers();
     });
   }
 }
@@ -2500,7 +2530,7 @@ function renderList(listType, data) {
     if (shouldVirtualize) {
       const controller = ensureVirtualListController(virtualKey, container, {
         estimateHeight: 380,
-        overscan: 8,
+        overscan: 12, // Increased overscan
         hostClass: 'movies-grid virtualized-grid',
         scrollTarget: window,
         renderItem: (record) => {
@@ -2528,7 +2558,7 @@ function renderList(listType, data) {
     if (shouldVirtualize) {
       const controller = ensureVirtualListController(virtualKey, container, {
         estimateHeight: listType === 'books' ? 240 : 300,
-        overscan: 6,
+        overscan: 10, // Increased overscan
         hostClass: 'virtualized-standard-list',
         scrollTarget: window,
         renderItem: (record) => {
