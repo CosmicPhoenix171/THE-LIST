@@ -859,18 +859,17 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .alphabet-scroller {
   position: fixed;
   right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 90px;
+  bottom: 20px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  justify-content: space-between;
   z-index: 100;
   background: rgba(15, 23, 32, 0.85);
-  padding: 6px 4px;
+  padding: 10px 4px;
   border-radius: 12px;
   backdrop-filter: blur(6px);
-  max-height: 90vh;
-  overflow-y: auto;
+  overflow-y: hidden;
   font-size: 0.7rem;
   color: var(--text-500);
   user-select: none;
