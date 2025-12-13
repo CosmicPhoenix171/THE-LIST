@@ -184,12 +184,14 @@
                   <input type="checkbox" id="finished-filter-toggle" />
                   <span>Finished only</span>
                 </label>
-                <select id="finished-sort-select" class="finished-sort-select hidden" aria-label="Sort finished items">
+                <select id="library-sort-select" class="library-sort-select" aria-label="Sort library items">
                   <option value="default">Default Sort</option>
-                  <option value="ratingDesc">Rating (High to Low)</option>
-                  <option value="ratingAsc">Rating (Low to High)</option>
                   <option value="alphaAsc">A-Z</option>
                   <option value="alphaDesc">Z-A</option>
+                  <option value="yearDesc">Year (Newest)</option>
+                  <option value="yearAsc">Year (Oldest)</option>
+                  <option value="ratingDesc" class="finished-only-option" hidden>Rating (High to Low)</option>
+                  <option value="ratingAsc" class="finished-only-option" hidden>Rating (Low to High)</option>
                 </select>
               </div>
             </div>

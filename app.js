@@ -2296,8 +2296,8 @@ function loadPrimaryLists() {
   loadNext();
 }
 
-const finishedSortSelect = document.getElementById('finished-sort-select');
-let finishedSortMode = 'default';
+const librarySortSelect = document.getElementById('library-sort-select');
+let librarySortMode = 'default';
 
 function initUnifiedLibraryControls() {
   if (unifiedSearchInput) {
@@ -2310,21 +2310,36 @@ function initUnifiedLibraryControls() {
     const type = btn.dataset.typeToggle;
     btn.addEventListener('click', () => toggleUnifiedTypeFilter(type));
   });
+  
+  const updateSortOptionsVisibility = () => {
+    if (!librarySortSelect) return;
+    const ratingOptions = librarySortSelect.querySelectorAll('.finished-only-option');
+    ratingOptions.forEach(opt => {
+      opt.hidden = !showFinishedOnly;
+      opt.disabled = !showFinishedOnly;
+    });
+    // If current sort is hidden, reset to default
+    const currentOption = librarySortSelect.options[librarySortSelect.selectedIndex];
+    if (currentOption && currentOption.hidden) {
+      librarySortSelect.value = 'default';
+      librarySortMode = 'default';
+    }
+  };
+
   if (finishedFilterToggle) {
     finishedFilterToggle.checked = showFinishedOnly;
     finishedFilterToggle.addEventListener('change', (ev) => {
       showFinishedOnly = Boolean(ev.target.checked);
-      if (finishedSortSelect) {
-        finishedSortSelect.classList.toggle('hidden', !showFinishedOnly);
-      }
+      updateSortOptionsVisibility();
       renderUnifiedLibrary();
       updateLibraryRuntimeStats();
     });
   }
-  if (finishedSortSelect) {
-    finishedSortSelect.classList.toggle('hidden', !showFinishedOnly);
-    finishedSortSelect.addEventListener('change', (ev) => {
-      finishedSortMode = ev.target.value;
+  
+  if (librarySortSelect) {
+    updateSortOptionsVisibility();
+    librarySortSelect.addEventListener('change', (ev) => {
+      librarySortMode = ev.target.value;
       renderUnifiedLibrary();
     });
   }
@@ -2676,21 +2691,21 @@ function renderUnifiedLibrary() {
   }
 
   filtered.sort((a, b) => {
-    // Special sorting for finished list
-    if (showFinishedOnly && finishedSortMode !== 'default') {
-      if (finishedSortMode === 'ratingDesc' || finishedSortMode === 'ratingAsc') {
+    // Unified sorting logic
+    if (librarySortMode !== 'default') {
+      if (librarySortMode === 'ratingDesc' || librarySortMode === 'ratingAsc') {
         const ra = normalizeFinishRating(a.item?.finishedRating) || 0;
         const rb = normalizeFinishRating(b.item?.finishedRating) || 0;
         if (ra !== rb) {
-          return finishedSortMode === 'ratingDesc' ? rb - ra : ra - rb;
+          return librarySortMode === 'ratingDesc' ? rb - ra : ra - rb;
         }
       }
-      if (finishedSortMode === 'alphaAsc' || finishedSortMode === 'alphaDesc') {
+      if (librarySortMode === 'alphaAsc' || librarySortMode === 'alphaDesc') {
         const ta = titleSortKey(getSeriesAwareTitle(a.displayItem || a.item));
         const tb = titleSortKey(getSeriesAwareTitle(b.displayItem || b.item));
         if (ta !== tb) {
-          if (ta < tb) return finishedSortMode === 'alphaAsc' ? -1 : 1;
-          if (ta > tb) return finishedSortMode === 'alphaAsc' ? 1 : -1;
+          if (ta < tb) return librarySortMode === 'alphaAsc' ? -1 : 1;
+          if (ta > tb) return librarySortMode === 'alphaAsc' ? 1 : -1;
         }
       }
     }
