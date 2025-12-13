@@ -466,10 +466,7 @@ class VirtualScroller {
     const sample = this.itemsHost.firstElementChild;
     const sampleWidth = sample ? sample.getBoundingClientRect().width : 0;
     const nextPerRow = sampleWidth && hostWidth ? Math.max(1, Math.floor(hostWidth / sampleWidth)) : 1;
-    if (nextPerRow !== this.itemsPerRow) {
-      this.itemsPerRow = nextPerRow;
-      this.scheduleRender(true);
-    }
+    this.itemsPerRow = nextPerRow;
   }
 
   measureRenderedHeights() {
