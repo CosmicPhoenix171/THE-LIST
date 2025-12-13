@@ -212,6 +212,8 @@ class VirtualScroller {
     this.endIndex = 0;
     this.measureHandle = null;
     this.isDestroyed = false;
+    this.itemsPerRow = 1;
+    this.rowObserver = null;
 
     this.setupDom();
     this.bindEvents();
@@ -223,18 +225,26 @@ class VirtualScroller {
     this.topSpacer = document.createElement('div');
     this.bottomSpacer = document.createElement('div');
     this.itemsHost = document.createElement('div');
+    this.topSensor = document.createElement('div');
+    this.bottomSensor = document.createElement('div');
     if (this.hostClass) {
       this.itemsHost.className = this.hostClass;
     }
+    this.topSensor.className = 'virtual-scroll-sensor';
+    this.bottomSensor.className = 'virtual-scroll-sensor';
+    this.topSensor.style.height = '1px';
+    this.bottomSensor.style.height = '1px';
     this.topSpacer.className = 'virtual-scroll-spacer';
     this.bottomSpacer.className = 'virtual-scroll-spacer';
     this.itemsHost.dataset.virtualHost = 'true';
     this.itemsHost.style.contain = 'layout paint';
     this.itemsHost.style.contentVisibility = 'auto';
     this.container.innerHTML = '';
+    this.container.appendChild(this.topSensor);
     this.container.appendChild(this.topSpacer);
     this.container.appendChild(this.itemsHost);
     this.container.appendChild(this.bottomSpacer);
+    this.container.appendChild(this.bottomSensor);
   }
 
   bindEvents() {
@@ -253,6 +263,7 @@ class VirtualScroller {
         this.resizeObserver.observe(target);
       }
     }
+    this.setupObservers();
   }
 
   unbindEvents() {
@@ -266,6 +277,7 @@ class VirtualScroller {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
     }
+    this.teardownObservers();
   }
 
   handleScroll() {
@@ -295,6 +307,30 @@ class VirtualScroller {
     this.endIndex = 0;
     this.updateSpacers();
     this.scheduleRender(true);
+  }
+
+  setupObservers() {
+    if (!this.topSensor || !this.bottomSensor) return;
+    if (this.rowObserver) this.rowObserver.disconnect();
+    const options = { root: null, rootMargin: '600px 0px 600px 0px', threshold: 0 };
+    this.rowObserver = new IntersectionObserver((entries) => {
+      if (this.isDestroyed) return;
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          this.scheduleRender();
+          break;
+        }
+      }
+    }, options);
+    this.rowObserver.observe(this.topSensor);
+    this.rowObserver.observe(this.bottomSensor);
+  }
+
+  teardownObservers() {
+    if (this.rowObserver) {
+      this.rowObserver.disconnect();
+      this.rowObserver = null;
+    }
   }
 
   scheduleRender(force = false) {
@@ -363,13 +399,17 @@ class VirtualScroller {
     const endBoundary = Math.min(viewportBottom, containerBottom);
     const relativeTop = Math.max(0, startBoundary - containerTop);
     const relativeBottom = Math.max(relativeTop + this.estimateHeight, endBoundary - containerTop);
-    const visibleCountEstimate = Math.max(1, Math.ceil((relativeBottom - relativeTop) / this.averageHeight));
-    let nextStart = Math.max(0, Math.floor(relativeTop / this.averageHeight) - this.overscan);
-    const minimumWindow = Math.max(30, visibleCountEstimate + this.overscan * 2);
-    let nextEnd = Math.min(this.items.length, nextStart + minimumWindow);
+    const itemsPerRow = Math.max(1, this.itemsPerRow || 1);
+    const rowHeight = Math.max(1, this.averageHeight);
+    const totalRows = Math.max(1, Math.ceil(this.items.length / itemsPerRow));
+    const visibleRows = Math.max(1, Math.ceil((relativeBottom - relativeTop) / rowHeight));
+    const startRow = Math.max(0, Math.floor(relativeTop / rowHeight) - this.overscan);
+    let endRow = Math.min(totalRows, startRow + visibleRows + this.overscan * 2);
     if (relativeBottom >= containerBottom - containerTop) {
-      nextEnd = this.items.length;
+      endRow = totalRows;
     }
+    const nextStart = Math.max(0, startRow * itemsPerRow);
+    const nextEnd = Math.min(this.items.length, endRow * itemsPerRow);
 
     if (nextStart === this.startIndex && nextEnd === this.endIndex) {
       return;
@@ -399,19 +439,36 @@ class VirtualScroller {
       fragment.appendChild(node);
     }
     this.itemsHost.appendChild(fragment);
+    this.updateLayoutMetrics();
     this.updateSpacers();
     this.measureRenderedHeights();
     this.onItemsRendered?.(this.startIndex, this.endIndex, Array.from(this.itemsHost.children));
   }
 
   updateSpacers() {
-    const before = this.startIndex * this.averageHeight;
-    const after = Math.max((this.items.length - this.endIndex) * this.averageHeight, 0);
+    const itemsPerRow = Math.max(1, this.itemsPerRow || 1);
+    const totalRows = Math.max(1, Math.ceil(this.items.length / itemsPerRow));
+    const startRow = Math.floor(this.startIndex / itemsPerRow);
+    const endRow = Math.ceil(this.endIndex / itemsPerRow);
+    const before = startRow * this.averageHeight;
+    const after = Math.max((totalRows - endRow) * this.averageHeight, 0);
     if (this.topSpacer) {
       this.topSpacer.style.height = before ? `${before}px` : '0px';
     }
     if (this.bottomSpacer) {
       this.bottomSpacer.style.height = after ? `${after}px` : '0px';
+    }
+  }
+
+  updateLayoutMetrics() {
+    if (!this.itemsHost) return;
+    const hostWidth = this.itemsHost.getBoundingClientRect().width || 0;
+    const sample = this.itemsHost.firstElementChild;
+    const sampleWidth = sample ? sample.getBoundingClientRect().width : 0;
+    const nextPerRow = sampleWidth && hostWidth ? Math.max(1, Math.floor(hostWidth / sampleWidth)) : 1;
+    if (nextPerRow !== this.itemsPerRow) {
+      this.itemsPerRow = nextPerRow;
+      this.scheduleRender(true);
     }
   }
 
