@@ -242,6 +242,9 @@ class VirtualScroller {
     this.handleResize = this.handleResize.bind(this);
     const target = this.scrollTarget || window;
     target.addEventListener('scroll', this.handleScroll, { passive: true });
+    if (target !== window) {
+      window.addEventListener('scroll', this.handleScroll, { passive: true });
+    }
     window.addEventListener('resize', this.handleResize, { passive: true });
     if (window.ResizeObserver && this.container) {
       this.resizeObserver = new ResizeObserver(() => this.scheduleRender(true));
@@ -255,6 +258,9 @@ class VirtualScroller {
   unbindEvents() {
     const target = this.scrollTarget || window;
     target.removeEventListener('scroll', this.handleScroll);
+    if (target !== window) {
+      window.removeEventListener('scroll', this.handleScroll);
+    }
     window.removeEventListener('resize', this.handleResize);
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
@@ -341,6 +347,16 @@ class VirtualScroller {
       return;
     }
 
+    const rect = this.container.getBoundingClientRect();
+    const zeroHeight = !rect || rect.height <= 0;
+    if (zeroHeight) {
+      // If we can't measure, render a safe initial window so content appears.
+      this.startIndex = 0;
+      this.endIndex = Math.min(this.items.length, Math.max(60, this.overscan * 8));
+      this.renderWindow();
+      return;
+    }
+
     const { top: viewportTop, bottom: viewportBottom } = this.getViewportRange();
     const { top: containerTop, bottom: containerBottom } = this.getViewportOffsets();
     const startBoundary = Math.max(viewportTop, containerTop);
@@ -349,7 +365,8 @@ class VirtualScroller {
     const relativeBottom = Math.max(relativeTop + this.estimateHeight, endBoundary - containerTop);
     const visibleCountEstimate = Math.max(1, Math.ceil((relativeBottom - relativeTop) / this.averageHeight));
     let nextStart = Math.max(0, Math.floor(relativeTop / this.averageHeight) - this.overscan);
-    let nextEnd = Math.min(this.items.length, nextStart + visibleCountEstimate + this.overscan * 2);
+    const minimumWindow = Math.max(30, visibleCountEstimate + this.overscan * 2);
+    let nextEnd = Math.min(this.items.length, nextStart + minimumWindow);
     if (relativeBottom >= containerBottom - containerTop) {
       nextEnd = this.items.length;
     }
@@ -2431,6 +2448,7 @@ function renderList(listType, data) {
         estimateHeight: 380,
         overscan: 8,
         hostClass: 'movies-grid virtualized-grid',
+        scrollTarget: window,
         renderItem: (record) => {
           const card = buildCollapsibleMovieCard(listType, record.id, record.displayItem, record.index, {
             displayEntryId: record.displayEntryId,
@@ -2457,6 +2475,7 @@ function renderList(listType, data) {
         estimateHeight: listType === 'books' ? 240 : 300,
         overscan: 6,
         hostClass: 'virtualized-standard-list',
+        scrollTarget: window,
         renderItem: (record) => {
           const card = buildStandardCard(listType, record.id, record.item);
           queueCardTitleAutosize(card);
@@ -2541,6 +2560,7 @@ function renderUnifiedLibrary() {
       estimateHeight: 360,
       overscan: 8,
       hostClass: 'movies-grid unified-grid virtualized-grid',
+      scrollTarget: window,
       renderItem: (entry) => {
         const node = buildUnifiedCard(entry);
         if (node) {
