@@ -297,6 +297,56 @@ class VirtualScroller {
     this.scheduleRender();
   }
 
+  scrollToIndex(index) {
+    if (index < 0 || index >= this.items.length) return;
+    const itemsPerRow = Math.max(1, this.itemsPerRow || 1);
+    const row = Math.floor(index / itemsPerRow);
+    
+    // Calculate target position
+    const rect = this.container.getBoundingClientRect();
+    const target = this.scrollTarget || window;
+    const currentScrollTop = target === window 
+      ? (window.scrollY || document.documentElement.scrollTop) 
+      : target.scrollTop;
+      
+    // We need the container's absolute top position relative to the document
+    // rect.top is relative to viewport. 
+    // containerAbsoluteTop = rect.top + windowScrollY
+    const containerTop = rect.top + (target === window ? (window.scrollY || document.documentElement.scrollTop) : 0);
+    
+    // Target scroll position
+    const targetY = containerTop + (row * this.averageHeight);
+    
+    if (target === window) {
+      // For window, we scroll to the absolute position
+      // But wait, containerTop already includes scrollY.
+      // If we are scrolled down, rect.top is small/negative.
+      // rect.top + scrollY is constant (document position).
+      // So targetY is the document Y coordinate of the row.
+      // But we need to account for the container's offset from the top of the document?
+      // Yes, containerTop is exactly that.
+      // However, if the container is inside other scrollable elements, this gets complex.
+      // Assuming window scroll:
+      window.scrollTo({ top: targetY - (this.topSpacer?.offsetTop || 0), behavior: 'auto' });
+      // Actually, simpler:
+      // The virtual scroller maintains spacers.
+      // The row is at `row * averageHeight` pixels *inside* the container.
+      // So we want the container's top + row*height to be at the top of the viewport.
+      // So scrollY should be containerAbsoluteTop + row*height.
+      // But wait, containerAbsoluteTop is where the container starts.
+      // So yes: window.scrollTo(0, containerAbsoluteTop + row * this.averageHeight).
+      
+      // Let's recalculate containerAbsoluteTop carefully.
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      const absoluteTop = rect.top + scrollTop;
+      window.scrollTo({ top: absoluteTop + (row * this.averageHeight), behavior: 'auto' });
+    } else {
+      target.scrollTop = row * this.averageHeight;
+    }
+    
+    this.scheduleRender(true);
+  }
+
   destroy() {
     this.isDestroyed = true;
     this.unbindEvents();
@@ -2344,6 +2394,7 @@ function initUnifiedLibraryControls() {
     });
   }
   updateUnifiedTypeControls();
+  initAlphabetScroller();
 }
 
 function toggleUnifiedTypeFilter(listType) {
@@ -2668,6 +2719,71 @@ function renderList(listType, data) {
 // Feature 4: Unified Library
 // ============================================================================
 
+let alphabetScrollerEl = null;
+let currentScrollerItems = [];
+
+function initAlphabetScroller() {
+  alphabetScrollerEl = document.getElementById('alphabet-scroller');
+  if (!alphabetScrollerEl) return;
+  
+  const chars = ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')];
+  alphabetScrollerEl.innerHTML = chars.map(char => 
+    `<div class="alphabet-scroller-item" data-char="${char}">${char}</div>`
+  ).join('');
+  
+  alphabetScrollerEl.addEventListener('click', (ev) => {
+    const target = ev.target.closest('.alphabet-scroller-item');
+    if (!target) return;
+    const char = target.dataset.char;
+    handleAlphabetScroll(char);
+  });
+}
+
+function handleAlphabetScroll(char) {
+  if (!currentScrollerItems.length) return;
+  
+  const targetChar = char === '#' ? '0' : char.toLowerCase();
+  const index = currentScrollerItems.findIndex(entry => {
+    const title = getSeriesAwareTitle(entry.displayItem || entry.item);
+    const key = titleSortKey(title);
+    if (char === '#') {
+      return /^[0-9]/.test(key);
+    }
+    return key.startsWith(targetChar);
+  });
+  
+  if (index !== -1) {
+    if (unifiedVirtualController) {
+      unifiedVirtualController.scrollToIndex(index);
+    } else {
+      const grid = combinedListEl.querySelector('.movies-grid');
+      if (grid && grid.children[index]) {
+        const node = grid.children[index];
+        const headerOffset = 80;
+        const elementPosition = node.getBoundingClientRect().top + window.scrollY;
+        window.scrollTo({
+          top: elementPosition - headerOffset,
+          behavior: 'smooth'
+        });
+      }
+    }
+  }
+}
+
+function updateAlphabetScroller(items) {
+  if (!alphabetScrollerEl) return;
+  
+  const isAlpha = librarySortMode === 'default' || librarySortMode === 'alphaAsc';
+  
+  if (isAlpha && items.length > 20) {
+    alphabetScrollerEl.classList.remove('hidden');
+    currentScrollerItems = items;
+  } else {
+    alphabetScrollerEl.classList.add('hidden');
+    currentScrollerItems = [];
+  }
+}
+
 function renderUnifiedLibrary() {
   updateLibraryRuntimeStats();
   if (!combinedListEl) return;
@@ -2740,6 +2856,8 @@ function renderUnifiedLibrary() {
     const idxB = Math.max(PRIMARY_LIST_TYPES.indexOf(b.listType), 0);
     return idxA - idxB;
   });
+
+  updateAlphabetScroller(filtered);
 
   if (!filtered.length) {
     const emptyMessage = showFinishedOnly

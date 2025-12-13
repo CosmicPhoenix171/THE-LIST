@@ -855,3 +855,57 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   .wheel-result-card .poster{width:100%;height:200px}
 }
 
+/* Alphabet Scroller */
+.alphabet-scroller {
+  position: fixed;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 100;
+  background: rgba(15, 23, 32, 0.85);
+  padding: 6px 4px;
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+  max-height: 90vh;
+  overflow-y: auto;
+  font-size: 0.7rem;
+  color: var(--text-500);
+  user-select: none;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  width: 24px;
+  align-items: center;
+}
+
+.alphabet-scroller.hidden {
+  display: none;
+}
+
+.alphabet-scroller-item {
+  cursor: pointer;
+  padding: 1px 0;
+  text-align: center;
+  transition: all 0.2s ease;
+  width: 100%;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.alphabet-scroller-item:hover {
+  color: var(--primary-300);
+  background: rgba(255,255,255,0.05);
+  transform: scale(1.2);
+}
+
+@media (max-width: 768px) {
+  .alphabet-scroller {
+    right: 2px;
+    padding: 4px 2px;
+    width: 20px;
+    font-size: 0.65rem;
+  }
+}
+
