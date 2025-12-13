@@ -214,6 +214,7 @@ class VirtualScroller {
     this.isDestroyed = false;
     this.itemsPerRow = 1;
     this.rowObserver = null;
+    this.ignoreNextScroll = false; // Add flag to prevent scroll loops
     // Removed heightLocked to allow dynamic updates
     
     this.setupDom();
@@ -282,6 +283,10 @@ class VirtualScroller {
   }
 
   handleScroll() {
+    if (this.ignoreNextScroll) {
+      this.ignoreNextScroll = false;
+      return;
+    }
     this.scheduleRender();
   }
 
@@ -524,11 +529,20 @@ class VirtualScroller {
 
       if (Math.abs(heightDelta) > 0.5) {
         const target = this.scrollTarget || window;
+        
+        // Set flag to ignore the scroll event triggered by this adjustment
+        this.ignoreNextScroll = true;
+        
         if (target === window) {
           window.scrollBy(0, heightDelta);
         } else {
           target.scrollTop += heightDelta;
         }
+        
+        // Safety fallback: clear the flag after a short delay in case no scroll event fired
+        setTimeout(() => {
+          this.ignoreNextScroll = false;
+        }, 50);
       }
     });
   }
