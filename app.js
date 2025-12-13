@@ -167,6 +167,18 @@ const PERF_DEBUG_FLAG = '__THE_LIST_PROFILE__';
 const virtualListControllers = new Map();
 let unifiedVirtualController = null;
 
+function findScrollParent(node) {
+  let current = node?.parentElement || null;
+  while (current && current !== document.body && current !== document.documentElement) {
+    const style = window.getComputedStyle(current);
+    const overflowY = style?.overflowY || '';
+    const isScrollable = /auto|scroll|overlay/i.test(overflowY);
+    if (isScrollable) return current;
+    current = current.parentElement;
+  }
+  return null;
+}
+
 function shouldLogPerfEvents() {
   if (typeof window === 'undefined') return false;
   const flag = window[PERF_DEBUG_FLAG];
@@ -193,6 +205,7 @@ class VirtualScroller {
     this.overscan = Math.max(options.overscan ?? VIRTUALIZATION_OVERSCAN, 2);
     this.hostClass = options.hostClass || '';
     this.onItemsRendered = options.onItemsRendered || null;
+    this.scrollTarget = options.scrollTarget || findScrollParent(container) || window;
     this.averageHeight = this.estimateHeight;
     this.items = [];
     this.startIndex = 0;
@@ -227,13 +240,26 @@ class VirtualScroller {
   bindEvents() {
     this.handleScroll = this.handleScroll.bind(this);
     this.handleResize = this.handleResize.bind(this);
-    window.addEventListener('scroll', this.handleScroll, { passive: true });
+    const target = this.scrollTarget || window;
+    target.addEventListener('scroll', this.handleScroll, { passive: true });
     window.addEventListener('resize', this.handleResize, { passive: true });
+    if (window.ResizeObserver && this.container) {
+      this.resizeObserver = new ResizeObserver(() => this.scheduleRender(true));
+      this.resizeObserver.observe(this.container);
+      if (target instanceof Element) {
+        this.resizeObserver.observe(target);
+      }
+    }
   }
 
   unbindEvents() {
-    window.removeEventListener('scroll', this.handleScroll);
+    const target = this.scrollTarget || window;
+    target.removeEventListener('scroll', this.handleScroll);
     window.removeEventListener('resize', this.handleResize);
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
   }
 
   handleScroll() {
@@ -281,10 +307,30 @@ class VirtualScroller {
 
   getViewportOffsets() {
     const rect = this.container.getBoundingClientRect();
-    const scrollY = window.scrollY || window.pageYOffset;
-    const top = rect.top + scrollY;
+    const target = this.scrollTarget || window;
+    if (target === window) {
+      const scrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
+      const top = rect.top + scrollY;
+      const bottom = top + rect.height;
+      return { top, bottom };
+    }
+    const targetRect = target.getBoundingClientRect();
+    const scrollTop = target.scrollTop || 0;
+    const top = rect.top - targetRect.top + scrollTop;
     const bottom = top + rect.height;
     return { top, bottom };
+  }
+
+  getViewportRange() {
+    const target = this.scrollTarget || window;
+    if (target === window) {
+      const scrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
+      const height = window.innerHeight || document.documentElement.clientHeight || 0;
+      return { top: scrollTop, bottom: scrollTop + height };
+    }
+    const scrollTop = target.scrollTop || 0;
+    const height = target.clientHeight || 0;
+    return { top: scrollTop, bottom: scrollTop + height };
   }
 
   renderVisibleRange() {
@@ -295,8 +341,7 @@ class VirtualScroller {
       return;
     }
 
-    const viewportTop = window.scrollY || window.pageYOffset;
-    const viewportBottom = viewportTop + window.innerHeight;
+    const { top: viewportTop, bottom: viewportBottom } = this.getViewportRange();
     const { top: containerTop, bottom: containerBottom } = this.getViewportOffsets();
     const startBoundary = Math.max(viewportTop, containerTop);
     const endBoundary = Math.min(viewportBottom, containerBottom);
