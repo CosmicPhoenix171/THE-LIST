@@ -516,10 +516,28 @@ class VirtualScroller {
       
       // Use a weighted average to smooth out changes and prevent jitter
       // but allow it to adapt if the content changes significantly (e.g. images load)
+      const oldAverage = this.averageHeight;
       const alpha = 0.1; 
-      this.averageHeight = (this.averageHeight * (1 - alpha)) + (avgItemHeight * alpha);
+      this.averageHeight = (oldAverage * (1 - alpha)) + (avgItemHeight * alpha);
       
+      // Scroll Anchoring:
+      // If the average height changes, the top spacer size will change.
+      // We need to adjust the scroll position to keep the currently visible items
+      // in the same visual position relative to the viewport.
+      const itemsPerRow = Math.max(1, this.itemsPerRow || 1);
+      const startRow = Math.floor(this.startIndex / itemsPerRow);
+      const heightDelta = (this.averageHeight - oldAverage) * startRow;
+
       this.updateSpacers();
+
+      if (Math.abs(heightDelta) > 0.5) {
+        const target = this.scrollTarget || window;
+        if (target === window) {
+          window.scrollBy(0, heightDelta);
+        } else {
+          target.scrollTop += heightDelta;
+        }
+      }
     });
   }
 }
