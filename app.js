@@ -336,16 +336,8 @@ class VirtualScroller {
 
   scheduleRender(force = false) {
     if (this.isDestroyed) return;
-    if (force) {
-      this.renderVisibleRange();
-      return;
-    }
-    if (this.renderScheduled) return;
-    this.renderScheduled = true;
-    requestAnimationFrame(() => {
-      this.renderScheduled = false;
-      this.renderVisibleRange();
-    });
+    // Synchronous render to prevent visual lag/drift during fast scrolling
+    this.renderVisibleRange();
   }
 
   getViewportOffsets() {
