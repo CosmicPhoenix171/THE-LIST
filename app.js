@@ -8365,6 +8365,20 @@ function openEditModal(listType, itemId, item) {
   const notesInput = document.createElement('textarea');
   notesInput.name = 'notes';
   notesInput.value = item.notes || '';
+
+  // Rating input (only if finished)
+  let ratingInput = null;
+  if (item.finishedAt) {
+    ratingInput = document.createElement('input');
+    ratingInput.name = 'rating';
+    ratingInput.type = 'number';
+    ratingInput.min = FINISH_RATING_MIN;
+    ratingInput.max = FINISH_RATING_MAX;
+    ratingInput.step = '0.5';
+    ratingInput.placeholder = `Rating (1-10)`;
+    ratingInput.value = item.finishedRating || '';
+  }
+
   const saveBtn = document.createElement('button');
   saveBtn.className = 'btn primary';
   saveBtn.textContent = 'Save';
@@ -8386,6 +8400,9 @@ function openEditModal(listType, itemId, item) {
   form.appendChild(creatorInput);
   form.appendChild(seriesNameInput);
   form.appendChild(seriesOrderInput);
+  if (ratingInput) {
+    form.appendChild(ratingInput);
+  }
   form.appendChild(notesInput);
   const controls = document.createElement('div');
   controls.style.display = 'flex'; controls.style.gap = '.5rem'; controls.style.justifyContent = 'flex-end';
@@ -8463,6 +8480,14 @@ function openEditModal(listType, itemId, item) {
       notes: (notesInput.value || '').trim() || null,
       year: updatedYear || null,
     };
+    
+    if (ratingInput) {
+      const newRating = normalizeFinishRating(ratingInput.value);
+      if (newRating !== null) {
+        payload.finishedRating = newRating;
+      }
+    }
+
     if (isBooksTarget) {
       payload.author = creatorVal || null;
       payload.director = null;
@@ -8482,9 +8507,21 @@ function openEditModal(listType, itemId, item) {
     saveBtn.textContent = 'Saving...';
     try {
       if (targetListType === listType) {
-        await updateItem(listType, itemId, payload);
-        updateLocalItemCaches(listType, itemId, payload);
-        if (!isBooksTarget) {
+        // If item is finished, we need to update it in the finished path
+        if (item.finishedAt) {
+           const finishedRef = ref(db, `users/${currentUser.uid}/finished/${listType}/${itemId}`);
+           await update(finishedRef, payload);
+           // Also update local cache for immediate feedback
+           if (finishedCaches[listType] && finishedCaches[listType][itemId]) {
+             Object.assign(finishedCaches[listType][itemId], payload);
+           }
+           renderUnifiedLibrary();
+        } else {
+           await updateItem(listType, itemId, payload);
+           updateLocalItemCaches(listType, itemId, payload);
+        }
+
+        if (!isBooksTarget && !item.finishedAt) {
           const rebalanceJobs = [];
           const normalizedOriginal = normalizeTitleKey(originalSeriesName);
           const normalizedNew = normalizeTitleKey(payload.seriesName || '');
