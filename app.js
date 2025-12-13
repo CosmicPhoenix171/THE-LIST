@@ -224,6 +224,9 @@ class VirtualScroller {
   setupDom() {
     if (!this.container) return;
     this.container.classList.add('virtual-scroll-root');
+    // Disable native scroll anchoring to prevent conflicts
+    this.container.style.overflowAnchor = 'none';
+
     this.topSpacer = document.createElement('div');
     this.bottomSpacer = document.createElement('div');
     this.itemsHost = document.createElement('div');
@@ -533,16 +536,19 @@ class VirtualScroller {
         // Set flag to ignore the scroll event triggered by this adjustment
         this.ignoreNextScroll = true;
         
-        if (target === window) {
-          window.scrollBy(0, heightDelta);
-        } else {
-          target.scrollTop += heightDelta;
-        }
-        
-        // Safety fallback: clear the flag after a short delay in case no scroll event fired
-        setTimeout(() => {
-          this.ignoreNextScroll = false;
-        }, 50);
+        // Defer the scroll adjustment to the next frame to ensure layout is stable
+        requestAnimationFrame(() => {
+            if (target === window) {
+              window.scrollBy(0, heightDelta);
+            } else {
+              target.scrollTop += heightDelta;
+            }
+            
+            // Safety fallback: clear the flag after a short delay
+            setTimeout(() => {
+              this.ignoreNextScroll = false;
+            }, 50);
+        });
       }
     });
   }
