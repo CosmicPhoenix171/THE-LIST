@@ -909,3 +909,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   }
 }
 
+@media (min-width: 1400px) {
+  .alphabet-scroller {
+    right: 350px;
+  }
+}
+
