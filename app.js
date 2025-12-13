@@ -214,6 +214,7 @@ class VirtualScroller {
     this.isDestroyed = false;
     this.itemsPerRow = 1;
     this.rowObserver = null;
+    this.heightLocked = false;
 
     this.setupDom();
     this.bindEvents();
@@ -471,6 +472,7 @@ class VirtualScroller {
 
   measureRenderedHeights() {
     if (!this.itemsHost || !this.itemsHost.children.length) return;
+    if (this.heightLocked) return;
     if (this.measureHandle) cancelAnimationFrame(this.measureHandle);
     this.measureHandle = requestAnimationFrame(() => {
       if (!this.itemsHost || !this.itemsHost.children.length) return;
@@ -484,7 +486,8 @@ class VirtualScroller {
       if (!total) return;
       const observed = total / nodes.length;
       if (observed && isFinite(observed)) {
-        this.averageHeight = (this.averageHeight * 0.7) + (observed * 0.3);
+        this.averageHeight = observed;
+        this.heightLocked = true;
         this.updateSpacers();
       }
     });
