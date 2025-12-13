@@ -2708,6 +2708,25 @@ function renderUnifiedLibrary() {
           if (ta > tb) return librarySortMode === 'alphaAsc' ? 1 : -1;
         }
       }
+      if (librarySortMode === 'yearDesc' || librarySortMode === 'yearAsc') {
+        const ya = Number(a.displayItem?.year) || 0;
+        const yb = Number(b.displayItem?.year) || 0;
+        if (ya !== yb) {
+          return librarySortMode === 'yearDesc' ? yb - ya : ya - yb;
+        }
+      }
+      if (librarySortMode === 'budgetDesc' || librarySortMode === 'budgetAsc') {
+        const getBudget = (entry) => {
+           const val = entry.displayItem?.budget || entry.item?.budget;
+           if (!val) return 0;
+           return parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+        };
+        const ba = getBudget(a);
+        const bb = getBudget(b);
+        if (ba !== bb) {
+          return librarySortMode === 'budgetDesc' ? bb - ba : ba - bb;
+        }
+      }
     }
 
     const ta = titleSortKey(getSeriesAwareTitle(a.displayItem || a.item));
