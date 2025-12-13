@@ -2426,9 +2426,6 @@ function renderList(listType, data) {
   listCaches[listType] = data;
   invalidateSeriesCrossListCache({ schedule: false });
   const container = document.getElementById(`${listType}-list`);
-  if (container) {
-    container.innerHTML = '';
-  }
   const virtualKey = `list:${listType}`;
 
   const entries = Object.entries(data || {});
@@ -2523,6 +2520,7 @@ function renderList(listType, data) {
     } else {
       destroyVirtualListController(virtualKey);
       if (container) {
+        container.innerHTML = '';
         renderCollapsibleMediaGrid(listType, container, filtered, prepared);
       }
     }
@@ -2543,6 +2541,7 @@ function renderList(listType, data) {
       usedVirtualization = Boolean(controller);
     } else {
       destroyVirtualListController(virtualKey);
+      container.innerHTML = '';
       renderStandardList(container, listType, filtered);
     }
   }
