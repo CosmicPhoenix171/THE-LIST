@@ -236,6 +236,10 @@ class VirtualScroller {
     window.removeEventListener('resize', this.handleResize);
   }
 
+  handleScroll() {
+    this.scheduleRender();
+  }
+
   handleResize() {
     this.scheduleRender();
   }
@@ -10008,13 +10012,13 @@ async function autoAddTmdbKeywordEntries(franchiseLabel, keywordInfo, entries, o
 // ============================================================================
 
 const adImages = [
-  'ads/ad1.png',
-  'ads/ad2.png',
-  'ads/ad3.png',
-  'ads/ad4.png',
-  'ads/ad5.png',
-  'ads/ad6.png',
-  'ads/ad7.png',
+  'ads/ad1.svg',
+  'ads/ad2.svg',
+  'ads/ad3.svg',
+  'ads/ad4.svg',
+  'ads/ad5.svg',
+  'ads/ad6.svg',
+  'ads/ad7.svg',
   // Add more ad images here as you add them to the ads folder
 ];
 
