@@ -50,7 +50,8 @@ const JIKAN_RETRY_BASE_DELAY_MS = 1500;
 const JIKAN_MAX_RETRIES = 2;
 const MYANIMELIST_ANIME_URL = 'https://myanimelist.net/anime';
 const METADATA_SCHEMA_VERSION = 4;
-const APP_VERSION = 'test-pages-2025.11.15';
+const APP_VERSION = '2025.12.12';
+const VERSION_MANIFEST_URL = 'version.json';
 const ANIME_FRANCHISE_RELATION_TYPES = new Set([
   'SEQUEL',
   'PREQUEL',
@@ -430,6 +431,51 @@ function logAppVersionOnce() {
 }
 
 logAppVersionOnce();
+
+function exposeBuildInfo() {
+  globalThis.__THE_LIST_BUILD__ = {
+    version: APP_VERSION,
+    timestamp: Date.now(),
+  };
+}
+
+function showUpdateBanner(newVersion) {
+  if (document.getElementById('update-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'update-banner';
+  const text = document.createElement('div');
+  text.className = 'update-banner-text';
+  text.textContent = newVersion
+    ? `A new version (${newVersion}) is available. Refresh to update.`
+    : 'A new version is available. Refresh to update.';
+  const reloadBtn = document.createElement('button');
+  reloadBtn.type = 'button';
+  reloadBtn.className = 'btn primary update-banner-btn';
+  reloadBtn.textContent = 'Reload now';
+  reloadBtn.addEventListener('click', () => {
+    window.location.reload(true);
+  });
+  banner.appendChild(text);
+  banner.appendChild(reloadBtn);
+  document.body.insertBefore(banner, document.body.firstChild);
+}
+
+async function checkForStaleBundle() {
+  try {
+    const res = await fetch(`${VERSION_MANIFEST_URL}?ts=${Date.now()}`, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`Version manifest fetch failed: ${res.status}`);
+    const data = await res.json();
+    const manifestVersion = (data && data.build) || '';
+    if (manifestVersion && manifestVersion !== APP_VERSION) {
+      showUpdateBanner(manifestVersion);
+    }
+  } catch (err) {
+    console.warn('Version check skipped', err);
+  }
+}
+
+exposeBuildInfo();
+checkForStaleBundle();
 
 // firebase instances
 let db = null;

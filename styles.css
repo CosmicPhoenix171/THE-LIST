@@ -33,6 +33,9 @@ body{
   color:var(--text-100);
   -webkit-font-smoothing:antialiased;
 }
+.update-banner{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;justify-content:space-between;align-items:center;padding:.65rem 1.25rem;background:linear-gradient(135deg,rgba(125,242,201,0.18),rgba(80,201,255,0.22));border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 12px 30px rgba(0,0,0,0.28);backdrop-filter:blur(6px)}
+.update-banner-text{color:var(--text-100);font-weight:600;font-size:.95rem;letter-spacing:.2px}
+.update-banner .update-banner-btn{margin-left:1rem;white-space:nowrap}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 
 .centered-screen{display:flex;align-items:center;justify-content:center;height:100vh;padding:1rem}
