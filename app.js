@@ -2296,6 +2296,9 @@ function loadPrimaryLists() {
   loadNext();
 }
 
+const finishedSortSelect = document.getElementById('finished-sort-select');
+let finishedSortMode = 'default';
+
 function initUnifiedLibraryControls() {
   if (unifiedSearchInput) {
     unifiedSearchInput.addEventListener('input', debounce((ev) => {
@@ -2311,8 +2314,18 @@ function initUnifiedLibraryControls() {
     finishedFilterToggle.checked = showFinishedOnly;
     finishedFilterToggle.addEventListener('change', (ev) => {
       showFinishedOnly = Boolean(ev.target.checked);
+      if (finishedSortSelect) {
+        finishedSortSelect.classList.toggle('hidden', !showFinishedOnly);
+      }
       renderUnifiedLibrary();
       updateLibraryRuntimeStats();
+    });
+  }
+  if (finishedSortSelect) {
+    finishedSortSelect.classList.toggle('hidden', !showFinishedOnly);
+    finishedSortSelect.addEventListener('change', (ev) => {
+      finishedSortMode = ev.target.value;
+      renderUnifiedLibrary();
     });
   }
   updateUnifiedTypeControls();
@@ -2663,6 +2676,25 @@ function renderUnifiedLibrary() {
   }
 
   filtered.sort((a, b) => {
+    // Special sorting for finished list
+    if (showFinishedOnly && finishedSortMode !== 'default') {
+      if (finishedSortMode === 'ratingDesc' || finishedSortMode === 'ratingAsc') {
+        const ra = normalizeFinishRating(a.item?.finishedRating) || 0;
+        const rb = normalizeFinishRating(b.item?.finishedRating) || 0;
+        if (ra !== rb) {
+          return finishedSortMode === 'ratingDesc' ? rb - ra : ra - rb;
+        }
+      }
+      if (finishedSortMode === 'alphaAsc' || finishedSortMode === 'alphaDesc') {
+        const ta = titleSortKey(getSeriesAwareTitle(a.displayItem || a.item));
+        const tb = titleSortKey(getSeriesAwareTitle(b.displayItem || b.item));
+        if (ta !== tb) {
+          if (ta < tb) return finishedSortMode === 'alphaAsc' ? -1 : 1;
+          if (ta > tb) return finishedSortMode === 'alphaAsc' ? 1 : -1;
+        }
+      }
+    }
+
     const ta = titleSortKey(getSeriesAwareTitle(a.displayItem || a.item));
     const tb = titleSortKey(getSeriesAwareTitle(b.displayItem || b.item));
     if (ta < tb) return -1;
