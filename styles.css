@@ -539,7 +539,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .card.collapsible.movie-card:hover{
   /* Removed border from outer card */
 }
-.movie-card-summary{display:flex;flex-direction:column;align-items:center;gap:.45rem;text-align:center;width:100%}
+.movie-card-summary{display:flex;flex-direction:column;align-items:center;gap:.45rem;text-align:center;width:100%;position:relative}
 
 .movie-card-info {
   width: 100%;
@@ -589,6 +589,16 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   margin-top: 0.25rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.movie-card-summary .status-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  margin-top: 0;
+  z-index: 3;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  backdrop-filter: blur(3px);
 }
 
 .secondary-info {
