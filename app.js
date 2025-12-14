@@ -5822,13 +5822,6 @@ function buildSeriesTreeHeader(count, listType, cardId) {
   heading.appendChild(createEl('div', 'series-tree-heading-title', { text: 'Franchise order' }));
   const rightSide = createEl('div', 'series-tree-heading-right');
   rightSide.appendChild(createEl('div', 'series-tree-heading-count', { text: `${count} ${count === 1 ? 'entry' : 'entries'}` }));
-  const sortBtn = createEl('button', 'btn ghost series-tree-sort-btn', { text: 'Sort by Year' });
-  sortBtn.type = 'button';
-  sortBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    sortSeriesTreeByYear(listType, cardId);
-  });
-  rightSide.appendChild(sortBtn);
   heading.appendChild(rightSide);
   return heading;
 }
@@ -6421,54 +6414,7 @@ function disableSeriesTreeWheelScroll() {
   }
 }
 
-function sortSeriesTreeByYear(listType, cardId) {
-  if (!listType || !cardId) return;
-  const store = seriesGroups[listType];
-  if (!store) return;
-  const baseEntries = store.get(cardId);
-  const entries = getSeriesTreeEntries(listType, cardId, { sourceEntries: baseEntries });
-  if (!entries || entries.length <= 1) return;
 
-  const canonicalDate = (item) => {
-    // Prefer full date, fallback to year. Normalize across media.
-    if (!item) return { sortKey: 99999999, season: Infinity, tie: '' };
-    const isSeason = item.seasonNumber !== undefined && item.seasonNumber !== null;
-    const dateFields = [item.airDate, item.releaseDate];
-    if (!isSeason) dateFields.push(item.firstAirDate);
-    let sortKey = 99999999;
-    for (const val of dateFields) {
-      if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-        sortKey = parseInt(val.replace(/-/g, ''), 10);
-        break;
-      }
-    }
-    if (sortKey === 99999999) {
-      const yStr = sanitizeYear(String(item.year || item.releaseYear || ''));
-      if (yStr) sortKey = parseInt(yStr + '0000', 10);
-    }
-    const season = isSeason ? Number(item.seasonNumber) : Infinity;
-    const tie = titleSortKey(item.title || '');
-    return { sortKey, season, tie };
-  };
-
-  const sorted = entries.slice().sort((a, b) => {
-    const aKey = canonicalDate(a.item);
-    const bKey = canonicalDate(b.item);
-    if (aKey.sortKey !== bKey.sortKey) return aKey.sortKey - bKey.sortKey;
-    if (aKey.season !== bKey.season) return aKey.season - bKey.season;
-    if (aKey.tie !== bKey.tie) return aKey.tie < bKey.tie ? -1 : 1;
-    // Final stable tiebreaker: id
-    const aId = (a.id || '').toString();
-    const bId = (b.id || '').toString();
-    return aId.localeCompare(bId);
-  });
-
-  if (sorted.length) {
-    // Use the consistent attribute used elsewhere (data-id) to find the card
-    const cardElement = document.querySelector(`.card.collapsible.movie-card[data-id="${cardId}"]`);
-    applySeriesTreeReorder(listType, cardId, sorted, cardElement);
-  }
-}
 
 function applySeriesTreeReorder(listType, cardId, orderedEntries, cardElement) {
   if (!listType || !cardId || !Array.isArray(orderedEntries) || !orderedEntries.length) return;
