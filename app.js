@@ -4446,7 +4446,7 @@ function buildMediaSummaryBadges(listType, item, context = {}) {
 
 function collectMediaBadgeChips(listType, item, context = {}) {
   if (listType === 'tvShows') {
-    return buildTvStatChips(item);
+    return buildTvStatChips(item, context);
   }
   if (listType === 'movies' || listType === 'anime') {
     return buildSeriesBadgeChips(listType, context.cardId, item, context);
@@ -4473,15 +4473,19 @@ function buildSeriesBadgeChips(listType, cardId, item, context = {}) {
   return chips;
 }
 
-function buildTvStatChips(item) {
+function buildTvStatChips(item, context = {}) {
   if (!item) return [];
   if (Array.isArray(item.cachedTvBadges) && item.cachedTvBadges.length) {
-    return item.cachedTvBadges.slice();
+    const badges = item.cachedTvBadges.slice();
+    if (context && context.isExpanded === false) {
+      return badges.filter(b => !b.includes('min/ep') && !b.includes('min'));
+    }
+    return badges;
   }
-  return computeTvBadgeStrings(item);
+  return computeTvBadgeStrings(item, context);
 }
 
-function computeTvBadgeStrings(source) {
+function computeTvBadgeStrings(source, context = {}) {
   if (!source) return [];
   const chips = [];
   const seasonCount = getTvSeasonCount(source);
@@ -4494,7 +4498,11 @@ function computeTvBadgeStrings(source) {
   }
   const runtimeLabel = formatTvRuntimeLabel(source);
   if (runtimeLabel) {
-    chips.push(runtimeLabel);
+    // If context is provided and card is NOT expanded, skip runtime
+    const shouldHide = context && context.isExpanded === false;
+    if (!shouldHide) {
+      chips.push(runtimeLabel);
+    }
   }
   const statusLabel = formatTvStatusLabel(source?.tvStatus || source?.status);
   if (statusLabel) {
