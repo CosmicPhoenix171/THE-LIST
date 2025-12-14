@@ -5898,62 +5898,35 @@ function compareSeriesEntries(a, b) {
   const safeB = orderB === null || orderB === undefined ? Number.POSITIVE_INFINITY : orderB;
   if (safeA !== safeB) return safeA - safeB;
 
-  const getSortData = (item) => {
-    if (!item) return { year: 9999, date: 99999999, season: Infinity };
-    
-    let year = 9999;
-    const yearStr = sanitizeYear(String(item.year || item.releaseYear || ''));
-    if (yearStr) {
-        year = parseInt(yearStr, 10);
-    } else {
-        const candidates = [item.airDate, item.releaseDate, item.firstAirDate];
-        for (const c of candidates) {
-            if (c && typeof c === 'string' && c.match(/^\d{4}/)) {
-                year = parseInt(c.substring(0, 4), 10);
-                break;
-            }
-        }
+  const canonicalDate = (item) => {
+    if (!item) return { sortKey: 99999999, season: Infinity, tie: '' };
+    const isSeason = item.seasonNumber !== undefined && item.seasonNumber !== null;
+    const dateFields = [item.airDate, item.releaseDate];
+    if (!isSeason) dateFields.push(item.firstAirDate);
+    let sortKey = 99999999;
+    for (const val of dateFields) {
+      if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        sortKey = parseInt(val.replace(/-/g, ''), 10);
+        break;
+      }
     }
-
-    let date = 99999999;
-    const dateCandidates = [item.airDate, item.releaseDate];
-    if (item.seasonNumber === undefined || item.seasonNumber === null) {
-        dateCandidates.push(item.firstAirDate);
+    if (sortKey === 99999999) {
+      const yStr = sanitizeYear(String(item.year || item.releaseYear || ''));
+      if (yStr) sortKey = parseInt(yStr + '0000', 10);
     }
-    for (const c of dateCandidates) {
-        if (c && typeof c === 'string' && c.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            const dVal = parseInt(c.replace(/-/g, ''), 10);
-            if (year === 9999 || Math.floor(dVal / 10000) === year) {
-                date = dVal;
-                break;
-            }
-        }
-    }
-    if (date === 99999999 && year !== 9999) {
-        date = year * 10000; 
-    }
-
-    const season = (item.seasonNumber !== undefined && item.seasonNumber !== null) 
-        ? Number(item.seasonNumber) 
-        : Infinity;
-
-    return { year, date, season };
+    const season = isSeason ? Number(item.seasonNumber) : Infinity;
+    const tie = titleSortKey(item.title || '');
+    return { sortKey, season, tie };
   };
 
-  const dataA = getSortData(a?.item);
-  const dataB = getSortData(b?.item);
-
-  if (dataA.year !== dataB.year) return dataA.year - dataB.year;
-  if (dataA.date !== dataB.date) return dataA.date - dataB.date;
-  if (dataA.season !== dataB.season) return dataA.season - dataB.season;
-
-  const titleA = titleSortKey(a?.item?.title || '');
-  const titleB = titleSortKey(b?.item?.title || '');
-  if (titleA < titleB) return -1;
-  if (titleA > titleB) return 1;
-  const typeA = (a?.listType || '').toString();
-  const typeB = (b?.listType || '').toString();
-  return typeA.localeCompare(typeB);
+  const aKey = canonicalDate(a?.item);
+  const bKey = canonicalDate(b?.item);
+  if (aKey.sortKey !== bKey.sortKey) return aKey.sortKey - bKey.sortKey;
+  if (aKey.season !== bKey.season) return aKey.season - bKey.season;
+  if (aKey.tie !== bKey.tie) return aKey.tie < bKey.tie ? -1 : 1;
+  const aId = (a.id || '').toString();
+  const bId = (b.id || '').toString();
+  return aId.localeCompare(bId);
 }
 
 function formatSeriesEntryLabel(entry) {
@@ -6319,64 +6292,41 @@ function sortSeriesTreeByYear(listType, cardId) {
   const baseEntries = store.get(cardId);
   const entries = getSeriesTreeEntries(listType, cardId, { sourceEntries: baseEntries });
   if (!entries || entries.length <= 1) return;
-  
-  const getSortData = (item) => {
-    if (!item) return { year: 9999, date: 99999999, season: Infinity };
-    
-    // 1. Resolve Year (Trust visible year first)
-    let year = 9999;
-    const yearStr = sanitizeYear(String(item.year || item.releaseYear || ''));
-    if (yearStr) {
-        year = parseInt(yearStr, 10);
-    } else {
-        const candidates = [item.airDate, item.releaseDate, item.firstAirDate];
-        for (const c of candidates) {
-            if (c && typeof c === 'string' && c.match(/^\d{4}/)) {
-                year = parseInt(c.substring(0, 4), 10);
-                break;
-            }
-        }
-    }
 
-    // 2. Resolve Full Date (for tie-breaking within same year)
-    let date = 99999999;
-    const dateCandidates = [item.airDate, item.releaseDate];
-    if (item.seasonNumber === undefined || item.seasonNumber === null) {
-        dateCandidates.push(item.firstAirDate);
+  const canonicalDate = (item) => {
+    // Prefer full date, fallback to year. Normalize across media.
+    if (!item) return { sortKey: 99999999, season: Infinity, tie: '' };
+    const isSeason = item.seasonNumber !== undefined && item.seasonNumber !== null;
+    const dateFields = [item.airDate, item.releaseDate];
+    if (!isSeason) dateFields.push(item.firstAirDate);
+    let sortKey = 99999999;
+    for (const val of dateFields) {
+      if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        sortKey = parseInt(val.replace(/-/g, ''), 10);
+        break;
+      }
     }
-    for (const c of dateCandidates) {
-        if (c && typeof c === 'string' && c.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            const dVal = parseInt(c.replace(/-/g, ''), 10);
-            // Only use if it matches the resolved year (or if we have no year)
-            if (year === 9999 || Math.floor(dVal / 10000) === year) {
-                date = dVal;
-                break;
-            }
-        }
+    if (sortKey === 99999999) {
+      const yStr = sanitizeYear(String(item.year || item.releaseYear || ''));
+      if (yStr) sortKey = parseInt(yStr + '0000', 10);
     }
-    if (date === 99999999 && year !== 9999) {
-        date = year * 10000; 
-    }
-
-    // 3. Resolve Season
-    const season = (item.seasonNumber !== undefined && item.seasonNumber !== null) 
-        ? Number(item.seasonNumber) 
-        : Infinity;
-
-    return { year, date, season };
+    const season = isSeason ? Number(item.seasonNumber) : Infinity;
+    const tie = titleSortKey(item.title || '');
+    return { sortKey, season, tie };
   };
 
   const sorted = entries.slice().sort((a, b) => {
-    const dataA = getSortData(a.item);
-    const dataB = getSortData(b.item);
-
-    if (dataA.year !== dataB.year) return dataA.year - dataB.year;
-    if (dataA.date !== dataB.date) return dataA.date - dataB.date;
-    if (dataA.season !== dataB.season) return dataA.season - dataB.season;
-
-    return (a.order || 0) - (b.order || 0);
+    const aKey = canonicalDate(a.item);
+    const bKey = canonicalDate(b.item);
+    if (aKey.sortKey !== bKey.sortKey) return aKey.sortKey - bKey.sortKey;
+    if (aKey.season !== bKey.season) return aKey.season - bKey.season;
+    if (aKey.tie !== bKey.tie) return aKey.tie < bKey.tie ? -1 : 1;
+    // Final stable tiebreaker: id
+    const aId = (a.id || '').toString();
+    const bId = (b.id || '').toString();
+    return aId.localeCompare(bId);
   });
-  
+
   if (sorted.length) {
     const cardElement = document.querySelector(`.card.collapsible.movie-card[data-card-id="${cardId}"]`);
     applySeriesTreeReorder(listType, cardId, sorted, cardElement);
