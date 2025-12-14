@@ -540,14 +540,14 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   /* Removed border from outer card */
 }
 .movie-card-summary{display:flex;flex-direction:column;align-items:center;gap:.45rem;text-align:center;width:100%;position:relative}
-.movie-card-summary .artwork-wrapper{position:relative}
+.movie-card-summary .artwork-wrapper{position:relative;width:fit-content;max-width:100%}
 
 .movie-card-info {
   width: 100%;
   padding: 0.5rem;
   border-radius: 12px;
   transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  border: 1px solid transparent;
+  border: 1px solid var(--card-accent, rgba(255,255,255,0.1));
 }
 
 /* Enhanced hover state */
@@ -592,14 +592,14 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   letter-spacing: 0.05em;
 }
 
-.movie-card-summary .status-badge {
+.artwork-wrapper .status-badge {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 6px;
+  left: 6px;
   margin-top: 0;
-  z-index: 5;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
-  backdrop-filter: blur(3px);
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  backdrop-filter: blur(4px);
   pointer-events: none;
 }
 

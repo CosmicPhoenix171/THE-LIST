@@ -4334,12 +4334,12 @@ if (typeof window !== 'undefined') {
 
 function buildMovieCardSummary(listType, item, context = {}) {
   const summary = createEl('div', 'movie-card-summary');
-  summary.appendChild(buildMovieArtwork(item, context));
+  summary.appendChild(buildMovieArtwork(listType, item, context));
   summary.appendChild(buildMovieCardInfo(listType, item, context));
   return summary;
 }
 
-function buildMovieArtwork(item, context = {}) {
+function buildMovieArtwork(listType, item, context = {}) {
   const wrapper = createEl('div', 'artwork-wrapper');
   const seriesEntries = Array.isArray(context.seriesEntries) ? context.seriesEntries : [];
   const stackItems = buildSeriesPosterStackItems(item, seriesEntries);
@@ -4372,6 +4372,8 @@ function buildMovieArtwork(item, context = {}) {
       stack.appendChild(spill);
     }
     wrapper.appendChild(stack);
+    const statusBadge = buildStatusBadge(listType, item, context);
+    if (statusBadge) wrapper.appendChild(statusBadge);
     return wrapper;
   }
 
@@ -4380,9 +4382,13 @@ function buildMovieArtwork(item, context = {}) {
   const posterNode = buildPosterNode(item?.poster || fallbackPoster, item?.title || fallbackTitle || 'Poster');
   if (posterNode) {
     wrapper.appendChild(posterNode);
+    const statusBadge = buildStatusBadge(listType, item, context);
+    if (statusBadge) wrapper.appendChild(statusBadge);
     return wrapper;
   }
   wrapper.appendChild(createEl('div', 'artwork placeholder', { text: 'No Poster' }));
+  const statusBadge = buildStatusBadge(listType, item, context);
+  if (statusBadge) wrapper.appendChild(statusBadge);
   return wrapper;
 }
 
@@ -4466,11 +4472,7 @@ function buildMovieCardInfo(listType, item, context = {}) {
   if (ratingBadge) {
     header.appendChild(ratingBadge);
   }
-  
-  const statusBadge = buildStatusBadge(listType, item, context);
-  if (statusBadge) {
-    header.appendChild(statusBadge);
-  }
+
 
   info.appendChild(header);
 
