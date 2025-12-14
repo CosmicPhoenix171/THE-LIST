@@ -4215,6 +4215,9 @@ function buildCollapsibleMovieCard(listType, id, item, positionIndex = 0, option
   card.dataset.index = String(positionIndex);
   card.dataset.entryId = displayEntryId;
   card.dataset.listType = listType;
+  if (itemHasAnimeKeyword(item)) {
+    card.dataset.isAnime = 'true';
+  }
   if (hideCard) {
     card.classList.add('series-hidden');
   }

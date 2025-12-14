@@ -529,6 +529,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .card.collapsible.movie-card[data-list-type="anime"] { --card-accent: var(--anime-pill-color); }
 .card.collapsible.movie-card[data-list-type="books"] { --card-accent: var(--books-pill-color); }
 
+/* Override for Anime items in other lists */
+.card.collapsible.movie-card[data-is-anime="true"] { --card-accent: #f47521; }
+
 .card.collapsible.movie-card.series-hidden{display:none}
 .card.collapsible.movie-card:not(.expanded){
   background:transparent;
