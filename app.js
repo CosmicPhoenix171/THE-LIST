@@ -6328,7 +6328,8 @@ function sortSeriesTreeByYear(listType, cardId) {
   });
 
   if (sorted.length) {
-    const cardElement = document.querySelector(`.card.collapsible.movie-card[data-card-id="${cardId}"]`);
+    // Use the consistent attribute used elsewhere (data-id) to find the card
+    const cardElement = document.querySelector(`.card.collapsible.movie-card[data-id="${cardId}"]`);
     applySeriesTreeReorder(listType, cardId, sorted, cardElement);
   }
 }
