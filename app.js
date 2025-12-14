@@ -5839,17 +5839,42 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
   const block = createEl('div', 'series-tree detail-block');
   block.dataset.cardId = cardId;
   block.dataset.listType = listType;
-  block.appendChild(buildSeriesTreeHeader(entries.length, listType, cardId));
 
   const list = createEl('div', 'series-tree-list');
   list.dataset.cardId = cardId;
   list.dataset.listType = listType;
-  entries.forEach((entry, index) => {
-    const node = buildSeriesTreeNode(listType, entry, index);
-    if (node) {
-      list.appendChild(node);
+
+  const renderList = (items) => {
+    list.innerHTML = '';
+    items.forEach((entry, index) => {
+      const node = buildSeriesTreeNode(listType, entry, index);
+      if (node) {
+        list.appendChild(node);
+      }
+    });
+  };
+
+  let isYearSort = false;
+  const handleSort = (btn) => {
+    isYearSort = !isYearSort;
+    btn.textContent = isYearSort ? 'Default Sort' : 'Sort by Year';
+    
+    if (isYearSort) {
+      const sorted = [...entries].sort((a, b) => {
+        const yearA = Number(a.item?.year) || 9999;
+        const yearB = Number(b.item?.year) || 9999;
+        if (yearA !== yearB) return yearA - yearB;
+        return (a.item?.title || '').localeCompare(b.item?.title || '');
+      });
+      renderList(sorted);
+    } else {
+      renderList(entries);
     }
-  });
+  };
+
+  block.appendChild(buildSeriesTreeHeader(entries.length, listType, cardId, handleSort));
+
+  renderList(entries);
 
   if (!list.children.length) return null;
   const listWrapper = createEl('div', 'series-tree-scroll');
@@ -5859,9 +5884,30 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
   return block;
 }
 
-function buildSeriesTreeHeader(count, listType, cardId) {
+function buildSeriesTreeHeader(count, listType, cardId, onSort) {
   const heading = createEl('div', 'series-tree-heading');
-  heading.appendChild(createEl('div', 'series-tree-heading-title', { text: 'Franchise order' }));
+  
+  const leftSide = createEl('div', 'series-tree-heading-left');
+  leftSide.style.display = 'flex';
+  leftSide.style.alignItems = 'center';
+  leftSide.style.gap = '0.75rem';
+
+  leftSide.appendChild(createEl('div', 'series-tree-heading-title', { text: 'Franchise order' }));
+  
+  if (onSort) {
+    const sortBtn = createEl('button', 'btn-text small series-sort-btn', { text: 'Sort by Year' });
+    sortBtn.type = 'button';
+    sortBtn.style.fontSize = '0.75rem';
+    sortBtn.style.color = 'var(--primary-300)';
+    sortBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onSort(sortBtn);
+    });
+    leftSide.appendChild(sortBtn);
+  }
+
+  heading.appendChild(leftSide);
+
   const rightSide = createEl('div', 'series-tree-heading-right');
   rightSide.appendChild(createEl('div', 'series-tree-heading-count', { text: `${count} ${count === 1 ? 'entry' : 'entries'}` }));
   heading.appendChild(rightSide);
