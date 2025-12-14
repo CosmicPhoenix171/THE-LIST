@@ -3118,21 +3118,45 @@ function updateLibraryRuntimeStats() {
     genreContainer.appendChild(header);
 
     const list = createEl('div', 'genre-stats-list');
-    list.style.display = 'grid';
-    list.style.gridTemplateColumns = '1fr auto';
-    list.style.gap = '0.35rem 1rem';
-    list.style.fontSize = '0.8rem';
+    list.style.display = 'flex';
+    list.style.flexWrap = 'wrap';
+    list.style.gap = '0.4rem';
+    list.style.justifyContent = 'center';
 
     topGenres.forEach(([genre, count]) => {
-      const nameEl = createEl('div', 'genre-name', { text: genre });
-      nameEl.style.color = 'var(--text-300)';
-      nameEl.style.textAlign = 'left';
-      const countEl = createEl('div', 'genre-count', { text: formatLibraryStatNumber(count) });
-      countEl.style.color = 'var(--text-100)';
-      countEl.style.fontWeight = '600';
-      countEl.style.textAlign = 'right';
-      list.appendChild(nameEl);
-      list.appendChild(countEl);
+      const pill = createEl('div', 'genre-stat-pill');
+      pill.style.background = 'rgba(255,255,255,0.06)';
+      pill.style.border = '1px solid rgba(255,255,255,0.1)';
+      pill.style.borderRadius = '20px';
+      pill.style.padding = '0.25rem 0.6rem';
+      pill.style.fontSize = '0.75rem';
+      pill.style.color = 'var(--text-300)';
+      pill.style.display = 'flex';
+      pill.style.alignItems = 'center';
+      pill.style.gap = '0.35rem';
+      pill.style.transition = 'all 0.2s ease';
+      
+      // Hover effect handled via CSS or inline if needed, but inline is simpler for now
+      pill.onmouseenter = () => {
+        pill.style.background = 'rgba(255,255,255,0.12)';
+        pill.style.borderColor = 'var(--primary-300)';
+        pill.style.color = 'var(--text-100)';
+      };
+      pill.onmouseleave = () => {
+        pill.style.background = 'rgba(255,255,255,0.06)';
+        pill.style.borderColor = 'rgba(255,255,255,0.1)';
+        pill.style.color = 'var(--text-300)';
+      };
+
+      const nameSpan = createEl('span', '', { text: genre });
+      const countSpan = createEl('span', '', { text: formatLibraryStatNumber(count) });
+      countSpan.style.color = 'var(--text-100)';
+      countSpan.style.fontWeight = '600';
+      countSpan.style.opacity = '0.9';
+      
+      pill.appendChild(nameSpan);
+      pill.appendChild(countSpan);
+      list.appendChild(pill);
     });
 
     genreContainer.appendChild(list);
