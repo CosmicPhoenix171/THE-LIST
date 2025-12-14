@@ -543,7 +543,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   /* Removed border from outer card */
 }
 .movie-card-summary{display:flex;flex-direction:column;align-items:center;gap:0;text-align:center;width:100%;position:relative}
-.movie-card-summary .artwork-wrapper{position:relative;width:fit-content;max-width:100%}
+.movie-card-summary .artwork-wrapper{position:relative;width:fit-content;max-width:100%;margin-bottom:0}
 
 .movie-card-info {
   width: 100%;
@@ -551,7 +551,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   border-radius: 12px;
   transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   border: 1px solid var(--card-accent, rgba(255,255,255,0.1));
-  margin-top: -12px;
+  margin-top: -24px;
   position: relative;
   z-index: 2;
   background: var(--bg-800);
@@ -758,7 +758,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   position:relative;
   width:calc(100% - 0.5rem);
   max-width:220px;
-  margin-top: -18px;
+  margin-top: -24px;
   background: var(--bg-800);
   border: 1px solid var(--card-accent, rgba(255,255,255,0.08));
   border-radius:16px;
