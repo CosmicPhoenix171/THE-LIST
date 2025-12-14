@@ -199,6 +199,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   .skyscraper-ad {
     display: block;
   }
+  .skyscraper-ad.stats-panel-container {
+    display: flex;
+  }
 }
 
 /* Side placement */
@@ -206,7 +209,6 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .left-ad { left: 10px; }
 
 .stats-panel-container {
-  display: flex;
   flex-direction: column;
   justify-content: flex-start;
   padding-top: 1rem;
