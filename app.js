@@ -18,8 +18,10 @@ import {
   update,
   remove,
   onValue,
+  onChildAdded,
   query,
   orderByChild,
+  limitToLast,
   get
 } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
@@ -47,6 +49,7 @@ const LIST_LOAD_STAGGER_MS = 600;
 const METADATA_SCHEMA_VERSION = 4;
 const APP_VERSION = 'test-pages-2025.11.15';
 const BUG_REPORT_DB_PATH = 'bugReports';
+const GLOBAL_NOTIFICATIONS_PATH = 'globalNotifications';
 const BUG_REPORT_ADMIN_NAMES = new Set(['cosmicphoenix 171']);
 const ANIME_STATUS_PRIORITY = {
   RELEASING: 6,
@@ -2112,10 +2115,40 @@ async function handleBugReportSubmit(event) {
 
 function handleBugListClick(event) {
   const target = event.target;
-  if (!target || !target.matches('[data-role="bug-remove"]')) return;
-  const reportId = target.getAttribute('data-bug-id');
-  if (!reportId) return;
-  removeBugReport(reportId);
+  if (!target) return;
+
+  if (target.matches('[data-role="bug-remove"]')) {
+    const reportId = target.getAttribute('data-bug-id');
+    if (reportId) removeBugReport(reportId);
+    return;
+  }
+
+  if (target.matches('[data-role="bug-push"]')) {
+    const reportId = target.getAttribute('data-bug-id');
+    if (reportId) pushBugReportAsNotification(reportId);
+    return;
+  }
+}
+
+function pushBugReportAsNotification(reportId) {
+  const report = bugReports.find(r => r.id === reportId);
+  if (!report) return;
+  
+  const confirmPush = confirm(`Push this bug report as a global notification?\n\n"${report.message}"`);
+  if (!confirmPush) return;
+
+  const newNotifRef = push(ref(db, GLOBAL_NOTIFICATIONS_PATH));
+  set(newNotifRef, {
+    title: 'Bug Report Update',
+    message: report.message,
+    createdAt: Date.now(),
+    author: currentUser.displayName || 'Admin'
+  }).then(() => {
+    alert('Notification sent!');
+  }).catch(err => {
+    console.error(err);
+    alert('Failed to send.');
+  });
 }
 
 function renderBugReportList() {
@@ -2156,6 +2189,17 @@ function renderBugReportList() {
       removeBtn.setAttribute('data-bug-id', report.id);
       footer.appendChild(removeBtn);
     }
+
+    if (isBugReportAdmin(currentUser)) {
+      const pushBtn = document.createElement('button');
+      pushBtn.type = 'button';
+      pushBtn.textContent = '📢 Push';
+      pushBtn.dataset.role = 'bug-push';
+      pushBtn.setAttribute('data-bug-id', report.id);
+      pushBtn.style.marginLeft = '8px';
+      footer.appendChild(pushBtn);
+    }
+
     entry.appendChild(message);
     entry.appendChild(footer);
     fragment.appendChild(entry);
@@ -2221,6 +2265,27 @@ function startBugReportSync() {
     bugReportLoadError = 'Unable to load bug reports right now.';
     bugReportsLoaded = true;
     renderBugReportList();
+  });
+}
+
+let globalNotificationsUnsubscribe = null;
+
+function initGlobalNotificationsListener() {
+  if (!db) return;
+  if (globalNotificationsUnsubscribe) {
+    globalNotificationsUnsubscribe();
+    globalNotificationsUnsubscribe = null;
+  }
+  
+  const notifsRef = query(ref(db, GLOBAL_NOTIFICATIONS_PATH), limitToLast(10));
+  globalNotificationsUnsubscribe = onChildAdded(notifsRef, (snapshot) => {
+    const val = snapshot.val();
+    if (val && val.message) {
+      pushNotification({
+        title: val.title || 'System Notification',
+        message: val.message
+      });
+    }
   });
 }
 
@@ -2325,6 +2390,7 @@ function showAppForUser(user) {
   loadPrimaryLists();
   loadFranchises();
   startBugReportSync();
+  initGlobalNotificationsListener();
 }
 
 function loadPrimaryLists() {
@@ -2504,6 +2570,11 @@ function updateBackToTopVisibility() {
 // Detach all DB listeners
 function detachAllListeners() {
   stopBugReportSync();
+  if (globalNotificationsUnsubscribe) {
+    globalNotificationsUnsubscribe();
+    globalNotificationsUnsubscribe = null;
+  }
+
   for (const k in listeners) {
     if (typeof listeners[k] === 'function') listeners[k]();
   }
