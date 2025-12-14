@@ -39,7 +39,7 @@ body{
   color:var(--text-100);
   -webkit-font-smoothing:antialiased;
 }
-#app{position:relative;z-index:1}
+#app{position:relative}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 
 .centered-screen{display:flex;align-items:center;justify-content:center;height:100vh;padding:1rem}
