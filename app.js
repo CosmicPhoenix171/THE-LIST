@@ -5888,25 +5888,17 @@ async function moveSeriesTreeNode(listType, entry, direction) {
   const targetIndex = currentIndex + direction;
   if (targetIndex < 0 || targetIndex >= entries.length) return;
   
-  const targetEntry = entries[targetIndex];
-  
-  const newCurrentOrder = targetIndex + 1;
-  const newTargetOrder = currentIndex + 1;
-  
-  const updateEntry = async (e, order) => {
-      const isFinished = Boolean(e.item.finishedAt);
-      const dbPath = isFinished 
-        ? `users/${currentUser.uid}/finished/${e.listType}/${e.id}`
-        : `users/${currentUser.uid}/${e.listType}/${e.id}`;
-      await update(ref(db, dbPath), { seriesOrder: order });
-  };
-  
-  await Promise.all([
-      updateEntry(entry, newCurrentOrder),
-      updateEntry(targetEntry, newTargetOrder)
-  ]);
-  invalidateSeriesCrossListCache();
-  scheduleCrossSeriesRefresh();
+  // Swap in the array
+  const temp = entries[currentIndex];
+  entries[currentIndex] = entries[targetIndex];
+  entries[targetIndex] = temp;
+
+  // Determine context for reorder application
+  const treeList = document.querySelector('.series-tree-list');
+  const cardId = treeList ? treeList.dataset.cardId : entry.id;
+  const cardElement = document.querySelector(`.card[data-id="${cardId}"]`) || treeList?.closest('.card');
+
+  applySeriesTreeReorder(listType, cardId, entries, cardElement);
 }
 
 function buildSeriesTreeNode(listType, entry, fallbackIndex = 0) {
@@ -6288,6 +6280,15 @@ function persistSeriesTreeOrderUpdates(changedEntries) {
   if (!currentUser || !db || !Array.isArray(changedEntries) || !changedEntries.length) return;
   const tasks = changedEntries.map(({ entry, newOrder }) => {
     if (!entry || !entry.listType || !entry.id) return null;
+    
+    const isFinished = Boolean(entry.item && entry.item.finishedAt);
+    if (isFinished) {
+       const path = `users/${currentUser.uid}/finished/${entry.listType}/${entry.id}`;
+       return update(ref(db, path), { seriesOrder: newOrder }).catch(err => {
+          console.warn('Failed to update series order (finished)', err);
+       });
+    }
+
     return updateItem(entry.listType, entry.id, { seriesOrder: newOrder }).catch(err => {
       console.warn('Failed to update series order', err);
     });
