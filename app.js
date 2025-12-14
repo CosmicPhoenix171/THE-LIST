@@ -6246,7 +6246,12 @@ async function rebalanceSeriesOrders(listType, seriesName, options = {}) {
       return;
     }
     entry.item.seriesOrder = newOrder;
-    updateTasks.push(updateItem(listType, entry.id, { seriesOrder: newOrder }).catch(err => {
+    const isFinished = Boolean(entry.item.finishedAt);
+    const dbPath = isFinished 
+      ? `users/${currentUser.uid}/finished/${listType}/${entry.id}`
+      : `users/${currentUser.uid}/${listType}/${entry.id}`;
+    const itemRef = ref(db, dbPath);
+    updateTasks.push(update(itemRef, { seriesOrder: newOrder }).catch(err => {
       console.warn('Failed to normalize series order', err);
     }));
   });
@@ -9047,7 +9052,7 @@ function openEditModal(listType, itemId, item) {
            updateLocalItemCaches(listType, itemId, payload);
         }
 
-        if (!isBooksTarget && !item.finishedAt) {
+        if (!isBooksTarget) {
           const rebalanceJobs = [];
           const normalizedOriginal = normalizeTitleKey(originalSeriesName);
           const normalizedNew = normalizeTitleKey(payload.seriesName || '');
