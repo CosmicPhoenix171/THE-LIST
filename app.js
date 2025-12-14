@@ -3511,6 +3511,57 @@ function buildFranchiseTimeline(record) {
   return wrapper;
 }
 
+async function moveFranchiseEntry(record, entry, direction) {
+  if (!record || !record.id || !entry) return;
+  const entries = record.entries || [];
+  const currentIndex = entries.findIndex(e => e.id === entry.id);
+  if (currentIndex === -1) return;
+  const targetIndex = currentIndex + direction;
+  if (targetIndex < 0 || targetIndex >= entries.length) return;
+  const targetEntry = entries[targetIndex];
+
+  const updateItemOrder = async (itemEntry, newOrder) => {
+    if (!itemEntry || !itemEntry.listType) return;
+    const itemId = itemEntry.listEntryId || itemEntry.id;
+    if (!itemId) return;
+    const isFinished = itemEntry.isFinished;
+    const path = isFinished 
+      ? `users/${currentUser.uid}/finished/${itemEntry.listType}/${itemId}`
+      : `users/${currentUser.uid}/${itemEntry.listType}/${itemId}`;
+    try {
+      await update(ref(db, path), { seriesOrder: newOrder });
+    } catch (e) {
+      console.warn("Failed to update item seriesOrder", e);
+    }
+  };
+
+  const franchiseRef = ref(db, `users/${currentUser.uid}/franchises/${record.id}`);
+  try {
+    const snapshot = await get(franchiseRef);
+    const rawRecord = snapshot.val();
+    if (rawRecord) {
+      let rawEntries = rawRecord.entries || rawRecord.timeline || [];
+      if (Array.isArray(rawEntries)) {
+        const rawCurrentIndex = rawEntries.findIndex(e => (e.id === entry.id) || (e.entryId === entry.id));
+        const rawTargetIndex = rawEntries.findIndex(e => (e.id === targetEntry.id) || (e.entryId === targetEntry.id));
+        if (rawCurrentIndex !== -1 && rawTargetIndex !== -1) {
+           const temp = rawEntries[rawCurrentIndex];
+           rawEntries[rawCurrentIndex] = rawEntries[rawTargetIndex];
+           rawEntries[rawTargetIndex] = temp;
+           await update(franchiseRef, { entries: rawEntries });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to update franchise record", e);
+  }
+
+  await Promise.all([
+    updateItemOrder(entry, targetIndex + 1),
+    updateItemOrder(targetEntry, currentIndex + 1)
+  ]);
+}
+
 function buildFranchiseTimelineEntry(record, entry, index) {
   if (!entry) return null;
   const entryEl = createEl('div', 'franchise-entry');
@@ -3524,7 +3575,22 @@ function buildFranchiseTimelineEntry(record, entry, index) {
   const header = createEl('div', 'franchise-entry-header');
   const orderLabel = resolveFranchiseEntryOrderLabel(record, entry, index);
   if (orderLabel) {
-    header.appendChild(createEl('span', 'franchise-entry-order', { text: orderLabel }));
+    const orderContainer = createEl('div', 'franchise-order-container');
+    const upBtn = createEl('button', 'franchise-order-btn', { text: '▲' });
+    upBtn.onclick = (e) => {
+      e.stopPropagation();
+      moveFranchiseEntry(record, entry, -1);
+    };
+    const label = createEl('span', 'franchise-entry-order', { text: orderLabel });
+    const downBtn = createEl('button', 'franchise-order-btn', { text: '▼' });
+    downBtn.onclick = (e) => {
+      e.stopPropagation();
+      moveFranchiseEntry(record, entry, 1);
+    };
+    orderContainer.appendChild(upBtn);
+    orderContainer.appendChild(label);
+    orderContainer.appendChild(downBtn);
+    header.appendChild(orderContainer);
   }
   header.appendChild(createEl('span', 'franchise-entry-badge', { text: entry.badgeLabel || FRANCHISE_MEDIA_LABELS[entry.mediaType] || 'Entry' }));
   entryEl.appendChild(header);

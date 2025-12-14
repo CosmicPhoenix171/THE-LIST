@@ -155,6 +155,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .franchise-entry.is-finished{border-color:rgba(71,230,161,0.55);background:linear-gradient(180deg,rgba(71,230,161,0.18),rgba(18,28,24,0.92))}
 .franchise-entry.in-library{box-shadow:0 0 0 1px rgba(125,242,201,0.45),0 14px 32px rgba(8,20,16,0.55)}
 .franchise-entry-header{display:flex;align-items:center;justify-content:space-between;gap:.35rem}
+.franchise-order-container{display:flex;flex-direction:column;align-items:center;gap:0;margin-right:4px}
+.franchise-order-btn{background:none;border:none;color:var(--text-500);font-size:10px;cursor:pointer;padding:0;line-height:1;opacity:0.4;transition:opacity 0.2s,color 0.2s;display:flex;align-items:center;justify-content:center;height:12px;width:100%}
+.franchise-order-btn:hover{opacity:1;color:var(--text-100)}
 .franchise-entry-order{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-500)}
 .franchise-entry-badge{font-size:.75rem;font-weight:700;border-radius:999px;padding:.15rem .55rem;background:rgba(61,169,245,0.2);color:#bce5ff;border:1px solid rgba(61,169,245,0.35)}
 .franchise-entry.media-movie .franchise-entry-badge{background:rgba(61,169,245,0.22);border-color:rgba(61,169,245,0.45);color:#d8f1ff}
