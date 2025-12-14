@@ -5765,6 +5765,11 @@ function collectSeriesEntriesAcrossLists(seriesName) {
           if (!season) return;
           hasSeasons = true;
           const virtualItem = { ...item, ...season };
+          // Explicitly clear inherited seriesOrder if not present on season
+          if (season.seriesOrder === undefined || season.seriesOrder === null) {
+            virtualItem.seriesOrder = null;
+          }
+
           virtualItem.title = season.title || `${item.title}: Season ${season.seasonNumber}`;
           if (season.poster) virtualItem.poster = season.poster;
           
@@ -5772,7 +5777,7 @@ function collectSeriesEntriesAcrossLists(seriesName) {
             id: `${id}_season_${index}`,
             item: virtualItem,
             listType: type,
-            order: numericSeriesOrder(season.seriesOrder) ?? numericSeriesOrder(item.seriesOrder),
+            order: numericSeriesOrder(season.seriesOrder),
             isVirtualSeason: true,
             parentId: id,
             seasonIndex: index,
