@@ -3254,6 +3254,74 @@ function updateLibraryRuntimeStats() {
     targetEl.appendChild(genreContainer);
   }
 
+  // Render Top Cast
+  const topCast = Object.entries(stats.castCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8); // Top 8
+
+  if (topCast.length > 0) {
+    const castContainer = createEl('div', 'library-stat-chip cast-stats-container');
+    castContainer.style.flexDirection = 'column';
+    castContainer.style.alignItems = 'stretch';
+    castContainer.style.gap = '0.5rem';
+    castContainer.style.marginTop = '0.5rem';
+    castContainer.style.padding = '0.75rem';
+    
+    const header = createEl('div', 'stat-header-row', { text: 'Top Cast' });
+    header.style.justifyContent = 'center';
+    header.style.fontSize = '0.85rem';
+    header.style.color = 'var(--text-300)';
+    header.style.fontWeight = '600';
+    header.style.marginBottom = '0.25rem';
+    header.style.textTransform = 'uppercase';
+    header.style.letterSpacing = '0.05em';
+    castContainer.appendChild(header);
+
+    const list = createEl('div', 'cast-stats-list');
+    list.style.display = 'flex';
+    list.style.flexWrap = 'wrap';
+    list.style.gap = '0.4rem';
+    list.style.justifyContent = 'center';
+
+    topCast.forEach(([actor, count]) => {
+      const pill = createEl('div', 'cast-stat-pill');
+      pill.style.background = 'rgba(255,255,255,0.06)';
+      pill.style.border = '1px solid rgba(255,255,255,0.1)';
+      pill.style.borderRadius = '20px';
+      pill.style.padding = '0.25rem 0.6rem';
+      pill.style.fontSize = '0.75rem';
+      pill.style.color = 'var(--text-300)';
+      pill.style.display = 'flex';
+      pill.style.alignItems = 'center';
+      pill.style.gap = '0.35rem';
+      pill.style.transition = 'all 0.2s ease';
+      
+      pill.onmouseenter = () => {
+        pill.style.background = 'rgba(255,255,255,0.12)';
+        pill.style.borderColor = 'var(--primary-300)';
+        pill.style.color = 'var(--text-100)';
+      };
+      pill.onmouseleave = () => {
+        pill.style.background = 'rgba(255,255,255,0.06)';
+        pill.style.borderColor = 'rgba(255,255,255,0.1)';
+        pill.style.color = 'var(--text-300)';
+      };
+
+      const nameSpan = createEl('span', '', { text: actor });
+      const countSpan = createEl('span', '', { text: formatLibraryStatNumber(count) });
+      countSpan.style.color = 'var(--text-100)';
+      countSpan.style.fontWeight = '600';
+      countSpan.style.opacity = '0.9';
+      
+      pill.appendChild(nameSpan);
+      pill.appendChild(countSpan);
+      list.appendChild(pill);
+    });
+
+    castContainer.appendChild(list);
+    targetEl.appendChild(castContainer);
+  }
+
   const runtimeSummaryText = stats.totalMinutes > 0
     ? (formatRuntimeDuration(stats.totalMinutes) || 'Runtime info unavailable')
     : 'Runtime info unavailable';
@@ -3274,7 +3342,8 @@ function computeLibraryRuntimeStats() {
       anime: 0,
       books: 0
     },
-    genreCounts: {}
+    genreCounts: {},
+    castCounts: {}
   };
   if (!stats.hasAnyData) {
     return stats;
@@ -3302,13 +3371,29 @@ function computeLibraryRuntimeStats() {
     });
   };
 
+  const countItemCast = (item) => {
+    if (!item.actors) return;
+    const actors = new Set();
+    const list = Array.isArray(item.actors)
+      ? item.actors.filter(Boolean).map(name => String(name).trim()).filter(Boolean)
+      : parseActorsList(item.actors);
+    
+    list.forEach(name => actors.add(name));
+    actors.forEach(name => {
+      stats.castCounts[name] = (stats.castCounts[name] || 0) + 1;
+    });
+  };
+
   // Populate genre counts from BOTH lists (Active + Finished)
   const allSources = [listCaches, finishedCaches];
   allSources.forEach(source => {
     PRIMARY_LIST_TYPES.forEach(type => {
       if (source[type]) {
         Object.values(source[type]).forEach(item => {
-          if (item) countItemGenres(item);
+          if (item) {
+            countItemGenres(item);
+            countItemCast(item);
+          }
         });
       }
     });
