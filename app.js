@@ -5728,7 +5728,10 @@ function buildSeriesTreeHeader(count, listType, cardId) {
   rightSide.appendChild(createEl('div', 'series-tree-heading-count', { text: `${count} ${count === 1 ? 'entry' : 'entries'}` }));
   const sortBtn = createEl('button', 'btn ghost series-tree-sort-btn', { text: 'Sort by Year' });
   sortBtn.type = 'button';
-  sortBtn.addEventListener('click', () => sortSeriesTreeByYear(listType, cardId));
+  sortBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    sortSeriesTreeByYear(listType, cardId);
+  });
   rightSide.appendChild(sortBtn);
   heading.appendChild(rightSide);
   return heading;
