@@ -758,9 +758,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   position:relative;
   width:calc(100% - 0.5rem);
   max-width:220px;
-  top: -35px;
-  margin-bottom: -35px;
-  margin-top: 0 !important;
+  margin-top: -45px !important;
   background: var(--bg-800);
   border: 1px solid var(--card-accent, rgba(255,255,255,0.08));
   border-radius:16px;
