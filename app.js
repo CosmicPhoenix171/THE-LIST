@@ -5859,7 +5859,6 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
   let isYearSort = false;
   const handleSort = (btn) => {
     isYearSort = !isYearSort;
-    btn.textContent = isYearSort ? 'Default Sort' : 'Sort by Year';
     if (isYearSort) {
       btn.classList.add('active');
     } else {
