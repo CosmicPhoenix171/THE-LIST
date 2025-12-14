@@ -3011,16 +3011,26 @@ function collectUnifiedEntries() {
 }
 
 function updateLibraryRuntimeStats() {
-  if (!libraryStatsSummaryEl) return;
+  // Try to find the side panel first, fallback to header summary
+  const targetEl = document.getElementById('side-stats-panel') || libraryStatsSummaryEl;
+  if (!targetEl) return;
+  
   const stats = computeLibraryRuntimeStats();
   if (!stats.hasAnyData || !libraryFullyLoaded) {
-    libraryStatsSummaryEl.textContent = 'Totals update once your lists load.';
-    libraryStatsSummaryEl.classList.remove('has-data');
-    libraryStatsSummaryEl.removeAttribute('aria-label');
+    if (targetEl === libraryStatsSummaryEl) {
+      targetEl.textContent = 'Totals update once your lists load.';
+      targetEl.classList.remove('has-data');
+    } else {
+      targetEl.innerHTML = '<div class="small" style="text-align:center; color:var(--text-500)">Loading stats...</div>';
+    }
     return;
   }
-  libraryStatsSummaryEl.classList.add('has-data');
-  libraryStatsSummaryEl.innerHTML = '';
+  
+  if (targetEl === libraryStatsSummaryEl) {
+    targetEl.classList.add('has-data');
+  }
+  targetEl.innerHTML = '';
+  
   const movieLabel = stats.movieCount === 1 ? 'Movie' : 'Movies';
   const episodeLabel = stats.episodeCount === 1 ? 'Episode' : 'Episodes';
   const runtimePlaceholder = renderRuntimePillsDisplay();
@@ -3035,9 +3045,9 @@ function updateLibraryRuntimeStats() {
     runtimeValueEl.innerHTML = runtimePlaceholder;
   }
 
-  libraryStatsSummaryEl.appendChild(movieChip);
-  libraryStatsSummaryEl.appendChild(episodeChip);
-  libraryStatsSummaryEl.appendChild(runtimeChip);
+  targetEl.appendChild(movieChip);
+  targetEl.appendChild(episodeChip);
+  targetEl.appendChild(runtimeChip);
 
   if (stats.totalMinutes > 0) {
     animateRuntimeProgression(runtimeChip, stats.totalMinutes);
