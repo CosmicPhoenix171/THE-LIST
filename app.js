@@ -3052,20 +3052,6 @@ function updateLibraryRuntimeStats() {
     modifier: 'runtime runtime-minutes' 
   });
   
-  const gradient = getRuntimeGradient(stats);
-  if (gradient) {
-    runtimeChip.style.background = gradient;
-    runtimeChip.style.borderColor = 'rgba(255,255,255,0.15)';
-    // Ensure text remains readable on colored backgrounds
-    runtimeChip.style.color = '#fff';
-    runtimeChip.style.textShadow = '0 1px 2px rgba(0,0,0,0.3)';
-  } else {
-    runtimeChip.style.background = '';
-    runtimeChip.style.borderColor = '';
-    runtimeChip.style.color = '';
-    runtimeChip.style.textShadow = '';
-  }
-  
   // Add realistic time toggle
   const labelEl = runtimeChip.querySelector('.library-stat-label');
   if (labelEl) {
@@ -3175,38 +3161,6 @@ function computeLibraryRuntimeStats() {
   });
 
   return stats;
-}
-
-function getRuntimeGradient(stats) {
-  if (!stats || stats.totalMinutes <= 0) return '';
-  
-  const { minutesByType, totalMinutes } = stats;
-  const types = [
-    { key: 'movies', color: 'var(--movies-pill-color)' },
-    { key: 'tvShows', color: 'var(--tv-pill-color)' },
-    { key: 'anime', color: 'var(--anime-pill-color)' },
-    { key: 'books', color: 'var(--books-pill-color)' }
-  ];
-  
-  let stops = [];
-  let currentPercent = 0;
-  
-  types.forEach(type => {
-    const minutes = minutesByType[type.key] || 0;
-    if (minutes <= 0) return;
-    
-    const percent = (minutes / totalMinutes) * 100;
-    const endPercent = currentPercent + percent;
-    
-    stops.push(`${type.color} ${currentPercent.toFixed(2)}% ${endPercent.toFixed(2)}%`);
-    currentPercent = endPercent;
-  });
-  
-  if (stops.length === 0) return '';
-  // If single color, return it directly (though linear-gradient handles it fine usually, explicit color is safer for some browsers/contexts)
-  if (stops.length === 1) return stops[0].split(' ')[0]; 
-  
-  return `linear-gradient(90deg, ${stops.join(', ')})`;
 }
 
 // ============================================================================

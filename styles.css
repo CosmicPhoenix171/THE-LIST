@@ -299,43 +299,6 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   border: 0;
   box-shadow: none;
   padding: 0;
-  position: relative;
-  overflow: hidden;
-}
-
-/* Gradient styling overrides */
-.side-stats-panel .library-stat-chip.runtime[style*="gradient"] {
-  padding: 1rem;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.1);
-}
-
-.side-stats-panel .library-stat-chip.runtime[style*="gradient"] .runtime-pill {
-  background: rgba(0, 0, 0, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: none;
-}
-
-.side-stats-panel .library-stat-chip.runtime[style*="gradient"] .runtime-pill-label {
-  color: rgba(255, 255, 255, 0.85);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-  font-weight: 600;
-}
-
-.side-stats-panel .library-stat-chip.runtime[style*="gradient"] .runtime-pill-value {
-  color: #fff;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.4);
-}
-
-.side-stats-panel .library-stat-chip.runtime[style*="gradient"] .library-stat-label {
-  color: rgba(255, 255, 255, 0.9);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
-}
-
-.side-stats-panel .library-stat-chip.runtime[style*="gradient"] .realistic-time-toggle {
-  background: rgba(0, 0, 0, 0.2);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: #fff;
 }
 
 .side-stats-panel .runtime-pill-row {
@@ -574,10 +537,25 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   padding:.85rem 0;
 }
 .card.collapsible.movie-card:hover{
-  border-color: var(--card-accent, #2a4055);
-  box-shadow: 0 0 20px rgba(0,0,0,0.2), 0 0 0 1px var(--card-accent, transparent);
+  /* Removed border from outer card */
 }
 .movie-card-summary{display:flex;flex-direction:column;align-items:center;gap:.45rem;text-align:center;width:100%}
+
+.movie-card-info {
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: 12px;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.card.collapsible.movie-card:hover .movie-card-info {
+  background: rgba(15, 23, 32, 0.85);
+  backdrop-filter: blur(8px);
+  border-color: var(--card-accent, #2a4055);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px var(--card-accent, transparent);
+}
+
 .rating-badge{
   display:inline-flex;
   align-items:center;
