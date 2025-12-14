@@ -4545,8 +4545,15 @@ function buildSeriesBadgeChips(listType, cardId, item, context = {}) {
   const metrics = deriveSeriesBadgeMetrics(listType, cardId, item, context.seriesEntries);
   if (!metrics) return [];
   const chips = [];
-  if (metrics.formatLabels.length) {
-    chips.push(metrics.formatLabels.join(' / '));
+  
+  // Filter out 'Movie' label if we are displaying a movie count
+  let displayLabels = metrics.formatLabels;
+  if (metrics.movieCount > 0) {
+    displayLabels = displayLabels.filter(l => l.toLowerCase() !== 'movie');
+  }
+
+  if (displayLabels.length) {
+    chips.push(displayLabels.join(' / '));
   }
   if (metrics.movieCount > 0) {
     chips.push(`${metrics.movieCount} movie${metrics.movieCount === 1 ? '' : 's'}`);
