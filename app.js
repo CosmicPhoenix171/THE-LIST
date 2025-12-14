@@ -7273,6 +7273,7 @@ function isSpinnerStatusEligible(item) {
   if (normalized.startsWith('drop')) return false;
   if (normalized.startsWith('complete')) return false;
   if (normalized.startsWith('watched')) return false;
+  if (normalized.startsWith('finished')) return false;
   return true;
 }
 
