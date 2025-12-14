@@ -9333,6 +9333,64 @@ function prepareWheelCandidateContext(listType) {
       };
     });
   }
+
+  if (listType === 'anime') {
+    return loadAllSpinnerSourceData().then(results => {
+      const scopedDataByType = {};
+      results.forEach(({ listType: type, data }) => {
+        scopedDataByType[type] = buildSpinnerDataScope(type, data);
+      });
+      
+      const displayCandidates = [];
+      const candidateMap = new Map();
+      
+      PRIMARY_LIST_TYPES.forEach(type => {
+        const data = scopedDataByType[type];
+        if (!data) return;
+        
+        const { displayCandidates: typeDisplay, candidateMap: typeMap } = buildSpinnerCandidates(type, data);
+        const annotatedMap = mapWheelCandidateMap(typeMap, type, { compositeKeys: true });
+        
+        annotatedMap.forEach((item, key) => {
+           // Include if it's from Anime list OR has anime keyword
+           if (type === 'anime' || itemHasAnimeKeyword(item)) {
+             candidateMap.set(key, item);
+           }
+        });
+
+        const label = MEDIA_TYPE_LABELS[type] || type;
+        typeDisplay.forEach(entry => {
+           const compositeId = createWheelCompositeId(type, entry.id);
+           if (candidateMap.has(compositeId)) {
+              displayCandidates.push({
+                id: compositeId,
+                sourceId: entry.id,
+                listType: type,
+                title: `${label}: ${entry.title}`,
+              });
+           }
+        });
+      });
+      
+      displayCandidates.sort((a, b) => {
+        const titleA = (a.title || '').toLowerCase();
+        const titleB = (b.title || '').toLowerCase();
+        if (titleA < titleB) return -1;
+        if (titleA > titleB) return 1;
+        return 0;
+      });
+
+      const sourceLabel = results.map(({ listType: type, source }) => `${type}:${source || 'cache'}`).join(', ');
+      return {
+        scopeLabel: 'anime',
+        candidates: displayCandidates,
+        candidateMap,
+        rawDataByType: scopedDataByType,
+        sourceLabel,
+      };
+    });
+  }
+
   return loadSpinnerSourceData(listType).then(({ data, source }) => {
     const scopedData = buildSpinnerDataScope(listType, data);
     const { displayCandidates, candidateMap } = buildSpinnerCandidates(listType, scopedData);
