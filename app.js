@@ -3059,7 +3059,7 @@ function updateLibraryRuntimeStats() {
     const labelText = createEl('span', '', { text: 'Finish Time' });
     const toggleLabel = createEl('label', 'realistic-time-toggle');
     toggleLabel.title = 'Realistic time to finish';
-    const checkbox = createEl('input', '', { type: 'checkbox' });
+    const checkbox = createEl('input', '', { attrs: { type: 'checkbox' } });
     checkbox.checked = realisticTimeMode;
     checkbox.addEventListener('change', (e) => {
       realisticTimeMode = e.target.checked;
