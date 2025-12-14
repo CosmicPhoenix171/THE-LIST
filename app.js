@@ -108,6 +108,7 @@ const franchiseState = {
   loaded: false,
   records: [],
 };
+let franchiseSortMode = 'default';
 const franchiseDragState = {
   activeEntryId: null,
   activeFranchiseId: null,
@@ -931,6 +932,7 @@ const combinedListEl = document.getElementById('combined-list');
 const franchiseSectionEl = document.getElementById('franchise-section');
 const franchiseShelfEl = document.getElementById('franchise-shelf');
 const franchiseMetaEl = document.getElementById('franchise-meta');
+const franchiseSortYearBtn = document.getElementById('franchise-sort-year');
 const libraryStatsSummaryEl = document.getElementById('library-stats-summary');
 const bugReportBtn = document.getElementById('report-bug');
 const bugReportPopover = document.getElementById('bug-report-popover');
@@ -1349,6 +1351,7 @@ function initFirebase() {
 
   setupAddModal();
   setupWheelModal();
+  setupFranchiseSort();
 
   document.querySelectorAll('[data-role="actor-filter"]').forEach(input => {
     const listType = input.dataset.list;
@@ -3491,6 +3494,33 @@ function resetFranchiseSection() {
   }
 }
 
+function setupFranchiseSort() {
+  if (franchiseSortYearBtn) {
+    franchiseSortYearBtn.addEventListener('click', () => {
+      if (franchiseSortMode === 'year') {
+        franchiseSortMode = 'default';
+        franchiseSortYearBtn.textContent = 'Sort by Year';
+        franchiseSortYearBtn.classList.remove('active');
+      } else {
+        franchiseSortMode = 'year';
+        franchiseSortYearBtn.textContent = 'Default Sort';
+        franchiseSortYearBtn.classList.add('active');
+      }
+      renderFranchiseShelf();
+    });
+  }
+}
+
+function getFranchiseYear(record) {
+  if (!record || !record.entries || !record.entries.length) return 9999;
+  let minYear = 9999;
+  record.entries.forEach(entry => {
+    const y = entry.releaseYear || (entry.releaseDate ? new Date(entry.releaseDate).getFullYear() : 9999);
+    if (y && y < minYear) minYear = y;
+  });
+  return minYear;
+}
+
 function renderFranchiseShelf() {
   if (!franchiseShelfEl) return;
   updateFranchiseMeta(franchiseState.records);
@@ -3498,11 +3528,23 @@ function renderFranchiseShelf() {
     franchiseShelfEl.innerHTML = '<div class="franchise-empty small">Loading franchises...</div>';
     return;
   }
-  const records = franchiseState.records || [];
+  let records = franchiseState.records || [];
   if (!records.length) {
     franchiseShelfEl.innerHTML = '';
     return;
   }
+
+  if (franchiseSortMode === 'year') {
+    records = [...records].sort((a, b) => {
+      const yearA = getFranchiseYear(a);
+      const yearB = getFranchiseYear(b);
+      if (yearA !== yearB) {
+        return yearA - yearB;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }
+
   const fragment = document.createDocumentFragment();
   records.forEach(record => {
     const card = buildFranchiseCard(record);
