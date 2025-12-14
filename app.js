@@ -3045,8 +3045,11 @@ function updateLibraryRuntimeStats() {
     runtimeValueEl.innerHTML = runtimePlaceholder;
   }
 
-  targetEl.appendChild(movieChip);
-  targetEl.appendChild(episodeChip);
+  const countRow = createEl('div', 'stats-count-row');
+  countRow.appendChild(movieChip);
+  countRow.appendChild(episodeChip);
+  targetEl.appendChild(countRow);
+  
   targetEl.appendChild(runtimeChip);
 
   if (stats.totalMinutes > 0) {

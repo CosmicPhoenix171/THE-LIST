@@ -219,6 +219,12 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   width: 100%;
 }
 
+.stats-count-row {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
 .side-stats-panel .library-stat-chip {
   width: 100%;
   transform: none;
@@ -239,16 +245,17 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 }
 
 .side-stats-panel .runtime-pill-row {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.8rem;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
 .side-stats-panel .runtime-pill {
-  width: 100%;
-  flex-direction: row;
-  justify-content: space-between;
-  padding: 0.8rem 1rem;
+  flex: 1 1 45%;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.5rem;
   align-items: center;
 }
 
