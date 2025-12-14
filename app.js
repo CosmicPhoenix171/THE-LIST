@@ -942,6 +942,8 @@ const unifiedSearchInput = document.getElementById('library-search');
 const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
 const finishedFilterToggle = document.getElementById('finished-filter-toggle');
 const notificationCenter = document.getElementById('notification-center');
+const notificationItemsContainer = document.getElementById('notification-items-container');
+const notificationClearAllBtn = document.getElementById('notification-clear-all');
 const notificationShell = document.getElementById('notification-shell');
 const notificationBellBtn = document.getElementById('notification-bell');
 const notificationBadgeEl = document.getElementById('notification-count');
@@ -1814,7 +1816,7 @@ function createNotificationRecord({ title = '', message = '', signature = '' } =
 }
 
 function renderNotificationCard(record) {
-  if (!notificationCenter || !record) return null;
+  if (!notificationItemsContainer || !record) return null;
   const card = document.createElement('div');
   card.className = 'notification-card';
   card.dataset.notificationId = record.id;
@@ -1839,19 +1841,19 @@ function renderNotificationCard(record) {
   footer.appendChild(closeBtn);
   card.appendChild(footer);
   closeBtn.addEventListener('click', () => dismissNotification(record.id));
-  notificationCenter.appendChild(card);
+  notificationItemsContainer.appendChild(card);
   requestAnimationFrame(() => card.classList.add('visible'));
   return card;
 }
 
 function dismissNotification(recordId) {
   removePersistedNotification(recordId);
-  if (!notificationCenter) {
+  if (!notificationItemsContainer) {
     updateNotificationEmptyState();
     updateNotificationBadge();
     return;
   }
-  const card = notificationCenter.querySelector(`[data-notification-id="${recordId}"]`);
+  const card = notificationItemsContainer.querySelector(`[data-notification-id="${recordId}"]`);
   const finalize = () => {
     if (card && card.parentNode) {
       card.parentNode.removeChild(card);
@@ -1961,6 +1963,11 @@ function markNotificationSignatureSeen(signature) {
 
 function initNotificationBell() {
   if (!notificationBellBtn || !notificationCenter) return;
+
+  if (notificationClearAllBtn) {
+    notificationClearAllBtn.addEventListener('click', clearAllNotifications);
+  }
+
   notificationSignatureCache = loadNotificationSignatures();
   persistedNotifications = loadStoredNotifications();
   persistedNotifications.forEach(record => renderNotificationCard(record));
@@ -1981,6 +1988,16 @@ function initNotificationBell() {
   document.addEventListener('keydown', handleNotificationKeydown);
   updateNotificationBadge();
   updateNotificationEmptyState();
+}
+
+function clearAllNotifications() {
+  persistedNotifications = [];
+  persistNotificationsToStorage();
+  if (notificationItemsContainer) {
+    notificationItemsContainer.innerHTML = '';
+  }
+  updateNotificationEmptyState();
+  updateNotificationBadge();
 }
 
 function initBugReportButton() {
@@ -2047,9 +2064,12 @@ function updateNotificationBadge() {
 }
 
 function updateNotificationEmptyState() {
-  if (!notificationEmptyStateEl || !notificationCenter) return;
-  const hasNotifications = Boolean(notificationCenter.querySelector('.notification-card'));
+  if (!notificationEmptyStateEl || !notificationItemsContainer) return;
+  const hasNotifications = Boolean(notificationItemsContainer.querySelector('.notification-card'));
   notificationEmptyStateEl.classList.toggle('hidden', hasNotifications);
+  if (notificationClearAllBtn) {
+    notificationClearAllBtn.style.display = hasNotifications ? 'block' : 'none';
+  }
 }
 
 function toggleBugPopover(forceState) {

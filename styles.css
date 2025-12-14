@@ -829,6 +829,27 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .notification-bell .bell-icon{width:22px;height:22px;fill:var(--text-300)}
 .notification-count{position:absolute;top:4px;right:4px;background:var(--danger-300);color:#0b141d;border-radius:999px;padding:0 6px;font-size:.7rem;font-weight:700;line-height:1.4}
 .notification-popover{position:absolute;top:calc(100% + .65rem);right:0;width:min(340px,calc(100vw - 2rem));background:linear-gradient(180deg,rgba(31,44,56,0.96),rgba(18,27,36,0.96));border:1px solid var(--border);border-radius:14px;padding:.6rem;box-shadow:0 18px 36px rgba(4,8,16,0.55);display:flex;flex-direction:column;gap:.55rem;z-index:1200}
+.notification-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0.5rem 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 0.25rem;
+}
+.notification-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-100);
+}
+#notification-items-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
 .notification-popover.hidden{display:none}
 .notification-empty{font-size:.85rem;color:var(--text-500);text-align:center;padding:.8rem 0}
 .notification-card{background:rgba(7,11,16,0.55);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:.75rem .85rem .9rem;box-shadow:0 8px 18px rgba(0,0,0,0.35);opacity:0;transform:translateY(4px);transition:opacity .2s ease,transform .2s ease}
