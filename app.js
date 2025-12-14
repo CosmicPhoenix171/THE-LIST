@@ -4425,6 +4425,23 @@ function buildSeriesPosterStackItems(activeItem, seriesEntries = []) {
   return items.filter(entry => entry.poster);
 }
 
+function buildStatusBadge(listType, item, context = {}) {
+  let statusLabel = '';
+  if (listType === 'tvShows') {
+    statusLabel = formatTvStatusLabel(item?.tvStatus || item?.status);
+  } else if (listType === 'anime') {
+    const metrics = deriveSeriesBadgeMetrics(listType, context.cardId, item, context.seriesEntries);
+    if (metrics && metrics.statusLabel) {
+      statusLabel = formatAnimeStatusLabel(metrics.statusLabel);
+    }
+  } else if (listType === 'movies') {
+     if (item?.status) statusLabel = item.status;
+  }
+
+  if (!statusLabel) return null;
+  return createEl('span', 'status-badge', { text: statusLabel });
+}
+
 function buildMovieCardInfo(listType, item, context = {}) {
   const info = createEl('div', 'movie-card-info');
   const header = createEl('div', 'movie-card-header');
@@ -4437,6 +4454,11 @@ function buildMovieCardInfo(listType, item, context = {}) {
   const ratingBadge = buildFinishedRatingBadge(item);
   if (ratingBadge) {
     header.appendChild(ratingBadge);
+  }
+  
+  const statusBadge = buildStatusBadge(listType, item, context);
+  if (statusBadge) {
+    header.appendChild(statusBadge);
   }
 
   info.appendChild(header);
@@ -4470,10 +4492,14 @@ function buildMediaSummaryBadges(listType, item, context = {}) {
   const flaggedAnime = itemHasAnimeKeyword(item);
   if (flaggedAnime && !chips.some(chip => typeof chip === 'string' && chip.toLowerCase() === 'anime')) {
     chips.unshift('Anime');
+  } else if (listType === 'tvShows' && !chips.some(c => typeof c === 'string' && c.toLowerCase().includes('tv'))) {
+    chips.unshift('TV Show');
+  } else if (listType === 'movies' && !chips.some(c => typeof c === 'string' && c.toLowerCase().includes('movie'))) {
+    chips.unshift('Movie');
   }
   if (!chips.length) return null;
   const isTv = listType === 'tvShows';
-  const rowClass = isTv ? 'tv-summary-badges' : 'anime-summary-badges';
+  const rowClass = (isTv ? 'tv-summary-badges' : 'anime-summary-badges') + ' secondary-info';
   const chipClass = isTv ? 'tv-chip' : 'anime-chip';
   const row = createEl('div', rowClass);
   if (context.cardId) {
@@ -4515,9 +4541,6 @@ function buildSeriesBadgeChips(listType, cardId, item, context = {}) {
   if (metrics.totalEpisodes > 0) {
     chips.push(`${metrics.totalEpisodes} ep total`);
   }
-  if (metrics.statusLabel) {
-    chips.push(formatAnimeStatusLabel(metrics.statusLabel));
-  }
   return chips;
 }
 
@@ -4551,10 +4574,6 @@ function computeTvBadgeStrings(source, context = {}) {
     if (!shouldHide) {
       chips.push(runtimeLabel);
     }
-  }
-  const statusLabel = formatTvStatusLabel(source?.tvStatus || source?.status);
-  if (statusLabel) {
-    chips.push(statusLabel);
   }
   return chips;
 }

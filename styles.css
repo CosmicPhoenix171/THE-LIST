@@ -522,6 +522,35 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .rating-badge{display:inline-flex;align-items:center;gap:.25rem;background:linear-gradient(135deg,var(--accent-300),#50c9ff);color:#04131d;border-radius:999px;padding:.15rem .6rem;font-size:.82rem;font-weight:700;letter-spacing:.01em;white-space:nowrap;box-shadow:0 10px 18px rgba(80,201,255,0.25)}
 .rating-badge-icon{color:#f5b301;font-size:.9rem;line-height:1}
 .rating-badge-value{line-height:1}
+
+.status-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-300);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.secondary-info {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.2s ease, max-height 0.2s ease, margin 0.2s ease;
+  margin-top: 0;
+}
+
+.card.collapsible.movie-card:hover .secondary-info,
+.card.collapsible.movie-card.expanded .secondary-info {
+  opacity: 1;
+  max-height: 100px;
+  margin-top: 0.5rem;
+}
+
 .anime-summary-badges{display:flex;flex-wrap:wrap;gap:.35rem;justify-content:center}
 .tv-summary-badges{display:flex;flex-wrap:wrap;gap:.35rem;justify-content:center}
 .card.collapsible.movie-card.expanded .anime-summary-badges{justify-content:flex-start}
