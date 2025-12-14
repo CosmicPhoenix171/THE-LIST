@@ -3046,8 +3046,8 @@ function updateLibraryRuntimeStats() {
   const episodeLabel = stats.episodeCount === 1 ? 'Episode' : 'Episodes';
   const runtimePlaceholder = renderRuntimePillsDisplay();
 
-  const movieChip = buildLibraryStatChip(movieLabel, formatLibraryStatNumber(stats.movieCount));
-  const episodeChip = buildLibraryStatChip(episodeLabel, formatLibraryStatNumber(stats.episodeCount));
+  const movieChip = buildLibraryStatChip(movieLabel, formatLibraryStatNumber(stats.movieCount), { modifier: 'stat-movies' });
+  const episodeChip = buildLibraryStatChip(episodeLabel, formatLibraryStatNumber(stats.episodeCount), { modifier: 'stat-episodes' });
   const runtimeChip = buildLibraryStatChip('Finish Time', '', { 
     modifier: 'runtime runtime-minutes' 
   });
@@ -4600,10 +4600,15 @@ function buildTvStatChips(item, context = {}) {
   if (!item) return [];
   if (Array.isArray(item.cachedTvBadges) && item.cachedTvBadges.length) {
     const badges = item.cachedTvBadges.slice();
+    // Filter out status labels from cached badges as they are now in the header
+    const filteredBadges = badges.filter(b => {
+      const lower = b.toLowerCase();
+      return !lower.includes('ended') && !lower.includes('returning') && !lower.includes('canceled');
+    });
     if (context && context.isExpanded === false) {
-      return badges.filter(b => !b.includes('min/ep') && !b.includes('min'));
+      return filteredBadges.filter(b => !b.includes('min/ep') && !b.includes('min'));
     }
-    return badges;
+    return filteredBadges;
   }
   return computeTvBadgeStrings(item, context);
 }
