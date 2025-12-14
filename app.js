@@ -4767,6 +4767,36 @@ function buildSeriesBadgeChips(listType, cardId, item, context = {}) {
 
 function buildTvStatChips(item, context = {}) {
   if (!item) return [];
+
+  // Aggregate stats if this is a collapsed group
+  if (context && context.isExpanded === false) {
+    let entries = context.seriesEntries;
+    if (!entries && context.cardId) {
+      entries = getSeriesGroupEntries('tvShows', context.cardId);
+    }
+    
+    if (entries && entries.length > 1) {
+      let totalSeasons = 0;
+      let totalEpisodes = 0;
+      
+      entries.forEach(entry => {
+        const it = entry.item;
+        if (!it) return;
+        // If an item has no explicit season count but is part of a series group, 
+        // it's likely at least 1 season (unless it's a special/movie, but this is TV list)
+        const sCount = getTvSeasonCount(it);
+        totalSeasons += (sCount > 0 ? sCount : 1);
+        
+        totalEpisodes += getTvEpisodeCount(it);
+      });
+
+      const chips = [];
+      if (totalSeasons > 0) chips.push(`${totalSeasons} seasons`);
+      if (totalEpisodes > 0) chips.push(`${totalEpisodes} episodes`);
+      return chips;
+    }
+  }
+
   if (Array.isArray(item.cachedTvBadges) && item.cachedTvBadges.length) {
     const badges = item.cachedTvBadges.slice();
     // Filter out status labels from cached badges as they are now in the header
