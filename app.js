@@ -2134,13 +2134,13 @@ function pushBugReportAsNotification(reportId) {
   const report = bugReports.find(r => r.id === reportId);
   if (!report) return;
   
-  const confirmPush = confirm(`Push this bug report as a global notification?\n\n"${report.message}"`);
+  const confirmPush = confirm(`Mark this bug as fixed and notify everyone?\n\n"${report.message}"`);
   if (!confirmPush) return;
 
   const newNotifRef = push(ref(db, GLOBAL_NOTIFICATIONS_PATH));
   set(newNotifRef, {
-    title: 'Bug Report Update',
-    message: report.message,
+    title: 'Bug Fixed',
+    message: `The bug "${report.message}" has been fixed.`,
     createdAt: Date.now(),
     author: currentUser.displayName || 'Admin'
   }).then(() => {
@@ -2193,7 +2193,7 @@ function renderBugReportList() {
     if (isBugReportAdmin(currentUser)) {
       const pushBtn = document.createElement('button');
       pushBtn.type = 'button';
-      pushBtn.textContent = '📢 Push';
+      pushBtn.textContent = 'Fixed';
       pushBtn.dataset.role = 'bug-push';
       pushBtn.setAttribute('data-bug-id', report.id);
       pushBtn.style.marginLeft = '8px';
