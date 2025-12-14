@@ -5757,7 +5757,34 @@ function collectSeriesEntriesAcrossLists(seriesName) {
     Object.entries(pool).forEach(([id, item]) => {
       if (!item || !item.seriesName) return;
       if (normalizeTitleKey(item.seriesName) !== normalizedKey) return;
-      entries.push({ id, item, listType: type, order: numericSeriesOrder(item.seriesOrder) });
+      
+      const seasons = (type === 'tvShows' ? item.tvSeasonSummaries : (type === 'anime' ? item.animeSeasonSummaries : null));
+      if (Array.isArray(seasons) && seasons.length > 0) {
+        let hasSeasons = false;
+        seasons.forEach((season, index) => {
+          if (!season) return;
+          hasSeasons = true;
+          const virtualItem = { ...item, ...season };
+          virtualItem.title = season.title || `${item.title}: Season ${season.seasonNumber}`;
+          if (season.poster) virtualItem.poster = season.poster;
+          
+          entries.push({
+            id: `${id}_season_${index}`,
+            item: virtualItem,
+            listType: type,
+            order: numericSeriesOrder(season.seriesOrder) ?? numericSeriesOrder(item.seriesOrder),
+            isVirtualSeason: true,
+            parentId: id,
+            seasonIndex: index,
+            seasonField: type === 'tvShows' ? 'tvSeasonSummaries' : 'animeSeasonSummaries'
+          });
+        });
+        if (!hasSeasons) {
+          entries.push({ id, item, listType: type, order: numericSeriesOrder(item.seriesOrder) });
+        }
+      } else {
+        entries.push({ id, item, listType: type, order: numericSeriesOrder(item.seriesOrder) });
+      }
     });
   });
   crossListSeriesCache.set(normalizedKey, { version: seriesIndexVersion, entries });
@@ -5770,12 +5797,26 @@ function mergeSeriesEntriesAcrossLists(listType, cardId, displayItem, primaryEnt
   if (!seriesName) {
     return baseEntries.length ? baseEntries : null;
   }
+  
+  const crossEntries = collectSeriesEntriesAcrossLists(seriesName);
+  const parentIdsWithSeasons = new Set();
+  crossEntries.forEach(e => {
+    if (e.isVirtualSeason && e.parentId) {
+      parentIdsWithSeasons.add(e.parentId);
+    }
+  });
+
   const merged = [];
   const seen = new Set();
   const addEntry = (entry, fallbackListType = listType) => {
     if (!entry || !entry.item) return;
-    const entryListType = entry.listType || fallbackListType;
     const entryId = entry.id || cardId;
+    
+    if (parentIdsWithSeasons.has(entryId) && !entry.isVirtualSeason) {
+      return;
+    }
+
+    const entryListType = entry.listType || fallbackListType;
     const key = buildSeriesEntryKey(entryListType, entryId, entry.item);
     if (seen.has(key)) return;
     seen.add(key);
@@ -5784,13 +5825,16 @@ function mergeSeriesEntriesAcrossLists(listType, cardId, displayItem, primaryEnt
       item: entry.item,
       order: entry.order ?? numericSeriesOrder(entry.item?.seriesOrder),
       listType: entryListType,
+      isVirtualSeason: entry.isVirtualSeason,
+      parentId: entry.parentId,
+      seasonIndex: entry.seasonIndex,
+      seasonField: entry.seasonField
     });
   };
   baseEntries.forEach(entry => addEntry(entry, listType));
   if (!baseEntries.length && displayItem) {
     addEntry({ id: cardId, item: displayItem, listType, order: numericSeriesOrder(displayItem.seriesOrder) }, listType);
   }
-  const crossEntries = collectSeriesEntriesAcrossLists(seriesName);
   crossEntries.forEach(entry => addEntry(entry, entry.listType));
   if (!merged.length) return null;
   merged.sort(compareSeriesEntries);
@@ -6281,6 +6325,17 @@ function persistSeriesTreeOrderUpdates(changedEntries) {
   const tasks = changedEntries.map(({ entry, newOrder }) => {
     if (!entry || !entry.listType || !entry.id) return null;
     
+    if (entry.isVirtualSeason) {
+      const isFinished = Boolean(entry.item && entry.item.finishedAt);
+      const rootPath = isFinished 
+        ? `users/${currentUser.uid}/finished/${entry.listType}/${entry.parentId}`
+        : `users/${currentUser.uid}/${entry.listType}/${entry.parentId}`;
+      const seasonPath = `${rootPath}/${entry.seasonField}/${entry.seasonIndex}`;
+      return update(ref(db, seasonPath), { seriesOrder: newOrder }).catch(err => {
+        console.warn('Failed to update virtual season order', err);
+      });
+    }
+
     const isFinished = Boolean(entry.item && entry.item.finishedAt);
     if (isFinished) {
        const path = `users/${currentUser.uid}/finished/${entry.listType}/${entry.id}`;
@@ -6302,6 +6357,21 @@ function persistSeriesTreeOrderUpdates(changedEntries) {
 
 function updateCachedSeriesOrderValue(entry, newOrder) {
   if (!entry || !entry.listType || !entry.id) return;
+  
+  if (entry.isVirtualSeason) {
+    [listCaches, finishedCaches].forEach(cacheMap => {
+      const store = cacheMap && cacheMap[entry.listType];
+      if (store && store[entry.parentId]) {
+        const parent = store[entry.parentId];
+        const seasons = parent[entry.seasonField];
+        if (seasons && seasons[entry.seasonIndex]) {
+          seasons[entry.seasonIndex].seriesOrder = newOrder;
+        }
+      }
+    });
+    return;
+  }
+
   [listCaches, finishedCaches].forEach(cacheMap => {
     const store = cacheMap && cacheMap[entry.listType];
     if (store && store[entry.id]) {
