@@ -257,17 +257,18 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 
 .side-stats-panel .runtime-pill-row {
   flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .side-stats-panel .runtime-pill {
-  flex: 1 1 45%;
+  flex: 1 1 auto;
   flex-direction: column;
   justify-content: center;
-  padding: 0.5rem;
+  padding: 0.5rem 0.2rem;
   align-items: center;
+  min-width: 0;
 }
 
 .side-stats-panel .runtime-pill-value {
