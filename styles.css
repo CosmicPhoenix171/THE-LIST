@@ -551,7 +551,6 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   border-radius: 12px;
   transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   border: 1px solid var(--card-accent, rgba(255,255,255,0.1));
-  margin-top: -24px;
   position: relative;
   z-index: 2;
   background: var(--bg-800);
@@ -759,7 +758,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   position:relative;
   width:calc(100% - 0.5rem);
   max-width:220px;
-  margin-top: -32px !important;
+  top: -35px;
+  margin-bottom: -35px;
+  margin-top: 0 !important;
   background: var(--bg-800);
   border: 1px solid var(--card-accent, rgba(255,255,255,0.08));
   border-radius:16px;
@@ -803,7 +804,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 }
 .card.collapsible.movie-card.expanded .artwork-wrapper{width:100%;align-items:center}
 .card.collapsible.movie-card.expanded .artwork{width:clamp(120px,18vw,230px)}
-.card.collapsible.movie-card.expanded .movie-card-info{align-items:center;width:100%;text-align:center}
+.card.collapsible.movie-card.expanded .movie-card-info{align-items:center;width:100%;text-align:center;margin-top:0}
 .card.collapsible.movie-card.expanded .movie-card-header{align-items:center}
 .card.collapsible.movie-card.expanded .movie-card-details{display:flex;flex-direction:column;gap:1rem;border-left:1px solid var(--border);padding-left:1.5rem;margin-left:0}
 
