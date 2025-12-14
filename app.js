@@ -5186,6 +5186,9 @@ function buildTvDetailBlock(listType, entryId, item) {
   const chips = buildTvStatChips(item);
   const hasChips = chips.length > 0;
   const resolvedEntryId = entryId || item.__id || item.id || '';
+  // Hide season breakdown when rendering inside grouped/series context
+  const card = document.querySelector(`.card.collapsible.movie-card[data-id="${resolvedEntryId}"]`);
+  const isGroupedContext = Boolean(card && card.dataset && card.dataset.isUnified === 'true');
   const seasonBreakdown = buildSeasonNotesBreakdown({
     listType,
     entryId: resolvedEntryId,
@@ -5194,7 +5197,8 @@ function buildTvDetailBlock(listType, entryId, item) {
     fallbackLabel: 'Season',
     placeholder: 'Notes for this season',
   });
-  if (!hasChips && !seasonBreakdown) return null;
+  const allowSeasonBreakdown = !isGroupedContext;
+  if (!hasChips && (!seasonBreakdown || !allowSeasonBreakdown)) return null;
   const block = createEl('div', 'detail-block tv-detail-block');
   if (hasChips) {
     const row = createEl('div', 'tv-stats-row');
@@ -5203,7 +5207,7 @@ function buildTvDetailBlock(listType, entryId, item) {
     chips.forEach(text => row.appendChild(createEl('span', 'tv-chip', { text })));
     block.appendChild(row);
   }
-  if (seasonBreakdown) {
+  if (seasonBreakdown && allowSeasonBreakdown) {
     block.appendChild(seasonBreakdown);
   }
   return block;
