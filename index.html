@@ -20,6 +20,32 @@
     <div id="app" class="hidden">
       <header class="topbar">
         <div class="brand">THE LIST <span class="tm">™</span></div>
+        
+        <div class="header-controls">
+          <input type="search" id="library-search" placeholder="Search everything..." aria-label="Search across all saved items" />
+          <div class="type-filter-group" role="group" aria-label="Filter by media type">
+            <button type="button" class="type-filter active" data-type-toggle="movies" aria-pressed="true">Movies</button>
+            <button type="button" class="type-filter active" data-type-toggle="tvShows" aria-pressed="true">TV Shows</button>
+            <button type="button" class="type-filter active" data-type-toggle="anime" aria-pressed="true">Anime</button>
+            <button type="button" class="type-filter active" data-type-toggle="books" aria-pressed="true">Books</button>
+            <label class="finished-filter" for="finished-filter-toggle">
+              <input type="checkbox" id="finished-filter-toggle" />
+              <span>Finished only</span>
+            </label>
+            <select id="library-sort-select" class="library-sort-select" aria-label="Sort library items">
+              <option value="default">Default Sort</option>
+              <option value="alphaAsc">A-Z</option>
+              <option value="alphaDesc">Z-A</option>
+              <option value="yearDesc">Year (Newest)</option>
+              <option value="yearAsc">Year (Oldest)</option>
+              <option value="budgetDesc">Budget (High to Low)</option>
+              <option value="budgetAsc">Budget (Low to High)</option>
+              <option value="ratingDesc" class="finished-only-option" hidden>Rating (High to Low)</option>
+              <option value="ratingAsc" class="finished-only-option" hidden>Rating (Low to High)</option>
+            </select>
+          </div>
+        </div>
+
         <div class="user-info">
           <div class="notification-shell" id="notification-shell">
             <button id="notification-bell" class="icon-btn notification-bell" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="notification-center">
@@ -173,30 +199,6 @@
             <div id="library-stats-summary" class="library-stats-line small">Totals update once your lists load.</div>
           </div>
           <div class="section-content">
-            <div class="library-filter-bar">
-              <input type="search" id="library-search" placeholder="Search everything..." aria-label="Search across all saved items" />
-              <div class="type-filter-group" role="group" aria-label="Filter by media type">
-                <button type="button" class="type-filter active" data-type-toggle="movies" aria-pressed="true">Movies</button>
-                <button type="button" class="type-filter active" data-type-toggle="tvShows" aria-pressed="true">TV Shows</button>
-                <button type="button" class="type-filter active" data-type-toggle="anime" aria-pressed="true">Anime</button>
-                <button type="button" class="type-filter active" data-type-toggle="books" aria-pressed="true">Books</button>
-                <label class="finished-filter" for="finished-filter-toggle">
-                  <input type="checkbox" id="finished-filter-toggle" />
-                  <span>Finished only</span>
-                </label>
-                <select id="library-sort-select" class="library-sort-select" aria-label="Sort library items">
-                  <option value="default">Default Sort</option>
-                  <option value="alphaAsc">A-Z</option>
-                  <option value="alphaDesc">Z-A</option>
-                  <option value="yearDesc">Year (Newest)</option>
-                  <option value="yearAsc">Year (Oldest)</option>
-                  <option value="budgetDesc">Budget (High to Low)</option>
-                  <option value="budgetAsc">Budget (Low to High)</option>
-                  <option value="ratingDesc" class="finished-only-option" hidden>Rating (High to Low)</option>
-                  <option value="ratingAsc" class="finished-only-option" hidden>Rating (Low to High)</option>
-                </select>
-              </div>
-            </div>
             <div class="list" id="combined-list">
               <div class="small">Loading your library...</div>
             </div>
