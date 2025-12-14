@@ -3211,10 +3211,22 @@ function computeLibraryRuntimeStats() {
     });
   };
 
+  // Populate genre counts from BOTH lists (Active + Finished)
+  const allSources = [listCaches, finishedCaches];
+  allSources.forEach(source => {
+    PRIMARY_LIST_TYPES.forEach(type => {
+      if (source[type]) {
+        Object.values(source[type]).forEach(item => {
+          if (item) countItemGenres(item);
+        });
+      }
+    });
+  });
+
   Object.values(cacheMap.movies || {}).forEach(item => {
     if (!item) return;
     stats.movieCount += 1;
-    countItemGenres(item);
+    // countItemGenres(item); // Already counted in global loop
     const minutes = estimateMovieRuntimeMinutes(item);
     if (minutes > 0) {
       stats.totalMinutes += minutes;
@@ -3224,7 +3236,7 @@ function computeLibraryRuntimeStats() {
 
   Object.values(cacheMap.tvShows || {}).forEach(item => {
     if (!item) return;
-    countItemGenres(item);
+    // countItemGenres(item); // Already counted in global loop
     const episodes = getTvEpisodeCount(item);
     if (episodes > 0) {
       stats.episodeCount += episodes;
@@ -3239,7 +3251,7 @@ function computeLibraryRuntimeStats() {
 
   Object.values(cacheMap.anime || {}).forEach(item => {
     if (!item) return;
-    countItemGenres(item);
+    // countItemGenres(item); // Already counted in global loop
     const episodes = getAnimeEpisodeCount(item);
     if (episodes > 0) {
       stats.episodeCount += episodes;
