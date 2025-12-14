@@ -3094,6 +3094,51 @@ function updateLibraryRuntimeStats() {
     if (valueEl) valueEl.textContent = 'Runtime info unavailable';
   }
 
+  // Render Top Genres
+  const topGenres = Object.entries(stats.genreCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8); // Top 8
+
+  if (topGenres.length > 0) {
+    const genreContainer = createEl('div', 'library-stat-chip genre-stats-container');
+    genreContainer.style.flexDirection = 'column';
+    genreContainer.style.alignItems = 'stretch';
+    genreContainer.style.gap = '0.5rem';
+    genreContainer.style.marginTop = '0.5rem';
+    genreContainer.style.padding = '0.75rem';
+    
+    const header = createEl('div', 'stat-header-row', { text: 'Top Genres' });
+    header.style.justifyContent = 'center';
+    header.style.fontSize = '0.85rem';
+    header.style.color = 'var(--text-300)';
+    header.style.fontWeight = '600';
+    header.style.marginBottom = '0.25rem';
+    header.style.textTransform = 'uppercase';
+    header.style.letterSpacing = '0.05em';
+    genreContainer.appendChild(header);
+
+    const list = createEl('div', 'genre-stats-list');
+    list.style.display = 'grid';
+    list.style.gridTemplateColumns = '1fr auto';
+    list.style.gap = '0.35rem 1rem';
+    list.style.fontSize = '0.8rem';
+
+    topGenres.forEach(([genre, count]) => {
+      const nameEl = createEl('div', 'genre-name', { text: genre });
+      nameEl.style.color = 'var(--text-300)';
+      nameEl.style.textAlign = 'left';
+      const countEl = createEl('div', 'genre-count', { text: formatLibraryStatNumber(count) });
+      countEl.style.color = 'var(--text-100)';
+      countEl.style.fontWeight = '600';
+      countEl.style.textAlign = 'right';
+      list.appendChild(nameEl);
+      list.appendChild(countEl);
+    });
+
+    genreContainer.appendChild(list);
+    targetEl.appendChild(genreContainer);
+  }
+
   const runtimeSummaryText = stats.totalMinutes > 0
     ? (formatRuntimeDuration(stats.totalMinutes) || 'Runtime info unavailable')
     : 'Runtime info unavailable';
@@ -3113,15 +3158,39 @@ function computeLibraryRuntimeStats() {
       tvShows: 0,
       anime: 0,
       books: 0
-    }
+    },
+    genreCounts: {}
   };
   if (!stats.hasAnyData) {
     return stats;
   }
 
+  const countItemGenres = (item) => {
+    const genres = new Set();
+    const add = (g) => {
+      if (typeof g === 'string') {
+        g.split(',').forEach(p => {
+          const clean = p.trim();
+          if (clean) genres.add(clean);
+        });
+      }
+    };
+    
+    if (Array.isArray(item.genres)) item.genres.forEach(add);
+    else if (item.genres) add(item.genres);
+    
+    if (Array.isArray(item.animeGenres)) item.animeGenres.forEach(add);
+    else if (item.animeGenres) add(item.animeGenres);
+
+    genres.forEach(g => {
+      stats.genreCounts[g] = (stats.genreCounts[g] || 0) + 1;
+    });
+  };
+
   Object.values(cacheMap.movies || {}).forEach(item => {
     if (!item) return;
     stats.movieCount += 1;
+    countItemGenres(item);
     const minutes = estimateMovieRuntimeMinutes(item);
     if (minutes > 0) {
       stats.totalMinutes += minutes;
@@ -3131,6 +3200,7 @@ function computeLibraryRuntimeStats() {
 
   Object.values(cacheMap.tvShows || {}).forEach(item => {
     if (!item) return;
+    countItemGenres(item);
     const episodes = getTvEpisodeCount(item);
     if (episodes > 0) {
       stats.episodeCount += episodes;
@@ -3145,6 +3215,7 @@ function computeLibraryRuntimeStats() {
 
   Object.values(cacheMap.anime || {}).forEach(item => {
     if (!item) return;
+    countItemGenres(item);
     const episodes = getAnimeEpisodeCount(item);
     if (episodes > 0) {
       stats.episodeCount += episodes;
