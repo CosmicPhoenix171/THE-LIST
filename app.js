@@ -3564,6 +3564,10 @@ function resolveFranchiseEntryOrderLabel(record, entry, index) {
     return `#${index + 1}`;
   }
   
+  if (entry && typeof entry.displayOrder === 'number') {
+    return `#${entry.displayOrder + 1}`;
+  }
+
   if (!record || record.orderMode !== 'auto') {
     return entry?.orderLabel || '';
   }
