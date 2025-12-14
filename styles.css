@@ -747,23 +747,21 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .card.collapsible.movie-card .title{font-size:1rem}
 .card.collapsible.movie-card:not(.expanded) .movie-card-summary{
   position:relative;
-  padding-bottom:2.6rem;
   margin-top:.25rem;
-  min-height:230px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .card.collapsible.movie-card:not(.expanded) .movie-card-info{
-  position:absolute;
-  left:50%;
-  bottom:1rem;
-  transform:translate(-50%, 0);
-  width:calc(100% - 2rem);
+  position:relative;
+  width:calc(100% - 0.5rem);
   max-width:220px;
-  background: rgba(15, 23, 32, 0.85);
-  backdrop-filter: blur(8px);
+  margin-top: -18px;
+  background: var(--bg-800);
   border: 1px solid var(--card-accent, rgba(255,255,255,0.08));
   border-radius:16px;
   padding:.6rem .85rem;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2), 0 0 0 1px var(--card-accent, transparent);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
   text-align:left;
   align-items:flex-start;
   z-index:2;
