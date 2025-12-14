@@ -5894,9 +5894,27 @@ function compareSeriesEntries(a, b) {
   const safeA = orderA === null || orderA === undefined ? Number.POSITIVE_INFINITY : orderA;
   const safeB = orderB === null || orderB === undefined ? Number.POSITIVE_INFINITY : orderB;
   if (safeA !== safeB) return safeA - safeB;
-  const yearA = parseInt(sanitizeYear(a?.item?.year || ''), 10) || 9999;
-  const yearB = parseInt(sanitizeYear(b?.item?.year || ''), 10) || 9999;
+
+  const getYear = (item) => {
+    if (!item) return 9999;
+    const candidates = [item.year, item.releaseYear, item.airDate, item.releaseDate, item.firstAirDate];
+    for (const c of candidates) {
+      const y = parseInt(sanitizeYear(String(c || '')), 10);
+      if (Number.isFinite(y) && y > 1800 && y < 2100) return y;
+    }
+    return 9999;
+  };
+
+  const yearA = getYear(a?.item);
+  const yearB = getYear(b?.item);
   if (yearA !== yearB) return yearA - yearB;
+
+  const seasonA = a?.item?.seasonNumber;
+  const seasonB = b?.item?.seasonNumber;
+  if (seasonA !== undefined && seasonB !== undefined) {
+      return Number(seasonA) - Number(seasonB);
+  }
+
   const titleA = titleSortKey(a?.item?.title || '');
   const titleB = titleSortKey(b?.item?.title || '');
   if (titleA < titleB) return -1;
@@ -6269,12 +6287,32 @@ function sortSeriesTreeByYear(listType, cardId) {
   const baseEntries = store.get(cardId);
   const entries = getSeriesTreeEntries(listType, cardId, { sourceEntries: baseEntries });
   if (!entries || entries.length <= 1) return;
+  
+  const getYear = (item) => {
+    if (!item) return 9999;
+    const candidates = [item.year, item.releaseYear, item.airDate, item.releaseDate, item.firstAirDate];
+    for (const c of candidates) {
+      const y = parseInt(sanitizeYear(String(c || '')), 10);
+      if (Number.isFinite(y) && y > 1800 && y < 2100) return y;
+    }
+    return 9999;
+  };
+
   const sorted = entries.slice().sort((a, b) => {
-    const yearA = parseInt(sanitizeYear(a.item?.year || ''), 10) || 9999;
-    const yearB = parseInt(sanitizeYear(b.item?.year || ''), 10) || 9999;
+    const yearA = getYear(a.item);
+    const yearB = getYear(b.item);
     if (yearA !== yearB) return yearA - yearB;
+    
+    // If years are same, try season number
+    const seasonA = a.item?.seasonNumber;
+    const seasonB = b.item?.seasonNumber;
+    if (seasonA !== undefined && seasonB !== undefined) {
+       return Number(seasonA) - Number(seasonB);
+    }
+
     return (a.order || 0) - (b.order || 0);
   });
+  
   if (sorted.length) {
     const cardElement = document.querySelector(`.card.collapsible.movie-card[data-card-id="${cardId}"]`);
     applySeriesTreeReorder(listType, cardId, sorted, cardElement);
