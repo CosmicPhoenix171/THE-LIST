@@ -3499,8 +3499,8 @@ function buildFranchiseTimeline(record) {
   }
   const track = createEl('div', 'franchise-track');
   track.dataset.franchiseId = record.id || '';
-  record.entries.forEach(entry => {
-    const node = buildFranchiseTimelineEntry(record, entry);
+  record.entries.forEach((entry, index) => {
+    const node = buildFranchiseTimelineEntry(record, entry, index);
     if (node) track.appendChild(node);
   });
   if (!track.childElementCount) {
@@ -3511,7 +3511,7 @@ function buildFranchiseTimeline(record) {
   return wrapper;
 }
 
-function buildFranchiseTimelineEntry(record, entry) {
+function buildFranchiseTimelineEntry(record, entry, index) {
   if (!entry) return null;
   const entryEl = createEl('div', 'franchise-entry');
   entryEl.classList.add(`media-${entry.mediaType || 'movie'}`);
@@ -3522,7 +3522,7 @@ function buildFranchiseTimelineEntry(record, entry) {
   entryEl.setAttribute('draggable', 'true');
 
   const header = createEl('div', 'franchise-entry-header');
-  const orderLabel = resolveFranchiseEntryOrderLabel(record, entry);
+  const orderLabel = resolveFranchiseEntryOrderLabel(record, entry, index);
   if (orderLabel) {
     header.appendChild(createEl('span', 'franchise-entry-order', { text: orderLabel }));
   }
@@ -3557,7 +3557,13 @@ function buildFranchiseTimelineEntry(record, entry) {
   return entryEl;
 }
 
-function resolveFranchiseEntryOrderLabel(record, entry) {
+function resolveFranchiseEntryOrderLabel(record, entry, index) {
+  // Always use sequential numbering based on the current list order
+  // This prevents duplicate numbers when mixing Movies (e.g. #1) and TV Shows (e.g. Season #1)
+  if (typeof index === 'number') {
+    return `#${index + 1}`;
+  }
+  
   if (!record || record.orderMode !== 'auto') {
     return entry?.orderLabel || '';
   }
