@@ -549,11 +549,18 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   border: 1px solid transparent;
 }
 
-.card.collapsible.movie-card:hover .movie-card-info {
+/* Always show border on collapsed card info */
+.card.collapsible.movie-card:not(.expanded) .movie-card-info {
   background: rgba(15, 23, 32, 0.85);
   backdrop-filter: blur(8px);
   border-color: var(--card-accent, #2a4055);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2), 0 0 0 1px var(--card-accent, transparent);
+}
+
+/* Enhanced hover state */
+.card.collapsible.movie-card:not(.expanded):hover .movie-card-info {
   box-shadow: 0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px var(--card-accent, transparent);
+  background: rgba(15, 23, 32, 0.95);
 }
 
 .rating-badge{
