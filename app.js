@@ -3329,7 +3329,9 @@ function updateLibraryRuntimeStats() {
     ? (formatRuntimeDuration(stats.totalMinutes) || 'Runtime info unavailable')
     : 'Runtime info unavailable';
   const spokenSummary = `${stats.movieCount} ${movieLabel}, ${stats.episodeCount} ${episodeLabel}, ${runtimeSummaryText}`;
-  libraryStatsSummaryEl.setAttribute('aria-label', spokenSummary);
+  if (libraryStatsSummaryEl) {
+    libraryStatsSummaryEl.setAttribute('aria-label', spokenSummary);
+  }
 }
 
 function computeLibraryRuntimeStats() {
