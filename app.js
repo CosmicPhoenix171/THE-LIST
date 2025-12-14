@@ -3059,6 +3059,11 @@ function updateLibraryRuntimeStats() {
     // Ensure text remains readable on colored backgrounds
     runtimeChip.style.color = '#fff';
     runtimeChip.style.textShadow = '0 1px 2px rgba(0,0,0,0.3)';
+  } else {
+    runtimeChip.style.background = '';
+    runtimeChip.style.borderColor = '';
+    runtimeChip.style.color = '';
+    runtimeChip.style.textShadow = '';
   }
   
   // Add realistic time toggle

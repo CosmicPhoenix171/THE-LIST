@@ -299,6 +299,43 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   border: 0;
   box-shadow: none;
   padding: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Gradient styling overrides */
+.side-stats-panel .library-stat-chip.runtime[style*="gradient"] {
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.side-stats-panel .library-stat-chip.runtime[style*="gradient"] .runtime-pill {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: none;
+}
+
+.side-stats-panel .library-stat-chip.runtime[style*="gradient"] .runtime-pill-label {
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  font-weight: 600;
+}
+
+.side-stats-panel .library-stat-chip.runtime[style*="gradient"] .runtime-pill-value {
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+
+.side-stats-panel .library-stat-chip.runtime[style*="gradient"] .library-stat-label {
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+.side-stats-panel .library-stat-chip.runtime[style*="gradient"] .realistic-time-toggle {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
 }
 
 .side-stats-panel .runtime-pill-row {
