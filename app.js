@@ -5841,6 +5841,42 @@ function getSeriesGroupEntries(listType, cardId) {
   return entries.slice();
 }
 
+const seasonMetadataAttempted = new Set();
+
+async function ensureSeasonMetadata(listType, entryId, seasonIndex, tmdbId, seasonNumber) {
+  const key = `${entryId}_${seasonIndex}`;
+  if (seasonMetadataAttempted.has(key)) return;
+  seasonMetadataAttempted.add(key);
+
+  try {
+    const url = `${TMDB_API_BASE_URL}/tv/${tmdbId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    
+    if (data) {
+      const updates = {};
+      if (data.poster_path) {
+        updates.poster = `${TMDB_IMAGE_BASE_URL}${data.poster_path}`;
+      }
+      if (data.overview) {
+        updates.plot = data.overview;
+      }
+      if (data.air_date) {
+        const y = parseInt(data.air_date.substring(0, 4));
+        if (Number.isFinite(y)) updates.year = y;
+      }
+      
+      if (Object.keys(updates).length > 0) {
+        const pathStr = `users/${currentUser.uid}/${listType}/${entryId}/tvSeasonSummaries/${seasonIndex}`;
+        await update(ref(db, pathStr), updates);
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to fetch season metadata', e);
+  }
+}
+
 function collectSeriesEntriesAcrossLists(seriesName) {
   const normalizedKey = normalizeTitleKey(seriesName);
   if (!normalizedKey) return [];
@@ -5871,6 +5907,10 @@ function collectSeriesEntriesAcrossLists(seriesName) {
 
           virtualItem.title = season.title || `${item.title}: Season ${season.seasonNumber}`;
           if (season.poster) virtualItem.poster = season.poster;
+
+          if (type === 'tvShows' && !season.poster && item.tmdbId && season.seasonNumber != null) {
+            ensureSeasonMetadata(type, id, index, item.tmdbId, season.seasonNumber);
+          }
           
           entries.push({
             id: `${id}_season_${index}`,
