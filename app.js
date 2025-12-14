@@ -2390,7 +2390,6 @@ function initUnifiedLibraryControls() {
       showFinishedOnly = Boolean(ev.target.checked);
       updateSortOptionsVisibility();
       renderUnifiedLibrary();
-      updateLibraryRuntimeStats();
     });
   }
   
@@ -2793,7 +2792,11 @@ function updateAlphabetScroller(items) {
 }
 
 function renderUnifiedLibrary() {
-  updateLibraryRuntimeStats();
+  try {
+    updateLibraryRuntimeStats();
+  } catch (err) {
+    console.warn('Stats update error:', err);
+  }
   if (!combinedListEl) return;
   const renderStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   const displayCaches = getDisplayCacheMap();
