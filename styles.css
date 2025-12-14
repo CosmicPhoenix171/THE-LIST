@@ -248,6 +248,40 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   text-align: center;
 }
 
+.stat-header-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.realistic-time-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  font-size: 0.7rem;
+  color: var(--text-500);
+  background: rgba(255,255,255,0.05);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.1);
+  transition: all 0.2s ease;
+}
+
+.realistic-time-toggle:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text-300);
+}
+
+.realistic-time-toggle input {
+  margin: 0;
+  width: 0.8rem;
+  height: 0.8rem;
+  cursor: pointer;
+}
+
 .side-stats-panel .library-stat-chip.runtime {
   background: transparent;
   border: 0;

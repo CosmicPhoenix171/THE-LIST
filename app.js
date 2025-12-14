@@ -757,9 +757,12 @@ function formatRuntimePillNumber(value) {
   return amount.toString().padStart(2, '0');
 }
 
+let realisticTimeMode = false;
+
 function getRuntimeUnitBreakdown(totalMinutes) {
   const minutesPerHour = 60;
-  const minutesPerDay = minutesPerHour * 24;
+  const hoursPerDay = realisticTimeMode ? 7 : 24;
+  const minutesPerDay = minutesPerHour * hoursPerDay;
   const minutesPerMonth = minutesPerDay * 28;
   const minutesPerYear = minutesPerMonth * 13;
   let remaining = Math.max(0, Math.floor(totalMinutes));
@@ -802,12 +805,17 @@ function animateRuntimeProgression(chipElement, finalMinutes) {
   const FRAMES_PER_SECTION = (TARGET_SECTION_DURATION_MS / 1000) * FPS;
   const finalUnitValues = getRuntimeUnitBreakdown(finalMinutes);
   
+  const hoursPerDay = realisticTimeMode ? 7 : 24;
+  const minutesPerDay = 60 * hoursPerDay;
+  const minutesPerMonth = minutesPerDay * 28;
+  const minutesPerYear = minutesPerMonth * 13;
+
   const definitions = [
     { unit: 'minutes', threshold: 0, divisor: 1, max: 60, className: 'runtime-minutes' },
-    { unit: 'hours', threshold: 60, divisor: 60, max: 24, className: 'runtime-hours' },
-    { unit: 'days', threshold: 1440, divisor: 1440, max: 28, className: 'runtime-days' },
-    { unit: 'months', threshold: 40320, divisor: 40320, max: 13, className: 'runtime-months' },
-    { unit: 'years', threshold: 524160, divisor: 524160, max: Infinity, className: 'runtime-years' }
+    { unit: 'hours', threshold: 60, divisor: 60, max: hoursPerDay, className: 'runtime-hours' },
+    { unit: 'days', threshold: minutesPerDay, divisor: minutesPerDay, max: 28, className: 'runtime-days' },
+    { unit: 'months', threshold: minutesPerMonth, divisor: minutesPerMonth, max: 13, className: 'runtime-months' },
+    { unit: 'years', threshold: minutesPerYear, divisor: minutesPerYear, max: Infinity, className: 'runtime-years' }
   ];
 
   const sequence = [];
@@ -3040,6 +3048,30 @@ function updateLibraryRuntimeStats() {
   const runtimeChip = buildLibraryStatChip('Finish Time', '', { 
     modifier: 'runtime runtime-minutes' 
   });
+  
+  // Add realistic time toggle
+  const labelEl = runtimeChip.querySelector('.library-stat-label');
+  if (labelEl) {
+    labelEl.innerHTML = '';
+    const labelText = createEl('span', '', { text: 'Finish Time' });
+    const toggleLabel = createEl('label', 'realistic-time-toggle');
+    toggleLabel.title = 'Realistic time to finish';
+    const checkbox = createEl('input', '', { type: 'checkbox' });
+    checkbox.checked = realisticTimeMode;
+    checkbox.addEventListener('change', (e) => {
+      realisticTimeMode = e.target.checked;
+      updateLibraryRuntimeStats();
+    });
+    const toggleText = createEl('span', '', { text: 'Realistic' });
+    toggleLabel.appendChild(checkbox);
+    toggleLabel.appendChild(toggleText);
+    
+    const headerRow = createEl('div', 'stat-header-row');
+    headerRow.appendChild(labelText);
+    headerRow.appendChild(toggleLabel);
+    labelEl.appendChild(headerRow);
+  }
+
   const runtimeValueEl = runtimeChip.querySelector('.library-stat-value');
   if (runtimeValueEl) {
     runtimeValueEl.innerHTML = runtimePlaceholder;
