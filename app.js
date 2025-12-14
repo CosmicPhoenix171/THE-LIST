@@ -5221,6 +5221,10 @@ function buildSeasonNotesBreakdown({
   fallbackLabel = 'Season',
   placeholder = 'Notes for this season',
 } = {}) {
+  // Suppress parent season list when within a unified/franchise-order grouped card
+  const parentCard = document.querySelector(`.card.collapsible.movie-card[data-id="${entryId}"]`);
+  const inFranchiseGroup = Boolean(parentCard && parentCard.dataset && parentCard.dataset.isUnified === 'true');
+  if (inFranchiseGroup) return null;
   if (!Array.isArray(rawSeasons) || !rawSeasons.length || !fieldName) return null;
   const normalized = rawSeasons
     .filter(season => season && (season.seasonNumber !== undefined || season.title))
