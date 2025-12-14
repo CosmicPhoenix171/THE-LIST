@@ -5872,6 +5872,43 @@ function formatSeriesEntryLabel(entry) {
   return parts.join(' ');
 }
 
+async function moveSeriesTreeNode(listType, entry, direction) {
+  if (!entry || !entry.item) return;
+  const seriesName = entry.item.seriesName;
+  if (!seriesName) return;
+
+  const entries = collectSeriesEntriesAcrossLists(seriesName);
+  if (!entries || !entries.length) return;
+  
+  entries.sort(compareSeriesEntries);
+  
+  const currentIndex = entries.findIndex(e => e.id === entry.id && (e.listType === entry.listType || (!e.listType && !entry.listType)));
+  if (currentIndex === -1) return;
+  
+  const targetIndex = currentIndex + direction;
+  if (targetIndex < 0 || targetIndex >= entries.length) return;
+  
+  const targetEntry = entries[targetIndex];
+  
+  const newCurrentOrder = targetIndex + 1;
+  const newTargetOrder = currentIndex + 1;
+  
+  const updateEntry = async (e, order) => {
+      const isFinished = Boolean(e.item.finishedAt);
+      const dbPath = isFinished 
+        ? `users/${currentUser.uid}/finished/${e.listType}/${e.id}`
+        : `users/${currentUser.uid}/${e.listType}/${e.id}`;
+      await update(ref(db, dbPath), { seriesOrder: order });
+  };
+  
+  await Promise.all([
+      updateEntry(entry, newCurrentOrder),
+      updateEntry(targetEntry, newTargetOrder)
+  ]);
+  invalidateSeriesCrossListCache();
+  scheduleCrossSeriesRefresh();
+}
+
 function buildSeriesTreeNode(listType, entry, fallbackIndex = 0) {
   if (!entry || !entry.item) return null;
   const { item } = entry;
@@ -5883,7 +5920,23 @@ function buildSeriesTreeNode(listType, entry, fallbackIndex = 0) {
   node.setAttribute('draggable', 'true');
 
   const orderLabel = resolveSeriesNodeOrder(entry, fallbackIndex);
-  node.appendChild(createEl('div', 'series-tree-order', { text: `#${orderLabel}` }));
+  
+  const orderContainer = createEl('div', 'series-tree-order-container');
+  const upBtn = createEl('button', 'series-tree-order-btn', { text: '▲' });
+  upBtn.onclick = (e) => {
+    e.stopPropagation();
+    moveSeriesTreeNode(listType, entry, -1);
+  };
+  const label = createEl('div', 'series-tree-order', { text: `#${orderLabel}` });
+  const downBtn = createEl('button', 'series-tree-order-btn', { text: '▼' });
+  downBtn.onclick = (e) => {
+    e.stopPropagation();
+    moveSeriesTreeNode(listType, entry, 1);
+  };
+  orderContainer.appendChild(upBtn);
+  orderContainer.appendChild(label);
+  orderContainer.appendChild(downBtn);
+  node.appendChild(orderContainer);
 
   const poster = buildSeriesTreePoster(item);
   if (poster) {

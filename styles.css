@@ -934,6 +934,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .series-tree-placeholder{display:grid;grid-template-columns:48px 70px minmax(0,1fr);gap:.75rem;align-items:center;border:1px dashed rgba(125,242,201,0.5);border-radius:12px;padding:.65rem .8rem;color:var(--text-500);text-transform:uppercase;font-weight:600;letter-spacing:.08em;background:rgba(125,242,201,0.08);pointer-events:none}
 .series-tree-placeholder .series-tree-order,.series-tree-placeholder .series-tree-poster,.series-tree-placeholder .series-tree-body{display:none}
 .series-tree-order{font-weight:700;font-size:.85rem;color:var(--text-500);letter-spacing:.05em;text-align:center;align-self:flex-start;padding-top:.2rem}
+.series-tree-order-container{display:flex;flex-direction:column;align-items:center;gap:0;margin-right:4px;align-self:flex-start;padding-top:0}
+.series-tree-order-btn{background:none;border:none;color:var(--text-500);font-size:10px;cursor:pointer;padding:0;line-height:1;opacity:0.4;transition:opacity 0.2s,color 0.2s;display:flex;align-items:center;justify-content:center;height:12px;width:100%}
+.series-tree-order-btn:hover{opacity:1;color:var(--text-100)}
 .series-tree-poster{width:70px;height:100px;border-radius:10px;overflow:hidden;box-shadow:0 8px 20px rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08)}
 .series-tree-poster img{display:block;width:100%;height:100%;object-fit:cover}
 .series-tree-poster.placeholder{display:flex;align-items:center;justify-content:center;font-size:.7rem;color:var(--text-500);background:rgba(36,54,68,0.55);border:1px dashed rgba(56,82,102,0.6)}
