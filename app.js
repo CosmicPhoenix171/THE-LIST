@@ -5897,6 +5897,14 @@ function compareSeriesEntries(a, b) {
 
   const getDateValue = (item) => {
     if (!item) return 99999999;
+    
+    const userYear = parseInt(sanitizeYear(String(item.year || item.releaseYear || '')), 10);
+    const getYearFromDate = (dateStr) => {
+        if (!dateStr || typeof dateStr !== 'string') return null;
+        const match = dateStr.match(/^(\d{4})/);
+        return match ? parseInt(match[1], 10) : null;
+    };
+
     const isSeason = item.seasonNumber !== undefined && item.seasonNumber !== null;
     const candidates = [item.airDate, item.releaseDate];
     if (!isSeason) {
@@ -5904,12 +5912,15 @@ function compareSeriesEntries(a, b) {
     }
     for (const c of candidates) {
       if (c && typeof c === 'string' && c.match(/^\d{4}-\d{2}-\d{2}$/)) {
+         const apiYear = getYearFromDate(c);
+         if (userYear && apiYear && Math.abs(userYear - apiYear) > 1) {
+             continue; 
+         }
          return parseInt(c.replace(/-/g, ''), 10);
       }
     }
-    const yStr = sanitizeYear(String(item.year || item.releaseYear || ''));
-    if (yStr) {
-      return parseInt(yStr + '0101', 10);
+    if (userYear) {
+      return parseInt(userYear + '0101', 10);
     }
     return 99999999;
   };
@@ -6299,6 +6310,14 @@ function sortSeriesTreeByYear(listType, cardId) {
   
   const getDateValue = (item) => {
     if (!item) return 99999999;
+    
+    const userYear = parseInt(sanitizeYear(String(item.year || item.releaseYear || '')), 10);
+    const getYearFromDate = (dateStr) => {
+        if (!dateStr || typeof dateStr !== 'string') return null;
+        const match = dateStr.match(/^(\d{4})/);
+        return match ? parseInt(match[1], 10) : null;
+    };
+
     const isSeason = item.seasonNumber !== undefined && item.seasonNumber !== null;
     const candidates = [item.airDate, item.releaseDate];
     if (!isSeason) {
@@ -6306,12 +6325,15 @@ function sortSeriesTreeByYear(listType, cardId) {
     }
     for (const c of candidates) {
       if (c && typeof c === 'string' && c.match(/^\d{4}-\d{2}-\d{2}$/)) {
+         const apiYear = getYearFromDate(c);
+         if (userYear && apiYear && Math.abs(userYear - apiYear) > 1) {
+             continue; 
+         }
          return parseInt(c.replace(/-/g, ''), 10);
       }
     }
-    const yStr = sanitizeYear(String(item.year || item.releaseYear || ''));
-    if (yStr) {
-      return parseInt(yStr + '0101', 10);
+    if (userYear) {
+      return parseInt(userYear + '0101', 10);
     }
     return 99999999;
   };
