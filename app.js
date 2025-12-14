@@ -5113,30 +5113,33 @@ function buildMovieCardDetails(listType, cardId, entryId, item, context = {}) {
     details.appendChild(createEl('div', 'notes detail-block', { text: item.notes }));
   }
 
+  let seriesBlock = null;
+  if (isCollapsibleList(listType)) {
+    seriesBlock = buildSeriesTreeBlock(listType, cardId, context.seriesEntries);
+  }
+  const hasFranchiseOrder = Boolean(seriesBlock);
+
   if (listType === 'anime') {
-    const animeBlock = buildAnimeDetailBlock(listType, entryId, item);
+    const animeBlock = buildAnimeDetailBlock(listType, entryId, item, { suppressSeasons: hasFranchiseOrder });
     if (animeBlock) {
       details.appendChild(animeBlock);
     }
   }
 
   if (listType === 'tvShows') {
-    const tvBlock = buildTvDetailBlock(listType, entryId, item);
+    const tvBlock = buildTvDetailBlock(listType, entryId, item, { suppressSeasons: hasFranchiseOrder });
     if (tvBlock) {
       details.appendChild(tvBlock);
     }
   }
 
-  if (isCollapsibleList(listType)) {
-    const seriesBlock = buildSeriesTreeBlock(listType, cardId, context.seriesEntries);
-    if (seriesBlock) {
-      details.appendChild(seriesBlock);
-    }
+  if (seriesBlock) {
+    details.appendChild(seriesBlock);
   }
   return details;
 }
 
-function buildAnimeDetailBlock(listType, entryId, item) {
+function buildAnimeDetailBlock(listType, entryId, item, { suppressSeasons = false } = {}) {
   if (!item) return null;
   const block = createEl('div', 'detail-block anime-detail-block');
   const chips = [];
@@ -5165,7 +5168,7 @@ function buildAnimeDetailBlock(listType, entryId, item) {
   }
   const resolvedEntryId = entryId || item.__id || item.id || '';
   const animeSeasonField = getAnimeSeasonField(item);
-  if (animeSeasonField) {
+  if (animeSeasonField && !suppressSeasons) {
     const seasonBreakdown = buildSeasonNotesBreakdown({
       listType,
       entryId: resolvedEntryId,
@@ -5181,7 +5184,7 @@ function buildAnimeDetailBlock(listType, entryId, item) {
   return block.children.length ? block : null;
 }
 
-function buildTvDetailBlock(listType, entryId, item) {
+function buildTvDetailBlock(listType, entryId, item, { suppressSeasons = false } = {}) {
   if (!item) return null;
   const chips = buildTvStatChips(item);
   const hasChips = chips.length > 0;
@@ -5197,7 +5200,7 @@ function buildTvDetailBlock(listType, entryId, item) {
     fallbackLabel: 'Season',
     placeholder: 'Notes for this season',
   });
-  const allowSeasonBreakdown = !isGroupedContext;
+  const allowSeasonBreakdown = !isGroupedContext && !suppressSeasons;
   if (!hasChips && (!seasonBreakdown || !allowSeasonBreakdown)) return null;
   const block = createEl('div', 'detail-block tv-detail-block');
   if (hasChips) {
