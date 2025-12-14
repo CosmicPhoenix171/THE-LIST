@@ -5895,45 +5895,54 @@ function compareSeriesEntries(a, b) {
   const safeB = orderB === null || orderB === undefined ? Number.POSITIVE_INFINITY : orderB;
   if (safeA !== safeB) return safeA - safeB;
 
-  const getDateValue = (item) => {
-    if (!item) return 99999999;
+  const getSortData = (item) => {
+    if (!item) return { year: 9999, date: 99999999, season: Infinity };
     
-    const userYear = parseInt(sanitizeYear(String(item.year || item.releaseYear || '')), 10);
-    const getYearFromDate = (dateStr) => {
-        if (!dateStr || typeof dateStr !== 'string') return null;
-        const match = dateStr.match(/^(\d{4})/);
-        return match ? parseInt(match[1], 10) : null;
-    };
+    let year = 9999;
+    const yearStr = sanitizeYear(String(item.year || item.releaseYear || ''));
+    if (yearStr) {
+        year = parseInt(yearStr, 10);
+    } else {
+        const candidates = [item.airDate, item.releaseDate, item.firstAirDate];
+        for (const c of candidates) {
+            if (c && typeof c === 'string' && c.match(/^\d{4}/)) {
+                year = parseInt(c.substring(0, 4), 10);
+                break;
+            }
+        }
+    }
 
-    const isSeason = item.seasonNumber !== undefined && item.seasonNumber !== null;
-    const candidates = [item.airDate, item.releaseDate];
-    if (!isSeason) {
-        candidates.push(item.firstAirDate);
+    let date = 99999999;
+    const dateCandidates = [item.airDate, item.releaseDate];
+    if (item.seasonNumber === undefined || item.seasonNumber === null) {
+        dateCandidates.push(item.firstAirDate);
     }
-    for (const c of candidates) {
-      if (c && typeof c === 'string' && c.match(/^\d{4}-\d{2}-\d{2}$/)) {
-         const apiYear = getYearFromDate(c);
-         if (userYear && apiYear && Math.abs(userYear - apiYear) > 1) {
-             continue; 
-         }
-         return parseInt(c.replace(/-/g, ''), 10);
-      }
+    for (const c of dateCandidates) {
+        if (c && typeof c === 'string' && c.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const dVal = parseInt(c.replace(/-/g, ''), 10);
+            if (year === 9999 || Math.floor(dVal / 10000) === year) {
+                date = dVal;
+                break;
+            }
+        }
     }
-    if (userYear) {
-      return parseInt(userYear + '0101', 10);
+    if (date === 99999999 && year !== 9999) {
+        date = year * 10000; 
     }
-    return 99999999;
+
+    const season = (item.seasonNumber !== undefined && item.seasonNumber !== null) 
+        ? Number(item.seasonNumber) 
+        : Infinity;
+
+    return { year, date, season };
   };
 
-  const dateA = getDateValue(a?.item);
-  const dateB = getDateValue(b?.item);
-  if (dateA !== dateB) return dateA - dateB;
+  const dataA = getSortData(a?.item);
+  const dataB = getSortData(b?.item);
 
-  const seasonA = a?.item?.seasonNumber;
-  const seasonB = b?.item?.seasonNumber;
-  if (seasonA !== undefined && seasonB !== undefined) {
-      return Number(seasonA) - Number(seasonB);
-  }
+  if (dataA.year !== dataB.year) return dataA.year - dataB.year;
+  if (dataA.date !== dataB.date) return dataA.date - dataB.date;
+  if (dataA.season !== dataB.season) return dataA.season - dataB.season;
 
   const titleA = titleSortKey(a?.item?.title || '');
   const titleB = titleSortKey(b?.item?.title || '');
@@ -6308,46 +6317,59 @@ function sortSeriesTreeByYear(listType, cardId) {
   const entries = getSeriesTreeEntries(listType, cardId, { sourceEntries: baseEntries });
   if (!entries || entries.length <= 1) return;
   
-  const getDateValue = (item) => {
-    if (!item) return 99999999;
+  const getSortData = (item) => {
+    if (!item) return { year: 9999, date: 99999999, season: Infinity };
     
-    const userYear = parseInt(sanitizeYear(String(item.year || item.releaseYear || '')), 10);
-    const getYearFromDate = (dateStr) => {
-        if (!dateStr || typeof dateStr !== 'string') return null;
-        const match = dateStr.match(/^(\d{4})/);
-        return match ? parseInt(match[1], 10) : null;
-    };
+    // 1. Resolve Year (Trust visible year first)
+    let year = 9999;
+    const yearStr = sanitizeYear(String(item.year || item.releaseYear || ''));
+    if (yearStr) {
+        year = parseInt(yearStr, 10);
+    } else {
+        const candidates = [item.airDate, item.releaseDate, item.firstAirDate];
+        for (const c of candidates) {
+            if (c && typeof c === 'string' && c.match(/^\d{4}/)) {
+                year = parseInt(c.substring(0, 4), 10);
+                break;
+            }
+        }
+    }
 
-    const isSeason = item.seasonNumber !== undefined && item.seasonNumber !== null;
-    const candidates = [item.airDate, item.releaseDate];
-    if (!isSeason) {
-        candidates.push(item.firstAirDate);
+    // 2. Resolve Full Date (for tie-breaking within same year)
+    let date = 99999999;
+    const dateCandidates = [item.airDate, item.releaseDate];
+    if (item.seasonNumber === undefined || item.seasonNumber === null) {
+        dateCandidates.push(item.firstAirDate);
     }
-    for (const c of candidates) {
-      if (c && typeof c === 'string' && c.match(/^\d{4}-\d{2}-\d{2}$/)) {
-         const apiYear = getYearFromDate(c);
-         if (userYear && apiYear && Math.abs(userYear - apiYear) > 1) {
-             continue; 
-         }
-         return parseInt(c.replace(/-/g, ''), 10);
-      }
+    for (const c of dateCandidates) {
+        if (c && typeof c === 'string' && c.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const dVal = parseInt(c.replace(/-/g, ''), 10);
+            // Only use if it matches the resolved year (or if we have no year)
+            if (year === 9999 || Math.floor(dVal / 10000) === year) {
+                date = dVal;
+                break;
+            }
+        }
     }
-    if (userYear) {
-      return parseInt(userYear + '0101', 10);
+    if (date === 99999999 && year !== 9999) {
+        date = year * 10000; 
     }
-    return 99999999;
+
+    // 3. Resolve Season
+    const season = (item.seasonNumber !== undefined && item.seasonNumber !== null) 
+        ? Number(item.seasonNumber) 
+        : Infinity;
+
+    return { year, date, season };
   };
 
   const sorted = entries.slice().sort((a, b) => {
-    const dateA = getDateValue(a.item);
-    const dateB = getDateValue(b.item);
-    if (dateA !== dateB) return dateA - dateB;
-    
-    const seasonA = a.item?.seasonNumber;
-    const seasonB = b.item?.seasonNumber;
-    if (seasonA !== undefined && seasonB !== undefined) {
-       return Number(seasonA) - Number(seasonB);
-    }
+    const dataA = getSortData(a.item);
+    const dataB = getSortData(b.item);
+
+    if (dataA.year !== dataB.year) return dataA.year - dataB.year;
+    if (dataA.date !== dataB.date) return dataA.date - dataB.date;
+    if (dataA.season !== dataB.season) return dataA.season - dataB.season;
 
     return (a.order || 0) - (b.order || 0);
   });
