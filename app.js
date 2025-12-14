@@ -5860,6 +5860,11 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
   const handleSort = (btn) => {
     isYearSort = !isYearSort;
     btn.textContent = isYearSort ? 'Default Sort' : 'Sort by Year';
+    if (isYearSort) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
     
     if (isYearSort) {
       const sorted = [...entries].sort((a, b) => {
@@ -5897,10 +5902,10 @@ function buildSeriesTreeHeader(count, listType, cardId, onSort) {
   leftSide.appendChild(createEl('div', 'series-tree-heading-title', { text: 'Franchise order' }));
   
   if (onSort) {
-    const sortBtn = createEl('button', 'btn-text small series-sort-btn', { text: 'Sort by Year' });
+    const sortBtn = createEl('button', 'btn secondary small series-sort-btn', { text: 'Sort by Year' });
     sortBtn.type = 'button';
+    sortBtn.style.padding = '0.2rem 0.5rem';
     sortBtn.style.fontSize = '0.75rem';
-    sortBtn.style.color = 'var(--primary-300)';
     sortBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       onSort(sortBtn);
