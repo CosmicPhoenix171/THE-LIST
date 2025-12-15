@@ -1510,6 +1510,36 @@ function setActiveAddModalType(listType) {
   const form = activeAddModal.formHost.querySelector('form');
   if (form) {
     setupFormAutocomplete(form, targetType);
+    setupActorAutocomplete(form, targetType);
+
+    // Setup add mode toggle
+    const modeRadios = form.querySelectorAll('input[name="addMode"]');
+    if (modeRadios.length > 0) {
+      const titleGroup = form.querySelector('.title-group');
+      const actorGroup = form.querySelector('.actor-group');
+      const standardFields = form.querySelector('.standard-fields');
+      
+      const updateMode = () => {
+        const mode = Array.from(modeRadios).find(r => r.checked)?.value || 'title';
+        if (mode === 'actor') {
+          if (titleGroup) titleGroup.classList.add('hidden');
+          if (standardFields) standardFields.classList.add('hidden');
+          if (actorGroup) actorGroup.classList.remove('hidden');
+          const titleInput = form.querySelector('input[name="title"]');
+          if (titleInput) titleInput.removeAttribute('required');
+        } else {
+          if (titleGroup) titleGroup.classList.remove('hidden');
+          if (standardFields) standardFields.classList.remove('hidden');
+          if (actorGroup) actorGroup.classList.add('hidden');
+          const titleInput = form.querySelector('input[name="title"]');
+          if (titleInput) titleInput.setAttribute('required', '');
+        }
+      };
+      
+      modeRadios.forEach(radio => radio.addEventListener('change', updateMode));
+      updateMode(); // Initialize
+    }
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       // If we are in "finished only" mode, we should probably add to the finished list
@@ -7186,6 +7216,23 @@ async function addItemFromForm(listType, form) {
   const seriesOrderRaw = listType === 'books' ? '' : (form.seriesOrder && form.seriesOrder.value ? form.seriesOrder.value.trim() : '');
   const seriesOrder = listType === 'books' ? null : sanitizeSeriesOrder(seriesOrderRaw);
 
+  // If in actor mode, we might not have a title, but we shouldn't be submitting this form anyway.
+  // However, if the user hits Enter in the actor field, it might trigger submit.
+  // We should check if we are in actor mode and if so, ignore the submit or warn.
+  const modeRadios = form.querySelectorAll('input[name="addMode"]');
+  const mode = Array.from(modeRadios).find(r => r.checked)?.value || 'title';
+  
+  if (mode === 'actor') {
+    // In actor mode, the user should select an actor from the dropdown.
+    // If they hit enter, we could try to trigger the search if there is input.
+    const actorInput = form.querySelector('input[name="actor"]');
+    if (actorInput && actorInput.value.trim()) {
+       // Trigger search manually if needed, but the input listener handles it.
+       // Just prevent the "Title is required" alert.
+       return;
+    }
+  }
+
   if (!title) {
     alert('Title is required');
     return;
@@ -8066,10 +8113,15 @@ function maybeWarnAboutTmdbKey() {
 }
 
 function hideTitleSuggestions(form) {
-  if (!form || !form.__suggestionsEl) return;
-  const el = form.__suggestionsEl;
-  el.classList.remove('visible');
-  el.innerHTML = '';
+  if (!form) return;
+  if (form.__suggestionsEl) {
+    form.__suggestionsEl.classList.remove('visible');
+    form.__suggestionsEl.innerHTML = '';
+  }
+  if (form.__actorSuggestionsEl) {
+    form.__actorSuggestionsEl.classList.remove('visible');
+    form.__actorSuggestionsEl.innerHTML = '';
+  }
 }
 
 function resetFilterState() {
@@ -8181,6 +8233,149 @@ async function fetchTmdbSuggestions(listType, query) {
     console.warn('TMDb suggestion lookup failed', err);
     return [];
   }
+}
+
+async function fetchTmdbActorSuggestions(query) {
+  if (!TMDB_API_KEY) return [];
+  const params = new URLSearchParams({
+    api_key: TMDB_API_KEY,
+    query,
+    include_adult: 'false',
+    language: 'en-US'
+  });
+  try {
+    const resp = await fetch(`https://api.themoviedb.org/3/search/person?${params.toString()}`);
+    if (!resp.ok) return [];
+    const json = await resp.json();
+    if (!json || !Array.isArray(json.results)) return [];
+    return json.results.map(person => ({
+      name: person.name,
+      id: person.id,
+      profile_path: person.profile_path,
+      known_for: person.known_for
+    }));
+  } catch (err) {
+    console.warn('TMDb actor search failed', err);
+    return [];
+  }
+}
+
+async function fetchTmdbActorCredits(personId, listType) {
+  if (!TMDB_API_KEY) return [];
+  const endpoint = listType === 'movies' ? 'movie_credits' : 'tv_credits';
+  try {
+    const resp = await fetch(`https://api.themoviedb.org/3/person/${personId}/${endpoint}?api_key=${TMDB_API_KEY}&language=en-US`);
+    if (!resp.ok) return [];
+    const json = await resp.json();
+    const cast = json.cast || [];
+    return cast.map(entry => ({
+      title: entry.title || entry.name,
+      year: extractPrimaryYear(entry.release_date || entry.first_air_date || ''),
+      tmdbId: entry.id,
+      poster: entry.poster_path ? `${TMDB_IMAGE_BASE_URL}${entry.poster_path}` : null,
+      overview: entry.overview,
+      character: entry.character
+    }));
+  } catch (err) {
+    console.warn('TMDb actor credits failed', err);
+    return [];
+  }
+}
+
+function renderActorSuggestions(container, suggestions, onSelect) {
+  container.innerHTML = '';
+  container.classList.add('visible');
+  if (!suggestions || suggestions.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No actors found';
+    container.appendChild(empty);
+    return;
+  }
+
+  const note = document.createElement('div');
+  note.className = 'suggestions-note';
+  note.textContent = 'Actors powered by TMDb.';
+  container.appendChild(note);
+
+  suggestions.forEach(suggestion => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'suggestion-item actor-suggestion';
+    
+    if (suggestion.profile_path) {
+        const img = document.createElement('img');
+        img.src = `${TMDB_IMAGE_BASE_URL}${suggestion.profile_path}`;
+        img.alt = '';
+        img.style.width = '30px';
+        img.style.height = '45px';
+        img.style.objectFit = 'cover';
+        img.style.marginRight = '10px';
+        img.style.borderRadius = '4px';
+        button.appendChild(img);
+    }
+    
+    const label = document.createElement('span');
+    label.textContent = suggestion.name;
+    button.appendChild(label);
+    
+    button.style.display = 'flex';
+    button.style.alignItems = 'center';
+    button.style.textAlign = 'left';
+    
+    button.addEventListener('click', () => onSelect && onSelect(suggestion));
+    container.appendChild(button);
+  });
+}
+
+function setupActorAutocomplete(form, listType) {
+  const actorGroup = form.querySelector('.actor-group');
+  if (!actorGroup) return;
+  const actorInput = actorGroup.querySelector('input[name="actor"]');
+  const suggestionsEl = actorGroup.querySelector('[data-role="actor-suggestions"]');
+  if (!actorInput || !suggestionsEl) return;
+
+  form.__actorSuggestionsEl = suggestionsEl;
+  suggestionForms.add(form);
+
+  let lastFetchToken = 0;
+  const performSearch = debounce(async (query) => {
+    const currentToken = ++lastFetchToken;
+    const results = await fetchTmdbActorSuggestions(query);
+    if (currentToken !== lastFetchToken) return;
+    
+    renderActorSuggestions(suggestionsEl, results, async (person) => {
+      actorInput.value = person.name;
+      suggestionsEl.innerHTML = '';
+      suggestionsEl.classList.remove('visible');
+      
+      const credits = await fetchTmdbActorCredits(person.id, listType);
+      const entries = credits.map(c => ({
+        title: c.title,
+        poster: c.poster,
+        tmdbId: c.tmdbId,
+        year: c.year,
+        relation: 'actor-credit',
+        character: c.character
+      }));
+      
+      buildRelatedSuggestionsModal({
+        sourceListType: listType,
+        currentItem: { title: person.name },
+        entries: entries
+      });
+    });
+  }, 300);
+
+  actorInput.addEventListener('input', () => {
+    const val = actorInput.value.trim();
+    if (val.length < 2) {
+      suggestionsEl.innerHTML = '';
+      suggestionsEl.classList.remove('visible');
+      return;
+    }
+    performSearch(val);
+  });
 }
 
 function setupFormAutocomplete(form, listType) {
@@ -10197,7 +10392,9 @@ function buildRelatedSuggestionsModal({ sourceListType, currentItem, entries = [
     const body = createEl('div', 'related-suggestion-body');
     const titleRow = createEl('div', 'related-suggestion-title-row');
     titleRow.appendChild(createEl('strong', 'related-suggestion-title', { text: entry.title }));
-    const relationLabel = entry.relation === 'recommendation' ? 'Recommended' : 'Similar';
+    let relationLabel = 'Similar';
+    if (entry.relation === 'recommendation') relationLabel = 'Recommended';
+    else if (entry.relation === 'actor-credit') relationLabel = 'Credit';
     titleRow.appendChild(createEl('span', 'suggestion-badge', { text: relationLabel }));
     body.appendChild(titleRow);
 

@@ -106,16 +106,26 @@
                   <article class="add-panel">
                     <h3>Movies</h3>
                     <form class="add-form" data-list="movies">
-                      <div class="input-suggest">
+                      <div class="add-mode-toggle">
+                        <label class="radio-label"><input type="radio" name="addMode" value="title" checked> By Title</label>
+                        <label class="radio-label"><input type="radio" name="addMode" value="actor"> By Actor</label>
+                      </div>
+                      <div class="input-suggest title-group">
                         <input name="title" placeholder="Title" autocomplete="off" required />
                         <div class="suggestions" data-role="title-suggestions"></div>
                       </div>
-                      <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-                      <input name="director" placeholder="Director (optional)" />
-                      <input name="seriesName" placeholder="Series name (optional)" />
-                      <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
-                      <textarea name="notes" placeholder="Notes (optional)"></textarea>
-                      <button type="submit" class="btn primary">Add Movie</button>
+                      <div class="input-suggest actor-group hidden">
+                        <input name="actor" placeholder="Actor Name" autocomplete="off" />
+                        <div class="suggestions" data-role="actor-suggestions"></div>
+                      </div>
+                      <div class="standard-fields">
+                        <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                        <input name="director" placeholder="Director (optional)" />
+                        <input name="seriesName" placeholder="Series name (optional)" />
+                        <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
+                        <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                        <button type="submit" class="btn primary">Add Movie</button>
+                      </div>
                     </form>
                   </article>
                 </template>
@@ -123,16 +133,26 @@
                   <article class="add-panel">
                     <h3>TV Shows</h3>
                     <form class="add-form" data-list="tvShows">
-                      <div class="input-suggest">
+                      <div class="add-mode-toggle">
+                        <label class="radio-label"><input type="radio" name="addMode" value="title" checked> By Title</label>
+                        <label class="radio-label"><input type="radio" name="addMode" value="actor"> By Actor</label>
+                      </div>
+                      <div class="input-suggest title-group">
                         <input name="title" placeholder="Title" autocomplete="off" required />
                         <div class="suggestions" data-role="title-suggestions"></div>
                       </div>
-                      <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-                      <input name="director" placeholder="Director / Showrunner (optional)" />
-                      <input name="seriesName" placeholder="Series name (optional)" />
-                      <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
-                      <textarea name="notes" placeholder="Notes (optional)"></textarea>
-                      <button type="submit" class="btn primary">Add TV Show</button>
+                      <div class="input-suggest actor-group hidden">
+                        <input name="actor" placeholder="Actor Name" autocomplete="off" />
+                        <div class="suggestions" data-role="actor-suggestions"></div>
+                      </div>
+                      <div class="standard-fields">
+                        <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                        <input name="director" placeholder="Director / Showrunner (optional)" />
+                        <input name="seriesName" placeholder="Series name (optional)" />
+                        <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
+                        <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                        <button type="submit" class="btn primary">Add TV Show</button>
+                      </div>
                     </form>
                   </article>
                 </template>
