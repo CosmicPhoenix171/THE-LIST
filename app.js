@@ -5869,6 +5869,11 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
       return (a.item?.title || '').localeCompare(b.item?.title || '');
     });
     renderList(sorted, true);
+
+    // Persist the new order to Firebase
+    const treeList = document.querySelector('.series-tree-list');
+    const cardElement = document.querySelector(`.card[data-id="${cardId}"]`) || treeList?.closest('.card');
+    applySeriesTreeReorder(listType, cardId, sorted, cardElement);
   };
 
   const header = buildSeriesTreeHeader(entries.length, listType, cardId, handleSort);
