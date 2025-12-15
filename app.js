@@ -5846,10 +5846,10 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
   list.dataset.cardId = cardId;
   list.dataset.listType = listType;
 
-  const renderList = (items) => {
+  const renderList = (items, isSorted = false) => {
     list.innerHTML = '';
     items.forEach((entry, index) => {
-      const node = buildSeriesTreeNode(listType, entry, index);
+      const node = buildSeriesTreeNode(listType, entry, index, isSorted);
       if (node) {
         list.appendChild(node);
       }
@@ -5864,7 +5864,7 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
       if (yearA !== yearB) return yearA - yearB;
       return (a.item?.title || '').localeCompare(b.item?.title || '');
     });
-    renderList(sorted);
+    renderList(sorted, true);
   };
 
   block.appendChild(buildSeriesTreeHeader(entries.length, listType, cardId, handleSort));
@@ -6185,7 +6185,7 @@ async function moveSeriesTreeNode(listType, entry, direction) {
   applySeriesTreeReorder(listType, cardId, entries, cardElement);
 }
 
-function buildSeriesTreeNode(listType, entry, fallbackIndex = 0) {
+function buildSeriesTreeNode(listType, entry, fallbackIndex = 0, forceIndex = false) {
   if (!entry || !entry.item) return null;
   const { item } = entry;
   const entryListType = entry.listType || listType;
@@ -6195,7 +6195,7 @@ function buildSeriesTreeNode(listType, entry, fallbackIndex = 0) {
   node.dataset.entryKey = buildSeriesTreeNodeKey(entry, listType);
   node.setAttribute('draggable', 'true');
 
-  const orderLabel = resolveSeriesNodeOrder(entry, fallbackIndex);
+  const orderLabel = forceIndex ? (fallbackIndex + 1) : resolveSeriesNodeOrder(entry, fallbackIndex);
   
   const orderContainer = createEl('div', 'series-tree-order-container');
   const upBtn = createEl('button', 'series-tree-order-btn', { text: '▲' });
