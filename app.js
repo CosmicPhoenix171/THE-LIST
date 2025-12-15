@@ -2726,6 +2726,10 @@ function renderList(listType, data) {
     filtered = entries.filter(([, item]) => matchesActorFilter(listType, item, filterValue));
   }
 
+  if (listType === 'tvShows') {
+    filtered.forEach(([, item]) => ensureTvSeriesDefaults(listType, item));
+  }
+
   if (filtered.length === 0) {
     const message = supportsActorFilter && filterValue
       ? 'No items match this actor filter yet.'
@@ -3061,11 +3065,13 @@ function collectUnifiedEntries() {
     if (isCollapsibleList(listType)) {
       cacheEntries.forEach(([id, item], index) => {
         if (!item) return;
+        ensureTvSeriesDefaults(listType, item);
         collapsibleEntries.push({ listType, id, item, index });
       });
     } else {
       cacheEntries.forEach(([id, item], index) => {
         if (!item) return;
+        ensureTvSeriesDefaults(listType, item);
         allEntries.push({
           listType,
           id,
@@ -7370,6 +7376,10 @@ async function addItemFromForm(listType, form) {
         });
         Object.assign(item, metadataUpdates);
       }
+
+      if (listType === 'tvShows') {
+        ensureTvSeriesDefaults(listType, item);
+      }
     }
 
     if (isDuplicateCandidate(listType, item)) {
@@ -7526,6 +7536,17 @@ function sanitizeSeriesOrder(input) {
   const fallback = parseFloat(trimmed.replace(/[^0-9.\-]/g, ''));
   if (Number.isFinite(fallback)) return fallback;
   return trimmed;
+}
+
+function ensureTvSeriesDefaults(listType, item) {
+  if (listType !== 'tvShows' || !item) return;
+  const title = (item.title || '').trim();
+  if (title && !item.seriesName) {
+    item.seriesName = title;
+  }
+  if (item.seriesOrder === undefined || item.seriesOrder === null) {
+    item.seriesOrder = 1;
+  }
 }
 
 function numericSeriesOrder(value) {
@@ -9220,6 +9241,9 @@ async function moveItemBetweenLists(sourceListType, targetListType, itemId, item
   if (!cleaned.createdAt) {
     cleaned.createdAt = Date.now();
   }
+  if (targetListType === 'tvShows') {
+    ensureTvSeriesDefaults(targetListType, cleaned);
+  }
   const targetRef = ref(db, `users/${currentUser.uid}/${targetListType}/${itemId}`);
   await set(targetRef, cleaned);
   const sourceRef = ref(db, `users/${currentUser.uid}/${sourceListType}/${itemId}`);
@@ -9720,6 +9744,9 @@ function openEditModal(listType, itemId, item) {
       const normalizedSeriesOrder = sanitizeSeriesOrder(seriesOrderValRaw);
       payload.seriesName = seriesNameVal || null;
       payload.seriesOrder = normalizedSeriesOrder !== null ? normalizedSeriesOrder : null;
+      if (targetListType === 'tvShows') {
+        ensureTvSeriesDefaults(targetListType, payload);
+      }
     }
 
     setButtonBusy(saveBtn, true);
