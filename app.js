@@ -36,8 +36,6 @@ const firebaseConfig = {
   measurementId: 'G-YXJ2E2XG42',
 };
 
-// TMDb API powers metadata, autocomplete, and franchise info (recommended)
-// Create a key at https://www.themoviedb.org/settings/api and paste it here.
 const TMDB_API_KEY = '46dcf1eaa2ce4284037a00fdefca9bb8';
 const TMDB_API_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
@@ -64,8 +62,6 @@ const NOTIFICATION_STORAGE_KEY = '__THE_LIST_NOTIFICATIONS__';
 const MAX_PERSISTED_NOTIFICATIONS = 50;
 const NOTIFICATION_SEEN_KEY = '__THE_LIST_NOTIFICATIONS_SEEN__';
 
-// -----------------------
-// App state
 let appInitialized = false;
 let currentUser = null;
 const listeners = {};
@@ -166,8 +162,6 @@ const RUNTIME_PILL_UNITS = [
   { key: 'years', label: 'Years' }
 ];
 
-// Lists with very large payloads rely on viewport virtualization. Flip
-// window.__THE_LIST_PROFILE__ = true in DevTools to log render timings.
 const VIRTUALIZATION_THRESHOLD = 220;
 const VIRTUALIZATION_OVERSCAN = 6;
 const DEFAULT_VIRTUAL_ROW_HEIGHT = 320;
@@ -222,8 +216,7 @@ class VirtualScroller {
     this.isDestroyed = false;
     this.itemsPerRow = 1;
     this.rowObserver = null;
-    this.ignoreNextScroll = false; // Add flag to prevent scroll loops
-    // Removed heightLocked to allow dynamic updates
+    this.ignoreNextScroll = false;
     
     this.setupDom();
     this.bindEvents();
@@ -232,7 +225,7 @@ class VirtualScroller {
   setupDom() {
     if (!this.container) return;
     this.container.classList.add('virtual-scroll-root');
-    // Disable native scroll anchoring to prevent conflicts
+    this.container.style.overflowAnchor = 'none';
     this.container.style.overflowAnchor = 'none';
 
     this.topSpacer = document.createElement('div');
@@ -310,41 +303,19 @@ class VirtualScroller {
     const itemsPerRow = Math.max(1, this.itemsPerRow || 1);
     const row = Math.floor(index / itemsPerRow);
     
-    // Calculate target position
     const rect = this.container.getBoundingClientRect();
     const target = this.scrollTarget || window;
     const currentScrollTop = target === window 
       ? (window.scrollY || document.documentElement.scrollTop) 
       : target.scrollTop;
       
-    // We need the container's absolute top position relative to the document
-    // rect.top is relative to viewport. 
-    // containerAbsoluteTop = rect.top + windowScrollY
     const containerTop = rect.top + (target === window ? (window.scrollY || document.documentElement.scrollTop) : 0);
     
-    // Target scroll position
     const targetY = containerTop + (row * this.averageHeight);
     
     if (target === window) {
-      // For window, we scroll to the absolute position
-      // But wait, containerTop already includes scrollY.
-      // If we are scrolled down, rect.top is small/negative.
-      // rect.top + scrollY is constant (document position).
-      // So targetY is the document Y coordinate of the row.
-      // But we need to account for the container's offset from the top of the document?
-      // Yes, containerTop is exactly that.
-      // However, if the container is inside other scrollable elements, this gets complex.
-      // Assuming window scroll:
       window.scrollTo({ top: targetY - (this.topSpacer?.offsetTop || 0), behavior: 'auto' });
-      // Actually, simpler:
-      // The virtual scroller maintains spacers.
-      // The row is at `row * averageHeight` pixels *inside* the container.
-      // So we want the container's top + row*height to be at the top of the viewport.
-      // So scrollY should be containerAbsoluteTop + row*height.
-      // But wait, containerAbsoluteTop is where the container starts.
-      // So yes: window.scrollTo(0, containerAbsoluteTop + row * this.averageHeight).
       
-      // Let's recalculate containerAbsoluteTop carefully.
       const scrollTop = window.scrollY || document.documentElement.scrollTop;
       const absoluteTop = rect.top + scrollTop;
       window.scrollTo({ top: absoluteTop + (row * this.averageHeight), behavior: 'auto' });
@@ -402,7 +373,6 @@ class VirtualScroller {
 
   scheduleRender(force = false) {
     if (this.isDestroyed) return;
-    // Synchronous render to prevent visual lag/drift during fast scrolling
     this.renderVisibleRange();
   }
 
@@ -445,7 +415,6 @@ class VirtualScroller {
     const rect = this.container.getBoundingClientRect();
     const zeroHeight = !rect || rect.height <= 0;
     if (zeroHeight) {
-      // If we can't measure, render a safe initial window so content appears.
       this.startIndex = 0;
       this.endIndex = Math.min(this.items.length, Math.max(60, this.overscan * 8));
       this.renderWindow();
@@ -459,14 +428,11 @@ class VirtualScroller {
     const relativeTop = Math.max(0, startBoundary - containerTop);
     const relativeBottom = Math.max(relativeTop + this.estimateHeight, endBoundary - containerTop);
     const itemsPerRow = Math.max(1, this.itemsPerRow || 1);
-    // Use a slightly smaller row height for calculation to ensure we render enough rows
-    // to cover the viewport even if some rows are smaller than average.
     const safeRowHeight = Math.max(1, this.averageHeight * 0.9);
     
     const totalRows = Math.max(1, Math.ceil(this.items.length / itemsPerRow));
     const visibleRows = Math.max(1, Math.ceil((relativeBottom - relativeTop) / safeRowHeight));
     
-    // Increase overscan buffer to prevent blank areas during fast scrolling
     const effectiveOverscan = Math.max(this.overscan, 4);
     
     const startRow = Math.max(0, Math.floor(relativeTop / this.averageHeight) - effectiveOverscan);
@@ -529,9 +495,7 @@ class VirtualScroller {
   updateLayoutMetrics() {
     if (!this.itemsHost) return;
     const hostWidth = this.itemsHost.getBoundingClientRect().width || 0;
-    // Try to find a valid sample
     let sample = this.itemsHost.firstElementChild;
-    // If first element is hidden or weird, try next
     if (sample && sample.getBoundingClientRect().width === 0 && this.itemsHost.children.length > 1) {
        sample = this.itemsHost.children[1];
     }
@@ -548,7 +512,6 @@ class VirtualScroller {
     this.measureHandle = requestAnimationFrame(() => {
       if (!this.itemsHost || !this.itemsHost.children.length) return;
       
-      // Re-check layout metrics in case of resize/reflow
       this.updateLayoutMetrics();
 
       let total = 0;
@@ -564,24 +527,13 @@ class VirtualScroller {
       
       if (!validNodes) return;
       
-      // Calculate average item height
       const avgItemHeight = total / validNodes;
       
-      // If we have multiple items per row, the "row height" is roughly the item height
-      // (assuming a grid where items in a row are same height).
-      // If items are variable height in a masonry layout, this is more complex, 
-      // but for this app, it's either a list (1 per row) or a grid (uniform rows).
       
-      // Use a weighted average to smooth out changes and prevent jitter
-      // but allow it to adapt if the content changes significantly (e.g. images load)
       const oldAverage = this.averageHeight;
       const alpha = 0.1; 
       this.averageHeight = (oldAverage * (1 - alpha)) + (avgItemHeight * alpha);
       
-      // Scroll Anchoring:
-      // If the average height changes, the top spacer size will change.
-      // We need to adjust the scroll position to keep the currently visible items
-      // in the same visual position relative to the viewport.
       const itemsPerRow = Math.max(1, this.itemsPerRow || 1);
       const startRow = Math.floor(this.startIndex / itemsPerRow);
       const heightDelta = (this.averageHeight - oldAverage) * startRow;
