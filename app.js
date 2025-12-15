@@ -1687,7 +1687,7 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywor
         row.appendChild(cb);
         const info = document.createElement('div');
         info.style.display = 'flex';
-        info.style.flexDirection = 'column';
+        info.style.flexDirection = 'co        lumn';
         info.style.gap = '.15rem';
         const titleEl = document.createElement('strong');
         titleEl.textContent = `${entry.title}${entry.year ? ` (${entry.year})` : ''}`;
@@ -6073,7 +6073,10 @@ function collectSeriesEntriesAcrossLists(seriesName) {
       if (!item || !item.seriesName) return;
       if (normalizeTitleKey(item.seriesName) !== normalizedKey) return;
       
-      const seasons = (type === 'tvShows' ? item.tvSeasonSummaries : (type === 'anime' ? item.animeSeasonSummaries : null));
+      const seasonField = Array.isArray(item.tvSeasonSummaries) && item.tvSeasonSummaries.length
+        ? 'tvSeasonSummaries'
+        : (Array.isArray(item.animeSeasonSummaries) && item.animeSeasonSummaries.length ? 'animeSeasonSummaries' : null);
+      const seasons = seasonField ? item[seasonField] : null;
       if (Array.isArray(seasons) && seasons.length > 0) {
         let hasSeasons = false;
         seasons.forEach((season, index) => {
@@ -6088,7 +6091,7 @@ function collectSeriesEntriesAcrossLists(seriesName) {
           virtualItem.title = season.title || `${item.title}: Season ${season.seasonNumber}`;
           if (season.poster) virtualItem.poster = season.poster;
 
-          if (type === 'tvShows' && !season.poster && item.tmdbId && season.seasonNumber != null) {
+          if (seasonField === 'tvSeasonSummaries' && !season.poster && item.tmdbId && season.seasonNumber != null) {
             ensureSeasonMetadata(type, id, index, item.tmdbId, season.seasonNumber);
           }
           
@@ -6100,7 +6103,7 @@ function collectSeriesEntriesAcrossLists(seriesName) {
             isVirtualSeason: true,
             parentId: id,
             seasonIndex: index,
-            seasonField: type === 'tvShows' ? 'tvSeasonSummaries' : 'animeSeasonSummaries'
+            seasonField,
           });
         });
         if (!hasSeasons) {
@@ -9221,6 +9224,8 @@ async function moveItemBetweenLists(sourceListType, targetListType, itemId, item
   await set(targetRef, cleaned);
   const sourceRef = ref(db, `users/${currentUser.uid}/${sourceListType}/${itemId}`);
   await remove(sourceRef);
+  // Moving entries can change how series trees merge across lists; bust the cache immediately.
+  invalidateSeriesCrossListCache();
 }
 
 function normalizeFinishRating(value) {
