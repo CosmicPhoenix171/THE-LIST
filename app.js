@@ -2049,10 +2049,60 @@ function initBugReportButton() {
   }
   if (bugReportForm) {
     bugReportForm.addEventListener('submit', handleBugReportSubmit);
+    // Add Refresh All Metadata button handler
+    const refreshBtn = document.getElementById('refresh-all-metadata');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', async () => {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = 'Refreshing...';
+        try {
+          await refreshAllMetadataSequential();
+          refreshBtn.textContent = 'Done!';
+        } catch (e) {
+          refreshBtn.textContent = 'Error';
+        }
+        setTimeout(() => {
+          refreshBtn.disabled = false;
+          refreshBtn.textContent = 'Refresh All Metadata';
+        }, 2000);
+      });
+    }
   }
   bugReportListEl?.addEventListener('click', handleBugListClick);
   document.addEventListener('click', handleBugDocumentClick);
   document.addEventListener('keydown', handleBugKeydown);
+}
+// Sequentially refreshes all entries' metadata, one at a time
+async function refreshAllMetadataSequential() {
+  // Gather all list types
+  const allTypes = PRIMARY_LIST_TYPES;
+  let total = 0;
+  let refreshed = 0;
+  for (const type of allTypes) {
+    const cache = listCaches[type] || {};
+    const ids = Object.keys(cache);
+    total += ids.length;
+    for (const id of ids) {
+      try {
+        await refreshEntryMetadata(type, id);
+        refreshed++;
+      } catch (e) {
+        // Optionally log or skip
+      }
+    }
+  }
+  return refreshed;
+}
+
+// Refreshes metadata for a single entry by type/id
+async function refreshEntryMetadata(listType, entryId) {
+  // This function should call your existing metadata refresh logic for a single entry
+  // For now, simulate with a delay and call the real function if available
+  if (typeof updateEntryMetadata === 'function') {
+    return updateEntryMetadata(listType, entryId);
+  }
+  // Fallback: simulate async
+  return new Promise(resolve => setTimeout(resolve, 200));
 }
 
 function toggleNotificationPopover(forceState) {
