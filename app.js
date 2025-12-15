@@ -2726,10 +2726,6 @@ function renderList(listType, data) {
     filtered = entries.filter(([, item]) => matchesActorFilter(listType, item, filterValue));
   }
 
-  if (listType === 'tvShows') {
-    filtered.forEach(([, item]) => ensureTvSeriesDefaults(listType, item));
-  }
-
   if (filtered.length === 0) {
     const message = supportsActorFilter && filterValue
       ? 'No items match this actor filter yet.'
@@ -3065,13 +3061,11 @@ function collectUnifiedEntries() {
     if (isCollapsibleList(listType)) {
       cacheEntries.forEach(([id, item], index) => {
         if (!item) return;
-        ensureTvSeriesDefaults(listType, item);
         collapsibleEntries.push({ listType, id, item, index });
       });
     } else {
       cacheEntries.forEach(([id, item], index) => {
         if (!item) return;
-        ensureTvSeriesDefaults(listType, item);
         allEntries.push({
           listType,
           id,
