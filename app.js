@@ -100,6 +100,7 @@ const seriesTreeDragState = {
 };
 let seriesTreeDragEventsBound = false;
 let seriesTreeWheelUnsubscribe = null;
+const seriesSortState = new Map();
 const COLLAPSIBLE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const SERIES_BULK_DELETE_LISTS = new Set(['movies', 'tvShows', 'anime']);
 const INTRO_SESSION_KEY = '__THE_LIST_INTRO_SEEN__';
@@ -5856,7 +5857,10 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
     });
   };
 
+  const isYearSort = seriesSortState.get(cardId) || false;
+
   const handleSort = (btn) => {
+    seriesSortState.set(cardId, true);
     btn.classList.add('active');
     const sorted = [...entries].sort((a, b) => {
       const yearA = Number(a.item?.year) || 9999;
@@ -5867,9 +5871,15 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
     renderList(sorted, true);
   };
 
-  block.appendChild(buildSeriesTreeHeader(entries.length, listType, cardId, handleSort));
+  const header = buildSeriesTreeHeader(entries.length, listType, cardId, handleSort);
+  block.appendChild(header);
 
-  renderList(entries);
+  if (isYearSort) {
+    const btn = header.querySelector('.series-sort-btn');
+    if (btn) handleSort(btn);
+  } else {
+    renderList(entries);
+  }
 
   if (!list.children.length) return null;
   const listWrapper = createEl('div', 'series-tree-scroll');
