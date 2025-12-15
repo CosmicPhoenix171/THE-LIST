@@ -6930,10 +6930,19 @@ function buildSeriesTreeMeta(item) {
   if (!item) return null;
   const parts = [];
   if (item.year) parts.push(item.year);
-  const episodeCount = extractEpisodeCount(item);
+  // Only show the episode count for the current season if this is a season node
   const isMovie = isAnimeMovieEntry(item) || (item.imdbType && String(item.imdbType).toLowerCase() === 'movie');
-  if (!isMovie && episodeCount > 0) {
-    parts.push(`${episodeCount} ep`);
+  // If this is a TV season node, prefer item.episodes or item.episodeCount (not totalEpisodes)
+  let episodeCount = null;
+  if (!isMovie) {
+    if (item.seasonNumber !== undefined && (item.episodes || item.episodeCount)) {
+      episodeCount = Number(item.episodes || item.episodeCount);
+    } else {
+      episodeCount = extractEpisodeCount(item);
+    }
+    if (episodeCount > 0) {
+      parts.push(`${episodeCount} ep`);
+    }
   }
   const runtimeLabel = item.runtime || formatAnimeRuntimeLabel(item);
   if (runtimeLabel) {
