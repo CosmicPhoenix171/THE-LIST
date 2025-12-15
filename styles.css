@@ -1215,3 +1215,33 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   display: none;
 }
 
+
+.franchise-entry-actions {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.franchise-action-btn {
+  background: transparent;
+  border: 0;
+  color: var(--text-500);
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.franchise-action-btn:hover {
+  color: var(--text-100);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.franchise-action-btn.danger:hover {
+  color: var(--danger-300);
+  background: rgba(255, 107, 107, 0.1);
+}
+

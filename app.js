@@ -122,6 +122,8 @@ const DRAG_SCROLL_EDGE_PX = 80;
 const DRAG_SCROLL_STEP_PX = 18;
 const FRANCHISE_MEDIA_LABELS = {
   movie: 'Movie',
+  tv: 'TV',
+  tvSeason: 'Season',
   season: 'Season',
   special: 'Special',
 };
@@ -4206,11 +4208,12 @@ function coerceFranchiseMediaType(value, source = {}) {
     value = source.mediaType.type || source.mediaType.name || value;
   }
   const normalized = String(value || '').trim().toLowerCase();
-  if (!normalized && source && (source.seasonNumber !== undefined || source.episodes)) {
-    return 'season';
+  const looksLikeSeason = source && (source.seasonNumber !== undefined || source.episodes);
+  if (!normalized && looksLikeSeason) {
+    return 'tv';
   }
   if (['movie', 'film', 'feature'].includes(normalized)) return 'movie';
-  if (['season', 'tv_season', 'series_season'].includes(normalized)) return 'season';
+  if (['season', 'tv_season', 'series_season', 'tvseason', 'tv-season'].includes(normalized)) return 'tv';
   if (['tv', 'show', 'series'].includes(normalized)) return 'tv';
   if (['special', 'ova', 'ona', 'short'].includes(normalized)) return 'special';
   return normalized || 'movie';
@@ -4322,18 +4325,19 @@ function formatFranchiseReleaseStatusLabel(status) {
 
 function formatFranchiseBadgeLabel(mediaType, source = {}) {
   if (source.badge) return source.badge;
-  if (mediaType === 'season') {
-    const numeric = Number(source.seasonNumber);
-    if (Number.isFinite(numeric)) {
-      return `S${String(numeric).padStart(2, '0')}`;
-    }
+
+  const seasonNumeric = Number(source.seasonNumber);
+  if (Number.isFinite(seasonNumeric)) {
+    return `S${String(seasonNumeric).padStart(2, '0')}`;
   }
+
   if (source.part) {
     const numeric = Number(source.part);
     if (Number.isFinite(numeric)) {
       return `Part ${numeric}`;
     }
   }
+
   return FRANCHISE_MEDIA_LABELS[mediaType] || 'Entry';
 }
 
@@ -8768,7 +8772,7 @@ function buildFranchiseSeasonEntries(tvDetails) {
     .map(season => ({
       id: `${tvDetails.id}-season-${season.season_number}`,
       tmdbId: season.id || null,
-      mediaType: 'tvSeason',
+      mediaType: 'tv',
       seriesId: tvDetails.id,
       title: season.name || `Season ${season.season_number}`,
       seasonNumber: season.season_number,
