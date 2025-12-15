@@ -5023,7 +5023,8 @@ function buildMovieCardInfo(listType, item, context = {}) {
   info.appendChild(header);
 
   if (isCollapsibleList(listType)) {
-    const badges = buildMediaSummaryBadges(listType, item, { ...context, listType });
+    // Always use the expanded chip logic for both collapsed and expanded
+    const badges = buildMediaSummaryBadges(listType, item, { ...context, listType, isExpanded: true });
     if (badges) info.appendChild(badges);
     if (context.isExpanded) {
       const inlineActions = buildMovieCardActions(listType, context.entryId || context.cardId || '', item, { variant: 'inline' });
