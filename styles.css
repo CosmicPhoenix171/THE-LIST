@@ -1197,3 +1197,21 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   border-radius: 4px;
 }
 
+
+.add-form .add-mode-toggle {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.add-form .actor-group {
+  grid-column: 1 / -1;
+}
+
+.standard-fields {
+  display: contents;
+}
+
+.standard-fields.hidden {
+  display: none;
+}
+
