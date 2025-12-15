@@ -5856,26 +5856,15 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
     });
   };
 
-  let isYearSort = false;
   const handleSort = (btn) => {
-    isYearSort = !isYearSort;
-    if (isYearSort) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
-    }
-    
-    if (isYearSort) {
-      const sorted = [...entries].sort((a, b) => {
-        const yearA = Number(a.item?.year) || 9999;
-        const yearB = Number(b.item?.year) || 9999;
-        if (yearA !== yearB) return yearA - yearB;
-        return (a.item?.title || '').localeCompare(b.item?.title || '');
-      });
-      renderList(sorted);
-    } else {
-      renderList(entries);
-    }
+    btn.classList.add('active');
+    const sorted = [...entries].sort((a, b) => {
+      const yearA = Number(a.item?.year) || 9999;
+      const yearB = Number(b.item?.year) || 9999;
+      if (yearA !== yearB) return yearA - yearB;
+      return (a.item?.title || '').localeCompare(b.item?.title || '');
+    });
+    renderList(sorted);
   };
 
   block.appendChild(buildSeriesTreeHeader(entries.length, listType, cardId, handleSort));
