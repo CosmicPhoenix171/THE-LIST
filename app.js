@@ -120,6 +120,7 @@ let franchiseDragEventsBound = false;
 let franchiseWheelUnsubscribe = null;
 const DRAG_SCROLL_EDGE_PX = 80;
 const DRAG_SCROLL_STEP_PX = 18;
+const FRANCHISE_NORMALIZE_MIGRATION_KEY = '__THE_LIST_FRANCHISE_NORM_2025_12_15__';
 const FRANCHISE_MEDIA_LABELS = {
   movie: 'Movie',
   tv: 'TV',
@@ -3507,6 +3508,7 @@ function loadFranchises() {
     franchiseState.loaded = true;
     renderFranchiseShelf();
     refreshFranchiseLibraryMatches();
+    runFranchiseNormalizationMigrationOnce();
   }, (err) => {
     console.warn('Franchise load failed', err);
     franchiseState.loaded = true;
@@ -3526,6 +3528,57 @@ function resetFranchiseSection() {
   }
   if (franchiseShelfEl) {
     franchiseShelfEl.innerHTML = '<div class="franchise-empty small">Sign in to load curated franchises.</div>';
+  }
+}
+
+async function runFranchiseNormalizationMigrationOnce() {
+  if (!currentUser || !db) return;
+  const flagKey = `${FRANCHISE_NORMALIZE_MIGRATION_KEY}:${currentUser.uid}`;
+  if (safeStorageGet(flagKey) === '1') return;
+
+  try {
+    const franchiseRoot = ref(db, `users/${currentUser.uid}/franchises`);
+    const snapshot = await get(franchiseRoot);
+    const raw = snapshot.val();
+    if (!raw) {
+      safeStorageSet(flagKey, '1');
+      return;
+    }
+
+    let changed = false;
+    const updates = {};
+    const franchises = Array.isArray(raw) ? raw : raw;
+    Object.entries(franchises).forEach(([franchiseId, record]) => {
+      const entries = Array.isArray(record?.entries)
+        ? record.entries
+        : (Array.isArray(record?.timeline) ? record.timeline : []);
+      if (!entries.length) return;
+
+      const normalizedEntries = entries.map((entry, idx) => {
+        const normalized = normalizeFranchiseEntry(entry, idx) || entry;
+        const patch = { ...entry };
+        if (normalized.mediaType) patch.mediaType = normalized.mediaType;
+        if (normalized.listType) patch.listType = normalized.listType;
+        if (normalized.seasonNumber !== undefined && normalized.seasonNumber !== null) {
+          patch.seasonNumber = normalized.seasonNumber;
+        }
+        if (normalized.badgeLabel) patch.badgeLabel = normalized.badgeLabel;
+        return patch;
+      });
+
+      if (JSON.stringify(entries) !== JSON.stringify(normalizedEntries)) {
+        const key = `users/${currentUser.uid}/franchises/${franchiseId}/entries`;
+        updates[key] = normalizedEntries;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      await update(ref(db), updates);
+    }
+    safeStorageSet(flagKey, '1');
+  } catch (err) {
+    console.warn('Franchise normalization migration failed', err);
   }
 }
 
@@ -4166,7 +4219,9 @@ function normalizeFranchiseEntries(rawEntries, customOrderList = null) {
 function normalizeFranchiseEntry(source, fallbackIndex = 0) {
   if (!source) return null;
   const id = source.id || source.entryId || `entry-${fallbackIndex + 1}`;
-  const mediaType = coerceFranchiseMediaType(source.mediaType || source.type || source.category || source.format, source);
+  const rawMediaType = coerceFranchiseMediaType(source.mediaType || source.type || source.category || source.format, source);
+  const seasonNumber = Number.isFinite(Number(source.seasonNumber)) ? Number(source.seasonNumber) : null;
+  const mediaType = seasonNumber !== null && rawMediaType !== 'tv' ? 'tv' : rawMediaType;
   const listType = resolveFranchiseListType(mediaType, source.listType);
   const releaseDate = sanitizeFranchiseDate(source.releaseDate || source.airDate || source.date || '');
   const releaseYearStr = sanitizeYear(source.year || source.releaseYear || releaseDate);
@@ -4187,11 +4242,11 @@ function normalizeFranchiseEntry(source, fallbackIndex = 0) {
     releaseStatusLabel: formatFranchiseReleaseStatusLabel(normalizeFranchiseReleaseStatus(source.releaseStatus || source.availability)),
     highlightLabel: source.highlight || source.nextAction || '',
     notes: source.notes || source.summary || '',
-    badgeLabel: formatFranchiseBadgeLabel(mediaType, source),
+    badgeLabel: formatFranchiseBadgeLabel(mediaType, { ...source, seasonNumber }),
     orderLabel: source.phase || source.arc || source.era || source.timelineLabel || '',
     runtimeMinutes: parseRuntimeMinutes(source.runtimeMinutes || source.runtime || source.duration),
     episodes: parseEpisodeValue(source.episodes || source.episodeCount || source.totalEpisodes),
-    seasonNumber: Number.isFinite(Number(source.seasonNumber)) ? Number(source.seasonNumber) : null,
+    seasonNumber,
     tmdbId: source.tmdbId || source.tmdbID || null,
     imdbId: source.imdbId || source.imdbID || null,
     aniListId: source.aniListId || null,
@@ -4223,7 +4278,7 @@ function resolveFranchiseListType(mediaType, provided) {
   if (provided && PRIMARY_LIST_TYPES.includes(provided)) {
     return provided;
   }
-  if (mediaType === 'tv' || mediaType === 'season') return 'tvShows';
+  if (mediaType === 'tv' || mediaType === 'season' || mediaType === 'tvSeason') return 'tvShows';
   if (mediaType === 'special') return 'movies';
   return 'movies';
 }
@@ -8773,6 +8828,7 @@ function buildFranchiseSeasonEntries(tvDetails) {
       id: `${tvDetails.id}-season-${season.season_number}`,
       tmdbId: season.id || null,
       mediaType: 'tv',
+      listType: 'tvShows',
       seriesId: tvDetails.id,
       title: season.name || `Season ${season.season_number}`,
       seasonNumber: season.season_number,
