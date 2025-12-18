@@ -8584,9 +8584,7 @@ function setupFormAutocomplete(form, listType) {
                   ? `<img src="${detail.Poster}" alt="Poster for ${detail.Title}" />`
                   : '';
               }
-              // Title
-              const titleEl = preview.querySelector('[data-role="movie-details-title"]');
-              if (titleEl) titleEl.textContent = detail.Title || '';
+              // Title removed from preview, already in form fillout
               // Only show year if not present in input
               const yearInput = form.querySelector('input[name="year"]');
               const yearEl = preview.querySelector('[data-role="movie-details-year"]');
