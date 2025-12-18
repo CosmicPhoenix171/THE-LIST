@@ -3,13 +3,17 @@
 .movie-details-preview {
   display: block;
   margin: 0.3rem 0 0.2rem 0;
-  padding: 0.5rem 0.5rem 0.5rem 0.5rem;
+  padding: 0.5rem;
   background: rgba(20, 28, 38, 0.97);
   border: 1px solid var(--border, #333);
   border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.10);
-  max-width: 420px;
-  width: 100%;
+  max-width: none;
+  width: 280px;
+  position: absolute;
+  right: 1rem;
+  top: 1.2rem;
+  z-index: 10;
 }
 .movie-details-preview.hidden {
   display: none;
@@ -63,7 +67,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.22;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  white-space: normal;
   text-align: left;
 }
 /* Year/Director input group below title */
@@ -500,6 +506,8 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 :is(.type-filter[data-type-toggle],.add-type-tab[data-type]){border-color:var(--type-accent-color)}
 .add-modal-form{margin-top:.35rem;overflow-y:auto;overflow-x:hidden;padding-right:0;max-height:100%}
 .add-modal-form .add-panel{box-shadow:none}
+/* Ensure form is a positioning context for the preview */
+.add-form{position:relative}
 .wheel-modal .wheel-area{margin-top:.75rem}
 .wheel-modal .wheel-result{max-height:50vh;overflow:auto}
 .add-form input,.add-form select,.add-form textarea{
