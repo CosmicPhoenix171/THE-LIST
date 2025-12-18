@@ -11011,8 +11011,8 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalDisplayEnt
       schedule.push(0);
     } else {
       const progress = i / lastIndex;
-      // stronger ease-out so the wheel appears fast initially then decelerates toward the end
-      const eased = 1 - Math.pow(1 - progress, 4);
+      // Use a convex timing (progress^3) so early steps occur quickly and spacing grows later
+      const eased = Math.pow(progress, 3);
       schedule.push(Math.round(eased * totalDuration));
     }
   }
