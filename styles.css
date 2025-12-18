@@ -3,13 +3,13 @@
 .movie-details-preview {
   display: block;
   margin: 0.3rem 0 0.2rem 0;
-  padding: 0.5rem;
+  padding: 0.6rem;
   background: rgba(20, 28, 38, 0.97);
   border: 1px solid var(--border, #333);
   border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.10);
   max-width: none;
-  width: 280px;
+  width: 420px;
   position: absolute;
   right: 1rem;
   top: 1.2rem;
@@ -19,10 +19,10 @@
   display: none;
 }
 .movie-details-poster {
-  width: 90px;
-  min-width: 90px;
-  max-width: 90px;
-  margin: 0 0.2rem 0 0;
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
+  margin: 0 0 0 0.4rem;
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
@@ -63,7 +63,7 @@
   font-size: 0.91rem;
   color: var(--text-300, #e0e0e0);
   margin-top: 0.08rem;
-  max-height: 4.2em;
+  max-height: 6.6em;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.22;
@@ -71,6 +71,13 @@
   overflow-wrap: anywhere;
   white-space: normal;
   text-align: left;
+}
+
+/* Make sure long synopsis doesn't force one-letter wrapping */
+.movie-details-preview .movie-details-description p,
+.movie-details-preview .movie-details-description {
+  word-break: normal;
+  white-space: normal;
 }
 /* Year/Director input group below title */
 .year-director-group {
