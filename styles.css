@@ -72,6 +72,11 @@
   gap: 0.5rem;
   margin-bottom: 0.3rem;
 }
+.year-director-group.vertical {
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
 .card.collapsible.movie-card .artwork.placeholder{display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--text-500);padding:.4rem;text-align:center}
 :root{
   --bg:#0f1720;
