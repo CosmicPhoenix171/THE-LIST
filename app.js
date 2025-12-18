@@ -543,10 +543,8 @@ class VirtualScroller {
       if (Math.abs(heightDelta) > 0.5) {
         const target = this.scrollTarget || window;
         
-        // Set flag to ignore the scroll event triggered by this adjustment
         this.ignoreNextScroll = true;
-        
-        // Defer the scroll adjustment to the next frame to ensure layout is stable
+      
         requestAnimationFrame(() => {
             if (target === window) {
               window.scrollBy(0, heightDelta);
@@ -554,7 +552,6 @@ class VirtualScroller {
               target.scrollTop += heightDelta;
             }
             
-            // Safety fallback: clear the flag after a short delay
             setTimeout(() => {
               this.ignoreNextScroll = false;
             }, 50);
@@ -863,20 +860,7 @@ function buildLibraryStatChip(label, value, options = {}) {
   chip.appendChild(labelEl);
   return chip;
 }
-// ============================================================================
-// Feature Map (grouped by responsibilities)
-// 1. Auth & Session Flow
-// 2. Add Modal & Item Management
-// 3. List Loading & Collapsible Cards
-// 4. Unified Library
-// 5. Franchise Timelines
-// 6. Metadata & External API Pipelines
-// 7. Spinner / Wheel Experience
-// 8. Anime Franchise Automations
-// 9. Utility Helpers & Shared Formatters
-// ============================================================================
 
-// DOM references
 const loginScreen = document.getElementById('login-screen');
 const googleSigninBtn = document.getElementById('google-signin');
 const appRoot = document.getElementById('app');
@@ -916,8 +900,6 @@ const WHEEL_SPIN_AUDIO_SRC = 'spin-boost.mp3';
 const WHEEL_AUDIO_MUTE_KEY = '__THE_LIST_WHEEL_MUTE__';
 let wheelSpinAudio = null;
 let wheelAudioMuted = safeStorageGet(WHEEL_AUDIO_MUTE_KEY) === '1';
-// Wheel audio should only run during an active spin, so we do not keep additional
-// celebration audio outside the spinner lifecycle.
 let notificationPopoverOpen = false;
 const addModalTrigger = document.getElementById('open-add-modal');
 const addFormTemplatesContainer = document.getElementById('add-form-templates');
@@ -1276,22 +1258,16 @@ function logAppVersionOnce() {
 
 logAppVersionOnce();
 
-// firebase instances
 let db = null;
 let auth = null;
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// ============================================================================
-// Feature 1: Auth & Session Flow
-// ============================================================================
 
-// Initialize Firebase and services
 function initFirebase() {
   if (appInitialized) return;
   if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
     console.warn('Firebase config is empty. Paste your config into app.js to enable Firebase.');
-    // still create a fake environment to avoid runtime exceptions in dev (but DB calls will fail)
   }
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
@@ -1301,7 +1277,6 @@ function initFirebase() {
   db = getDatabase(app);
   appInitialized = true;
 
-  // Wire UI events
   googleSigninBtn.addEventListener('click', () => signInWithGoogle());
   signOutBtn.addEventListener('click', () => signOut());
 
@@ -1321,7 +1296,6 @@ function initFirebase() {
     });
   });
 
-  // Sort controls
   document.querySelectorAll('[data-role="sort"]').forEach(sel => {
     const listType = sel.dataset.list;
     sel.addEventListener('change', () => {
@@ -1339,9 +1313,6 @@ function initFirebase() {
   }
 }
 
-// ============================================================================
-// Feature 2: Add Modal & Item Management
-// ============================================================================
 
 function setupAddModal() {
   if (!addModalTrigger || !modalRoot) return;
@@ -1467,7 +1438,7 @@ function setActiveAddModalType(listType) {
     setupFormAutocomplete(form, targetType);
     setupActorAutocomplete(form, targetType);
 
-    // Setup add mode toggle
+    
     const modeRadios = form.querySelectorAll('input[name="addMode"]');
     if (modeRadios.length > 0) {
       const titleGroup = form.querySelector('.title-group');
@@ -1497,15 +1468,6 @@ function setActiveAddModalType(listType) {
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      // If we are in "finished only" mode, we should probably add to the finished list
-      // or at least warn the user. For now, we'll just add to the main list as requested,
-      // but we could enhance this to support adding directly to finished.
-      // However, the user request is "I can add a movie to the list even if it's on the finished page."
-      // which implies they WANT to add to the main list, but maybe it's not showing up because they are viewing finished?
-      // Or maybe they mean they CAN add it, but they shouldn't be able to if it's already finished?
-      // Assuming the former: "I added it, but I don't see it because I'm on the finished page."
-      
-      // If showFinishedOnly is true, switch it off so the user can see their new item
       if (showFinishedOnly) {
         showFinishedOnly = false;
         if (finishedFilterToggle) finishedFilterToggle.checked = false;
@@ -1530,7 +1492,6 @@ function setActiveAddModalType(listType) {
   });
 }
 
-// Prompt user to add missing collection parts
 function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywordContext = null) {
   const hasCollectionParts = collInfo && Array.isArray(collInfo.parts) && collInfo.parts.length;
   const keywordEntries = Array.isArray(keywordContext?.entries) ? keywordContext.entries : [];
@@ -1772,9 +1733,6 @@ function promptAddMissingCollectionParts(listType, collInfo, currentItem, keywor
   });
 }
 
-// ============================================================================
-// Feature 8: Anime Franchise Automations
-// ============================================================================
 
 function pushNotification({ title, message } = {}) {
   if (!title && !message) return;
@@ -2001,7 +1959,7 @@ function initBugReportButton() {
   }
   if (bugReportForm) {
     bugReportForm.addEventListener('submit', handleBugReportSubmit);
-    // Add Refresh All Metadata button handler
+  
     const refreshBtn = document.getElementById('refresh-all-metadata');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', async () => {
@@ -2024,9 +1982,8 @@ function initBugReportButton() {
   document.addEventListener('click', handleBugDocumentClick);
   document.addEventListener('keydown', handleBugKeydown);
 }
-// Sequentially refreshes all entries' metadata, one at a time
 async function refreshAllMetadataSequential() {
-  // Gather all list types
+  
   const allTypes = PRIMARY_LIST_TYPES;
   let total = 0;
   let refreshed = 0;
@@ -2039,21 +1996,19 @@ async function refreshAllMetadataSequential() {
         await refreshEntryMetadata(type, id);
         refreshed++;
       } catch (e) {
-        // Optionally log or skip
+        
       }
     }
   }
   return refreshed;
 }
 
-// Refreshes metadata for a single entry by type/id
 async function refreshEntryMetadata(listType, entryId) {
-  // This function should call your existing metadata refresh logic for a single entry
-  // For now, simulate with a delay and call the real function if available
+  
+  
   if (typeof updateEntryMetadata === 'function') {
     return updateEntryMetadata(listType, entryId);
   }
-  // Fallback: simulate async
   return new Promise(resolve => setTimeout(resolve, 200));
 }
 
@@ -2399,7 +2354,6 @@ async function signInWithGoogle() {
   }
 }
 
-// Listen to auth state changes
 function handleAuthState() {
   onAuthStateChanged(auth, (user) => {
     if (user) {
@@ -2429,7 +2383,6 @@ async function handleSignInRedirectResult() {
   }
 }
 
-// UI helpers
 function showLogin() {
   loginScreen.classList.remove('hidden');
   appRoot.classList.add('hidden');
@@ -2501,7 +2454,7 @@ function initUnifiedLibraryControls() {
       opt.hidden = !showFinishedOnly;
       opt.disabled = !showFinishedOnly;
     });
-    // If current sort is hidden, reset to default
+    
     const currentOption = librarySortSelect.options[librarySortSelect.selectedIndex];
     if (currentOption && currentOption.hidden) {
       librarySortSelect.value = 'default';
@@ -2622,11 +2575,8 @@ function updateBackToTopVisibility() {
   backToTopBtn.classList.toggle('hidden', !shouldShow);
 }
 
-// ============================================================================
-// Feature 3: List Loading & Collapsible Cards
-// ============================================================================
+ 
 
-// Detach all DB listeners
 function detachAllListeners() {
   stopBugReportSync();
   if (globalNotificationsUnsubscribe) {
@@ -2644,8 +2594,6 @@ function detachAllListeners() {
   Object.keys(finishedListeners).forEach(k => delete finishedListeners[k]);
 }
 
-// Load list items in real-time
-// listType: movies | tvShows | anime | books
 function loadList(listType) {
   if (!currentUser) return;
   const listContainer = document.getElementById(`${listType}-list`);
@@ -2653,7 +2601,6 @@ function loadList(listType) {
     listContainer.innerHTML = 'Loading...';
   }
 
-  // remove previous listener for this list
   if (listeners[listType]) {
     listeners[listType]();
     delete listeners[listType];
@@ -2671,7 +2618,6 @@ function loadList(listType) {
     }
   });
 
-  // store unsubscribe
   listeners[listType] = off;
 }
 
@@ -2711,7 +2657,6 @@ function createEl(tag, classNames = '', options = {}) {
   return node;
 }
 
-// Render list items
 function renderList(listType, data) {
   const renderStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   listCaches[listType] = data;
@@ -2771,7 +2716,7 @@ function renderList(listType, data) {
       if (oa !== ob) return oa - ob;
       if (ta < tb) return -1; if (ta > tb) return 1; return 0;
     }
-    // fallback title
+    
     if (ta < tb) return -1; if (ta > tb) return 1; return 0;
   });
 
@@ -2852,9 +2797,8 @@ function renderList(listType, data) {
   });
 }
 
-// ============================================================================
-// Feature 4: Unified Library
-// ============================================================================
+ 
+ 
 
 let alphabetScrollerEl = null;
 let currentScrollerItems = [];
@@ -2948,7 +2892,7 @@ function renderUnifiedLibrary() {
   }
 
   filtered.sort((a, b) => {
-    // Unified sorting logic
+    
     if (librarySortMode !== 'default') {
       if (librarySortMode === 'ratingDesc' || librarySortMode === 'ratingAsc') {
         const ra = normalizeFinishRating(a.item?.finishedRating) || 0;
@@ -3152,7 +3096,7 @@ function collectUnifiedEntries() {
 }
 
 function updateLibraryRuntimeStats() {
-  // Try to find the side panel first, fallback to header summary
+  
   const targetEl = document.getElementById('side-stats-panel') || libraryStatsSummaryEl;
   if (!targetEl) return;
   
@@ -3182,7 +3126,7 @@ function updateLibraryRuntimeStats() {
     modifier: 'runtime runtime-minutes' 
   });
   
-  // Add realistic time toggle
+  
   const labelEl = runtimeChip.querySelector('.library-stat-label');
   if (labelEl) {
     labelEl.innerHTML = '';
@@ -3224,7 +3168,7 @@ function updateLibraryRuntimeStats() {
     if (valueEl) valueEl.textContent = 'Runtime info unavailable';
   }
 
-  // Render Top Genres
+  
   const topGenres = Object.entries(stats.genreCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8); // Top 8
@@ -3266,7 +3210,7 @@ function updateLibraryRuntimeStats() {
       pill.style.gap = '0.35rem';
       pill.style.transition = 'all 0.2s ease';
       
-      // Hover effect handled via CSS or inline if needed, but inline is simpler for now
+      
       pill.onmouseenter = () => {
         pill.style.background = 'rgba(255,255,255,0.12)';
         pill.style.borderColor = 'var(--primary-300)';
@@ -3293,7 +3237,7 @@ function updateLibraryRuntimeStats() {
     targetEl.appendChild(genreContainer);
   }
 
-  // Render Top Cast
+  
   const topCast = Object.entries(stats.castCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8); // Top 8
@@ -3425,7 +3369,7 @@ function computeLibraryRuntimeStats() {
     });
   };
 
-  // Populate genre counts from BOTH lists (Active + Finished)
+  
   const allSources = [listCaches, finishedCaches];
   allSources.forEach(source => {
     PRIMARY_LIST_TYPES.forEach(type => {
@@ -3443,7 +3387,7 @@ function computeLibraryRuntimeStats() {
   Object.values(cacheMap.movies || {}).forEach(item => {
     if (!item) return;
     stats.movieCount += 1;
-    // countItemGenres(item); // Already counted in global loop
+    
     const minutes = estimateMovieRuntimeMinutes(item);
     if (minutes > 0) {
       stats.totalMinutes += minutes;
@@ -3453,7 +3397,7 @@ function computeLibraryRuntimeStats() {
 
   Object.values(cacheMap.tvShows || {}).forEach(item => {
     if (!item) return;
-    // countItemGenres(item); // Already counted in global loop
+    
     const episodes = getTvEpisodeCount(item);
     if (episodes > 0) {
       stats.episodeCount += episodes;
@@ -3468,7 +3412,7 @@ function computeLibraryRuntimeStats() {
 
   Object.values(cacheMap.anime || {}).forEach(item => {
     if (!item) return;
-    // countItemGenres(item); // Already counted in global loop
+    
     const episodes = getAnimeEpisodeCount(item);
     if (episodes > 0) {
       stats.episodeCount += episodes;
@@ -3487,9 +3431,7 @@ function computeLibraryRuntimeStats() {
   return stats;
 }
 
-// ============================================================================
-// Feature 5: Franchise Timelines
-// ============================================================================
+ 
 
 function loadFranchises() {
   if (listeners.franchises) {
@@ -3841,8 +3783,7 @@ function buildFranchiseTimelineEntry(record, entry, index) {
 }
 
 function resolveFranchiseEntryOrderLabel(record, entry, index) {
-  // Always use sequential numbering based on the current list order
-  // This prevents duplicate numbers when mixing Movies (e.g. #1) and TV Shows (e.g. Season #1)
+  
   if (typeof index === 'number') {
     return `#${index + 1}`;
   }
@@ -4975,7 +4916,7 @@ function buildMovieCardInfo(listType, item, context = {}) {
   info.appendChild(header);
 
   if (isCollapsibleList(listType)) {
-    // Always use the expanded chip logic for both collapsed and expanded
+    
     const badges = buildMediaSummaryBadges(listType, item, { ...context, listType, isExpanded: true });
     if (badges) info.appendChild(badges);
     if (context.isExpanded) {
@@ -5045,7 +4986,7 @@ function buildSeriesBadgeChips(listType, cardId, item, context = {}) {
   if (!metrics) return [];
   const chips = [];
   
-  // Filter out 'Movie' label if we are displaying a movie count
+  
   let displayLabels = metrics.formatLabels;
   if (metrics.movieCount > 0) {
     displayLabels = displayLabels.filter(l => l.toLowerCase() !== 'movie');
@@ -5066,7 +5007,7 @@ function buildSeriesBadgeChips(listType, cardId, item, context = {}) {
 function buildTvStatChips(item, context = {}) {
   if (!item) return [];
 
-  // Aggregate stats if this is a collapsed group
+  
   if (context && context.isExpanded === false) {
     let entries = context.seriesEntries;
     if (!entries && context.cardId) {
@@ -5080,8 +5021,7 @@ function buildTvStatChips(item, context = {}) {
       entries.forEach(entry => {
         const it = entry.item;
         if (!it) return;
-        // If an item has no explicit season count but is part of a series group, 
-        // it's likely at least 1 season (unless it's a special/movie, but this is TV list)
+        
         const sCount = getTvSeasonCount(it);
         totalSeasons += (sCount > 0 ? sCount : 1);
         
@@ -5097,7 +5037,7 @@ function buildTvStatChips(item, context = {}) {
 
   if (Array.isArray(item.cachedTvBadges) && item.cachedTvBadges.length) {
     const badges = item.cachedTvBadges.slice();
-    // Filter out status labels from cached badges as they are now in the header
+    
     const filteredBadges = badges.filter(b => {
       const lower = b.toLowerCase();
       return !lower.includes('ended') && !lower.includes('returning') && !lower.includes('canceled');
@@ -5123,7 +5063,7 @@ function computeTvBadgeStrings(source, context = {}) {
   }
   const runtimeLabel = formatTvRuntimeLabel(source);
   if (runtimeLabel) {
-    // If context is provided and card is NOT expanded, skip runtime
+    
     const shouldHide = context && context.isExpanded === false;
     if (!shouldHide) {
       chips.push(runtimeLabel);
@@ -5411,7 +5351,7 @@ function buildTvDetailBlock(listType, entryId, item, { suppressSeasons = false }
   const chips = buildTvStatChips(item);
   const hasChips = chips.length > 0;
   const resolvedEntryId = entryId || item.__id || item.id || '';
-  // Hide season breakdown when rendering inside grouped/series context
+  
   const card = document.querySelector(`.card.collapsible.movie-card[data-id="${resolvedEntryId}"]`);
   const isGroupedContext = Boolean(card && card.dataset && card.dataset.isUnified === 'true');
   const seasonBreakdown = buildSeasonNotesBreakdown({
@@ -5446,7 +5386,7 @@ function buildSeasonNotesBreakdown({
   fallbackLabel = 'Season',
   placeholder = 'Notes for this season',
 } = {}) {
-  // Suppress parent season list when within a unified/franchise-order grouped card
+  
   const parentCard = document.querySelector(`.card.collapsible.movie-card[data-id="${entryId}"]`);
   const inFranchiseGroup = Boolean(parentCard && parentCard.dataset && parentCard.dataset.isUnified === 'true');
   if (inFranchiseGroup) return null;
@@ -5826,7 +5766,7 @@ function restoreActiveSeasonEditor(card) {
       try {
         target.setSelectionRange(start, end);
       } catch (err) {
-        // ignore selection errors
+        
       }
     }
   });
@@ -5962,7 +5902,7 @@ function buildSeriesTreeBlock(listType, cardId, providedEntries = null) {
     });
     renderList(sorted, true);
 
-    // Persist the new order to Firebase
+    
     const treeList = document.querySelector('.series-tree-list');
     const cardElement = document.querySelector(`.card[data-id="${cardId}"]`) || treeList?.closest('.card');
     applySeriesTreeReorder(listType, cardId, sorted, cardElement);
@@ -6086,7 +6026,7 @@ function collectSeriesEntriesAcrossLists(seriesName) {
           if (!season) return;
           hasSeasons = true;
           const virtualItem = { ...item, ...season };
-          // Explicitly clear inherited seriesOrder if not present on season
+          
           if (season.seriesOrder === undefined || season.seriesOrder === null) {
             virtualItem.seriesOrder = null;
           }
@@ -6282,12 +6222,12 @@ async function moveSeriesTreeNode(listType, entry, direction) {
   const targetIndex = currentIndex + direction;
   if (targetIndex < 0 || targetIndex >= entries.length) return;
   
-  // Swap in the array
+  
   const temp = entries[currentIndex];
   entries[currentIndex] = entries[targetIndex];
   entries[targetIndex] = temp;
 
-  // Determine context for reorder application
+  
   const treeList = document.querySelector('.series-tree-list');
   const cardId = treeList ? treeList.dataset.cardId : entry.id;
   const cardElement = document.querySelector(`.card[data-id="${cardId}"]`) || treeList?.closest('.card');
@@ -6882,9 +6822,9 @@ function buildSeriesTreeMeta(item) {
   if (!item) return null;
   const parts = [];
   if (item.year) parts.push(item.year);
-  // Only show the episode count for the current season if this is a season node
+  
   const isMovie = isAnimeMovieEntry(item) || (item.imdbType && String(item.imdbType).toLowerCase() === 'movie');
-  // If this is a TV season node, prefer item.episodes or item.episodeCount (not totalEpisodes)
+  
   let episodeCount = null;
   if (!isMovie) {
     if (item.seasonNumber !== undefined && (item.episodes || item.episodeCount)) {
@@ -6998,7 +6938,7 @@ function buildMovieLinks(listType, item) {
     aniList.rel = 'noopener noreferrer';
     links.appendChild(aniList);
   }
-  // Inline "Watch Now" next to trailer for movies
+  
   if (listType === 'movies' && TMDB_API_KEY) {
     const watchInline = buildWatchNowSection(listType, item, true);
     if (watchInline) links.appendChild(watchInline);
@@ -7278,7 +7218,7 @@ function pickSeriesLeader(entries) {
 }
 
 
-// Add item from form
+ 
 async function addItemFromForm(listType, form) {
   const title = (form.title.value || '').trim();
   const notes = (form.notes.value || '').trim();
@@ -7290,20 +7230,14 @@ async function addItemFromForm(listType, form) {
   const seriesOrderRaw = listType === 'books' ? '' : (form.seriesOrder && form.seriesOrder.value ? form.seriesOrder.value.trim() : '');
   const seriesOrder = listType === 'books' ? null : sanitizeSeriesOrder(seriesOrderRaw);
 
-  // If in actor mode, we might not have a title, but we shouldn't be submitting this form anyway.
-  // However, if the user hits Enter in the actor field, it might trigger submit.
-  // We should check if we are in actor mode and if so, ignore the submit or warn.
+  
   const modeRadios = form.querySelectorAll('input[name="addMode"]');
   const mode = Array.from(modeRadios).find(r => r.checked)?.value || 'title';
   
   if (mode === 'actor') {
-    // In actor mode, the user should select an actor from the dropdown.
-    // If they hit enter, we could try to trigger the search if there is input.
     const actorInput = form.querySelector('input[name="actor"]');
     if (actorInput && actorInput.value.trim()) {
-       // Trigger search manually if needed, but the input listener handles it.
-       // Just prevent the "Title is required" alert.
-       return;
+      return;
     }
   }
 
@@ -7393,7 +7327,6 @@ async function addItemFromForm(listType, form) {
       return;
     }
 
-    // Auto franchise enrichment (TMDb) for movies if user didn't supply seriesName
     if (listType === 'movies' && TMDB_API_KEY && item.title) {
       try {
         const collInfo = await getTmdbCollectionInfo(item.title, item.year, item.imdbId);
@@ -7457,7 +7390,6 @@ async function addItemFromForm(listType, form) {
   }
 }
 
-// Fetch TMDb collection info for a title/year/imdbId
 async function getTmdbCollectionInfo(title, year, imdbId) {
   if (!TMDB_API_KEY) return null;
   const q = encodeURIComponent(title);
@@ -7565,11 +7497,9 @@ function normalizeTitleKey(title) {
   return String(title).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-// Build a sorting key for titles that ignores a leading article like "The", "A", or "An".
 function titleSortKey(title) {
   if (!title) return '';
   const t = String(title).trim().toLowerCase();
-  // remove a single leading article followed by space: the|a|an (word boundary ensures not matching "there")
   return t.replace(/^(?:the|a|an)\b\s+/, '');
 }
 
@@ -7614,12 +7544,9 @@ function isDuplicateCandidate(listType, candidateItem) {
   const candidateSig = buildComparisonSignature(candidateItem);
   if (!candidateSig) return false;
 
-  // Check main list
   if (cache && Object.values(cache).some(existing => signaturesMatch(candidateSig, buildComparisonSignature(existing)))) {
     return true;
   }
-
-  // Check finished list
   if (finishedCache && Object.values(finishedCache).some(existing => signaturesMatch(candidateSig, buildComparisonSignature(existing)))) {
     return true;
   }
@@ -7712,7 +7639,6 @@ function formatRuntimeDurationDetailed(totalMinutes, forceShow = {}) {
     return 'Less than a minute';
   }
   
-  // Wrap each part in a span for stability
   return parts.map(p => `<span class="runtime-part">${p}</span>`).join(', ');
 }
 
@@ -8089,9 +8015,7 @@ function getMissingMetadataFields(item, listType) {
   return criticalFields.filter(field => !hasMeaningfulValue(item[field]));
 }
 
-// ============================================================================
-// Feature 6: Metadata Refresh & External API Pipelines
-// ============================================================================
+ 
 
 function needsMetadataRefresh(listType, item) {
   if (!item || !item.title) return false;
@@ -8153,9 +8077,7 @@ function maybeRefreshMetadata(listType, data) {
   });
 }
 
-// ============================================================================
-// Feature 9: Utility Helpers & Shared Formatters
-// ============================================================================
+ 
 
 function buildTrailerUrl(title, year) {
   if (!title) return '';
@@ -8573,19 +8495,18 @@ function setupFormAutocomplete(form, listType) {
             if (creatorInput && (!creatorInput.value || creatorInput.value === '') && detail.Director && detail.Director !== 'N/A') {
               creatorInput.value = detail.Director;
             }
-            // Show movie details preview
             const preview = form.querySelector('[data-role="movie-details-preview"]');
             if (preview) {
               preview.classList.remove('hidden');
-              // Poster
+              
               const posterEl = preview.querySelector('[data-role="movie-details-poster"]');
               if (posterEl) {
                 posterEl.innerHTML = detail.Poster && detail.Poster !== 'N/A'
                   ? `<img src="${detail.Poster}" alt="Poster for ${detail.Title}" />`
                   : '';
               }
-              // Title removed from preview, already in form fillout
-              // Only show year if not present in input
+              
+              
               const yearInput = form.querySelector('input[name="year"]');
               const yearEl = preview.querySelector('[data-role="movie-details-year"]');
               if (yearEl) {
@@ -8595,7 +8516,7 @@ function setupFormAutocomplete(form, listType) {
                   yearEl.textContent = detail.Year ? `Year: ${detail.Year}` : '';
                 }
               }
-              // Only show director if not present in input
+              
               const directorInput = form.querySelector('input[name="director"]');
               const directorEl = preview.querySelector('[data-role="movie-details-director"]');
               if (directorEl) {
@@ -8605,10 +8526,10 @@ function setupFormAutocomplete(form, listType) {
                   directorEl.textContent = detail.Director ? `Director: ${detail.Director}` : '';
                 }
               }
-              // Genres
+              
               const genresEl = preview.querySelector('[data-role="movie-details-genres"]');
               if (genresEl) genresEl.textContent = detail.Genres && detail.Genres.length ? `Genres: ${detail.Genres.join(', ')}` : '';
-              // Synopsis (description)
+              
               const descEl = preview.querySelector('[data-role="movie-details-description"]');
               if (descEl) descEl.textContent = detail.Plot || '';
             }
@@ -8617,7 +8538,7 @@ function setupFormAutocomplete(form, listType) {
           console.warn('Unable to prefill metadata from suggestion', err);
         }
       }
-      // Hide preview if no metadata
+      
       if (!form.__selectedMetadata) {
         const preview = form.querySelector('[data-role="movie-details-preview"]');
         if (preview) preview.classList.add('hidden');
@@ -8630,19 +8551,19 @@ function setupFormAutocomplete(form, listType) {
 
   titleInput.addEventListener('input', () => {
     const query = titleInput.value.trim();
-    // If user starts deleting the title, wipe all filled info
+    
     if (query.length === 0) {
       form.__selectedMetadata = null;
       delete form.dataset.selectedImdbId;
       delete form.dataset.selectedTmdbId;
       delete form.dataset.selectedGoogleBookId;
       delete form.dataset.selectedGoogleIsbn;
-      // Clear year and director fields
+      
       const yearInput = form.querySelector('input[name="year"]');
       if (yearInput) yearInput.value = '';
       const directorInput = form.querySelector('input[name="director"]');
       if (directorInput) directorInput.value = '';
-      // Hide preview
+      
       const preview = form.querySelector('[data-role="movie-details-preview"]');
       if (preview) preview.classList.add('hidden');
       hideTitleSuggestions(form);
@@ -8653,7 +8574,7 @@ function setupFormAutocomplete(form, listType) {
     delete form.dataset.selectedTmdbId;
     delete form.dataset.selectedGoogleBookId;
     delete form.dataset.selectedGoogleIsbn;
-    // Hide preview if user is typing or clears input
+    
     const preview = form.querySelector('[data-role="movie-details-preview"]');
     if (preview) preview.classList.add('hidden');
     if (query.length < 3) {
@@ -9097,7 +9018,6 @@ async function fetchTmdbFranchise(query) {
   }
 }
 
-// --- Watch Providers (TMDb) ---
 function getUserRegion() {
   try {
     const lang = navigator.language || navigator.userLanguage || 'en-US';
@@ -9134,11 +9054,11 @@ async function fetchWatchProviders(mediaType, tmdbId) {
 
 function buildWatchNowSection(listType, item, inline = false) {
   if (!TMDB_API_KEY) return null;
-  // Only applicable for screen media (movies/tv). We add it on movie cards.
+  
   const region = getUserRegion();
   const block = inline ? createEl('span', 'watch-now-inline') : createEl('div', 'watch-now-block');
 
-  // Control (inline next to links)
+  
   const btnClass = inline ? 'meta-link' : 'btn secondary';
   const btn = createEl('button', btnClass, { text: 'Watch Now' });
   if (!inline) {
@@ -9192,7 +9112,7 @@ function buildWatchNowSection(listType, item, inline = false) {
         dropdown.textContent = 'Watch options not available.';
         return;
       }
-      // Choose region preference
+      
       const preferred = data.results[region] || data.results.US || data.results.GB || null;
       const effectiveRegion = preferred ? (preferred.iso_3166_1 || region) : region;
       const payload = { link: preferred?.link || '',
@@ -9201,7 +9121,7 @@ function buildWatchNowSection(listType, item, inline = false) {
         ads: preferred?.ads || [],
         rent: preferred?.rent || [],
         buy: preferred?.buy || [] };
-      // Cache for 6 hours
+      
       item.__watchProvidersCache = cache = { region: effectiveRegion, payload, expiresAt: Date.now() + 6 * 60 * 60 * 1000 };
       renderProviders(payload, effectiveRegion);
     } catch (err) {
@@ -9263,8 +9183,7 @@ function buildWatchNowSection(listType, item, inline = false) {
       }
     });
 
-    // Footer removed per request (no "All options" button)
-
+    
     if (!any) {
       const empty = createEl('div', 'small', { text: 'No providers found for this region.' });
       empty.style.marginTop = '.25rem';
@@ -9273,13 +9192,11 @@ function buildWatchNowSection(listType, item, inline = false) {
   }
 
   btn.addEventListener('click', (ev) => { ev.preventDefault?.(); ev.stopPropagation(); toggle(); });
-  // Prevent clicks inside dropdown from toggling the parent card
   dropdown.addEventListener('click', (ev) => ev.stopPropagation());
 
   return block;
 }
 
-// Create a new item
 function addItem(listType, item) {
   if (!currentUser) {
     throw new Error('Not signed in');
@@ -9289,7 +9206,6 @@ function addItem(listType, item) {
   return set(newRef, item);
 }
 
-// Update an existing item
 function updateItem(listType, itemId, changes) {
   if (!currentUser) {
     alert('Not signed in');
@@ -9319,7 +9235,7 @@ async function moveItemBetweenLists(sourceListType, targetListType, itemId, item
   await set(targetRef, cleaned);
   const sourceRef = ref(db, `users/${currentUser.uid}/${sourceListType}/${itemId}`);
   await remove(sourceRef);
-  // Moving entries can change how series trees merge across lists; bust the cache immediately.
+  
   invalidateSeriesCrossListCache();
 }
 
@@ -9513,7 +9429,6 @@ async function finishItem(listType, itemId, ratingValue) {
   }
 }
 
-// Delete an item
 function deleteItem(listType, itemId, options = {}) {
   if (!currentUser) {
     alert('Not signed in');
@@ -9624,7 +9539,6 @@ async function mergeSeriesEntriesByName(seriesName, fallbackSeriesName = '') {
   }
 }
 
-// Open a small modal to edit
 function openEditModal(listType, itemId, item) {
   if (!modalRoot) return;
   closeAddModal();
@@ -9680,7 +9594,6 @@ function openEditModal(listType, itemId, item) {
   notesInput.name = 'notes';
   notesInput.value = item.notes || '';
 
-  // Rating input (only if finished)
   let ratingInput = null;
   if (item.finishedAt) {
     ratingInput = document.createElement('input');
@@ -9824,11 +9737,10 @@ function openEditModal(listType, itemId, item) {
     saveBtn.textContent = 'Saving...';
     try {
       if (targetListType === listType) {
-        // If item is finished, we need to update it in the finished path
         if (item.finishedAt) {
            const finishedRef = ref(db, `users/${currentUser.uid}/finished/${listType}/${itemId}`);
            await update(finishedRef, payload);
-           // Also update local cache for immediate feedback
+           
            if (finishedCaches[listType] && finishedCaches[listType][itemId]) {
              Object.assign(finishedCaches[listType][itemId], payload);
            }
@@ -9961,9 +9873,7 @@ async function refreshItemMetadata(listType, itemId, item, options = {}) {
   }
 }
 
-// ============================================================================
-// Feature 7: Spinner / Wheel Experience
-// ============================================================================
+ 
 
 function getWheelSpinAudio() {
   if (typeof Audio === 'undefined') return null;
@@ -10275,10 +10185,9 @@ function prepareWheelCandidateContext(listType) {
         const annotatedMap = mapWheelCandidateMap(typeMap, type, { compositeKeys: true });
         
         annotatedMap.forEach((item, key) => {
-           // Include if it's from Anime list OR has anime keyword
-           if (type === 'anime' || itemHasAnimeKeyword(item)) {
-             candidateMap.set(key, item);
-           }
+          if (type === 'anime' || itemHasAnimeKeyword(item)) {
+            candidateMap.set(key, item);
+          }
         });
 
         const label = MEDIA_TYPE_LABELS[type] || type;
@@ -10412,8 +10321,6 @@ function renderWheelWinnerFromLookup(listType, finalEntry, candidateMap, rawData
   }
   renderWheelResult(winner, listType);
 }
-
-// --- Sequel / Prequel Lookup Logic (TMDb only) ---
 
 function buildRelatedSuggestionKey(entry) {
   if (!entry) return '';
@@ -10672,7 +10579,6 @@ function buildRelatedSuggestionsModal({ sourceListType, currentItem, entries = [
     });
     isProcessing = false;
     updateSelectionState();
-    // If we processed everything, auto-close the modal to keep flow moving.
     const hasPending = entries.some(entry => {
       const key = buildRelatedSuggestionKey(entry);
       return key && !processedKeys.has(key);
@@ -10878,7 +10784,6 @@ function buildRelatedModal(currentItem, related) {
   modalRoot.appendChild(backdrop);
 }
 
-// TMDb based related lookup
 async function lookupRelatedViaTMDb(item) {
   if (!TMDB_API_KEY) return null;
   if (!item || !item.title) return null;
@@ -10887,7 +10792,7 @@ async function lookupRelatedViaTMDb(item) {
     const searchResp = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${query}`);
     const searchData = await searchResp.json();
     if (!searchData || !Array.isArray(searchData.results) || !searchData.results.length) return null;
-    // Find best match by comparing release year and title similarity
+    
     const normalizedTitle = item.title.trim().toLowerCase();
     const candidate = searchData.results.reduce((best, cur) => {
       const curTitle = (cur.title || cur.original_title || '').toLowerCase();
@@ -10898,7 +10803,7 @@ async function lookupRelatedViaTMDb(item) {
     }, {});
     if (!candidate || !candidate.id) return null;
     if (!candidate.belongs_to_collection || !candidate.belongs_to_collection.id) {
-      // Fetch movie details to see if collection info exists
+      
       const detailResp = await fetch(`https://api.themoviedb.org/3/movie/${candidate.id}?api_key=${TMDB_API_KEY}`);
       const detailData = await detailResp.json();
       if (!detailData || !detailData.belongs_to_collection) return null;
@@ -10915,7 +10820,7 @@ async function lookupRelatedViaTMDb(item) {
       Year: p.release_date ? p.release_date.slice(0,4) : '',
       imdbID: p.imdb_id || null
     })).filter(p => p.Title);
-    // Sort by release date
+    
     mapped.sort((a,b) => {
       const yA = parseInt(a.Year,10) || 9999;
       const yB = parseInt(b.Year,10) || 9999;
@@ -10926,7 +10831,7 @@ async function lookupRelatedViaTMDb(item) {
       if (tA > tB) return 1;
       return 0;
     });
-    // Filter out current item if IMDB ID matches
+    
     const currentImdb = item.imdbId || item.imdbID || '';
     return mapped.filter(m => !currentImdb || m.imdbID !== currentImdb);
   } catch (err) {
@@ -10937,7 +10842,7 @@ async function lookupRelatedViaTMDb(item) {
 
 async function lookupRelatedTitles(item) {
   if (!item || !item.title) return;
-  // 1) Prefer TMDb collections when possible
+  
   const tmdbList = await lookupRelatedViaTMDb(item);
   if (tmdbList && tmdbList.length) {
     buildRelatedModal(item, tmdbList);
@@ -10971,7 +10876,7 @@ function resolveSeriesRedirect(listType, item, rawData) {
   });
   const earliestUnwatched = siblings.find(entry => entry && isSpinnerStatusEligible(entry) && !isItemWatched(entry));
   if (!earliestUnwatched) return item;
-  // If the chosen item is further in the series than the earliest unwatched, redirect.
+  
   const chosenOrder = parseSeriesOrder(item.seriesOrder);
   const earliestOrder = parseSeriesOrder(earliestUnwatched.seriesOrder);
   const needsRedirect = chosenOrder > earliestOrder || isItemWatched(item);
@@ -11011,7 +10916,6 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalDisplayEnt
       schedule.push(0);
     } else {
       const progress = i / lastIndex;
-      // Use a convex timing (progress^3) so early steps occur quickly and spacing grows later
       const eased = Math.pow(progress, 3);
       schedule.push(Math.round(eased * totalDuration));
     }
@@ -11051,7 +10955,6 @@ function animateWheelSequence(candidates, chosenIndex, listType, finalDisplayEnt
   });
 }
 
-// Wheel spinner logic
 function spinWheel(listType) {
   if (!currentUser) {
     alert('Not signed in');
@@ -11142,13 +11045,11 @@ function spinWheel(listType) {
   });
 }
 
-// Boot
 initFirebase();
 if (auth) {
   handleAuthState();
   handleSignInRedirectResult();
 } else {
-  // If config was not added, attempt to still listen after a small delay
   try {
     handleAuthState();
     handleSignInRedirectResult();
@@ -11630,9 +11531,7 @@ async function autoAddTmdbKeywordEntries(franchiseLabel, keywordInfo, entries, o
   }
 }
 
-// ============================================================================
-// Random Ad Selection
-// ============================================================================
+ 
 
 const adImages = [
   'ads/ad1.png',
@@ -11642,7 +11541,7 @@ const adImages = [
   'ads/ad5.png',
   'ads/ad6.png',
   'ads/ad7.png',
-  // Add more ad images here as you add them to the ads folder
+  
 ];
 
 function cycleRandomAd() {
@@ -11657,11 +11556,9 @@ function cycleRandomAd() {
 
 function initializeRandomAds() {
   cycleRandomAd();
-  // Cycle to a new random ad every 60 seconds
   setInterval(cycleRandomAd, 60000);
 }
 
-// Initialize ads when page loads
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializeRandomAds);
 } else {
