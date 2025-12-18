@@ -1,3 +1,51 @@
+/* Movie details preview in add-movie popup */
+.movie-details-preview {
+  display: flex;
+  gap: 1.2rem;
+  margin: 1rem 0 0.5rem 0;
+  padding: 1rem;
+  background: rgba(20, 28, 38, 0.92);
+  border: 1px solid var(--border, #333);
+  border-radius: 12px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.12);
+  align-items: flex-start;
+}
+.movie-details-preview.hidden {
+  display: none;
+}
+.movie-details-poster {
+  min-width: 90px;
+  max-width: 120px;
+  flex-shrink: 0;
+}
+.movie-details-poster img {
+  width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+.movie-details-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.movie-details-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-100, #fff);
+}
+.movie-details-meta {
+  font-size: 0.95rem;
+  color: var(--text-400, #bbb);
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+}
+.movie-details-description {
+  font-size: 0.98rem;
+  color: var(--text-300, #e0e0e0);
+  margin-top: 0.3rem;
+}
 .card.collapsible.movie-card .artwork.placeholder{display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--text-500);padding:.4rem;text-align:center}
 :root{
   --bg:#0f1720;

@@ -8573,10 +8573,42 @@ function setupFormAutocomplete(form, listType) {
             if (creatorInput && (!creatorInput.value || creatorInput.value === '') && detail.Director && detail.Director !== 'N/A') {
               creatorInput.value = detail.Director;
             }
+            // Show movie details preview
+            const preview = form.querySelector('[data-role="movie-details-preview"]');
+            if (preview) {
+              preview.classList.remove('hidden');
+              // Poster
+              const posterEl = preview.querySelector('[data-role="movie-details-poster"]');
+              if (posterEl) {
+                posterEl.innerHTML = detail.Poster && detail.Poster !== 'N/A'
+                  ? `<img src="${detail.Poster}" alt="Poster for ${detail.Title}" />`
+                  : '';
+              }
+              // Title
+              const titleEl = preview.querySelector('[data-role="movie-details-title"]');
+              if (titleEl) titleEl.textContent = detail.Title || '';
+              // Year
+              const yearEl = preview.querySelector('[data-role="movie-details-year"]');
+              if (yearEl) yearEl.textContent = detail.Year ? `Year: ${detail.Year}` : '';
+              // Director
+              const directorEl = preview.querySelector('[data-role="movie-details-director"]');
+              if (directorEl) directorEl.textContent = detail.Director ? `Director: ${detail.Director}` : '';
+              // Genres
+              const genresEl = preview.querySelector('[data-role="movie-details-genres"]');
+              if (genresEl) genresEl.textContent = detail.Genres && detail.Genres.length ? `Genres: ${detail.Genres.join(', ')}` : '';
+              // Description
+              const descEl = preview.querySelector('[data-role="movie-details-description"]');
+              if (descEl) descEl.textContent = detail.Plot || '';
+            }
           }
         } catch (err) {
           console.warn('Unable to prefill metadata from suggestion', err);
         }
+      }
+      // Hide preview if no metadata
+      if (!form.__selectedMetadata) {
+        const preview = form.querySelector('[data-role="movie-details-preview"]');
+        if (preview) preview.classList.add('hidden');
       }
       hideTitleSuggestions(form);
       titleInput.focus();
@@ -8591,6 +8623,9 @@ function setupFormAutocomplete(form, listType) {
     delete form.dataset.selectedTmdbId;
     delete form.dataset.selectedGoogleBookId;
     delete form.dataset.selectedGoogleIsbn;
+    // Hide preview if user is typing or clears input
+    const preview = form.querySelector('[data-role="movie-details-preview"]');
+    if (preview) preview.classList.add('hidden');
     if (query.length < 3) {
       lastFetchToken++;
       hideTitleSuggestions(form);
