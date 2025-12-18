@@ -8630,6 +8630,24 @@ function setupFormAutocomplete(form, listType) {
 
   titleInput.addEventListener('input', () => {
     const query = titleInput.value.trim();
+    // If user starts deleting the title, wipe all filled info
+    if (query.length === 0) {
+      form.__selectedMetadata = null;
+      delete form.dataset.selectedImdbId;
+      delete form.dataset.selectedTmdbId;
+      delete form.dataset.selectedGoogleBookId;
+      delete form.dataset.selectedGoogleIsbn;
+      // Clear year and director fields
+      const yearInput = form.querySelector('input[name="year"]');
+      if (yearInput) yearInput.value = '';
+      const directorInput = form.querySelector('input[name="director"]');
+      if (directorInput) directorInput.value = '';
+      // Hide preview
+      const preview = form.querySelector('[data-role="movie-details-preview"]');
+      if (preview) preview.classList.add('hidden');
+      hideTitleSuggestions(form);
+      return;
+    }
     form.__selectedMetadata = null;
     delete form.dataset.selectedImdbId;
     delete form.dataset.selectedTmdbId;
