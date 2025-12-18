@@ -8587,12 +8587,26 @@ function setupFormAutocomplete(form, listType) {
               // Title
               const titleEl = preview.querySelector('[data-role="movie-details-title"]');
               if (titleEl) titleEl.textContent = detail.Title || '';
-              // Year
+              // Only show year if not present in input
+              const yearInput = form.querySelector('input[name="year"]');
               const yearEl = preview.querySelector('[data-role="movie-details-year"]');
-              if (yearEl) yearEl.textContent = detail.Year ? `Year: ${detail.Year}` : '';
-              // Director
+              if (yearEl) {
+                if (yearInput && yearInput.value) {
+                  yearEl.textContent = '';
+                } else {
+                  yearEl.textContent = detail.Year ? `Year: ${detail.Year}` : '';
+                }
+              }
+              // Only show director if not present in input
+              const directorInput = form.querySelector('input[name="director"]');
               const directorEl = preview.querySelector('[data-role="movie-details-director"]');
-              if (directorEl) directorEl.textContent = detail.Director ? `Director: ${detail.Director}` : '';
+              if (directorEl) {
+                if (directorInput && directorInput.value) {
+                  directorEl.textContent = '';
+                } else {
+                  directorEl.textContent = detail.Director ? `Director: ${detail.Director}` : '';
+                }
+              }
               // Genres
               const genresEl = preview.querySelector('[data-role="movie-details-genres"]');
               if (genresEl) genresEl.textContent = detail.Genres && detail.Genres.length ? `Genres: ${detail.Genres.join(', ')}` : '';
