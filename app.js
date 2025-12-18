@@ -8608,7 +8608,7 @@ function setupFormAutocomplete(form, listType) {
               // Genres
               const genresEl = preview.querySelector('[data-role="movie-details-genres"]');
               if (genresEl) genresEl.textContent = detail.Genres && detail.Genres.length ? `Genres: ${detail.Genres.join(', ')}` : '';
-              // Description
+              // Synopsis (description)
               const descEl = preview.querySelector('[data-role="movie-details-description"]');
               if (descEl) descEl.textContent = detail.Plot || '';
             }
