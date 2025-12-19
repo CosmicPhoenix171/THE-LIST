@@ -20,6 +20,7 @@ export const bugReportCloseBtn = document.getElementById('bug-report-close');
 export const unifiedSearchInput = document.getElementById('library-search');
 export const typeFilterButtons = document.querySelectorAll('[data-type-toggle]');
 export const finishedFilterToggle = document.getElementById('finished-filter-toggle');
+export const librarySortSelect = document.getElementById('library-sort-select');
 export const notificationCenter = document.getElementById('notification-center');
 export const notificationItemsContainer = document.getElementById('notification-items-container');
 export const notificationClearAllBtn = document.getElementById('notification-clear-all');
