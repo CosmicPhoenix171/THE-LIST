@@ -8,18 +8,40 @@ import {
   seriesGroups,
   getSeriesGroupEntries,
   seriesSortState,
-  showFinishedOnly
+  showFinishedOnly,
+  currentUser
 } from './state.js';
-import { createEl, debounce, titleSortKey, sanitizeYear, numericSeriesOrder, truncateText } from './utils.js';
+import { createEl, debounce, titleSortKey, sanitizeYear, numericSeriesOrder, truncateText, normalizeTitleKey } from './utils.js';
 import { isCollapsibleList, buildSeriesLine, buildActorPreview, buildFinishedRatingBadge } from './cards.js';
 import { 
   mergeSeriesEntriesAcrossLists, 
   buildSeriesEntryKey,
-  compareSeriesEntries 
+  compareSeriesEntries,
+  collectSeriesEntriesAcrossLists,
+  invalidateSeriesCrossListCache
 } from './seriesGrouping.js';
 import { openEditModal } from './modals.js';
-import { handleFinishRequest, deleteItem, deleteSeriesEntries } from './crud.js';
+import { handleFinishRequest, deleteItem, deleteSeriesEntries, updateItem } from './crud.js';
 import { getUserRegion, ensureTmdbIdentity, fetchWatchProviders } from './metadata.js';
+import { getFirebaseDatabase } from './firebase.js';
+import { ref, update } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
+
+// ============================================
+// SERIES TREE DRAG STATE
+// ============================================
+const seriesTreeDragState = {
+  activeNode: null,
+  listElement: null,
+  placeholder: null,
+  cardId: null,
+  listType: null,
+  cardElement: null,
+  entries: null,
+  entryMap: null,
+  activeEntryKey: null,
+};
+let seriesTreeDragEventsBound = false;
+let seriesTreeWheelUnsubscribe = null;
 
 // ============================================
 // CARD TITLE AUTO-SIZING
@@ -844,7 +866,14 @@ export function renderMovieCardContent(card, listType, cardId, item, entryId = c
   }
   
   const contentListType = options.contentListType || listType;
-  const context = { cardId, entryId, seriesEntries, isExpanded, listType: contentListType };
+  
+  // Build callbacks for series tree interactions
+  const callbacks = {
+    renderMovieCardContent,
+    moveSeriesTreeNode,
+  };
+  
+  const context = { cardId, entryId, seriesEntries, isExpanded, listType: contentListType, callbacks };
   
   const summary = buildMovieCardSummary(contentListType, item, context);
   const details = buildMovieCardDetails(contentListType, cardId, entryId, item, context);
@@ -1017,6 +1046,10 @@ export function buildSeriesTreeBlock(listType, cardId, providedEntries = null, c
   const listWrapper = createEl('div', 'series-tree-scroll');
   listWrapper.appendChild(list);
   block.appendChild(listWrapper);
+  
+  // Enable drag events for reordering
+  ensureSeriesTreeDragEvents();
+  
   return block;
 }
 
@@ -1491,4 +1524,402 @@ function getItemFromCache(listType, id) {
 // ============================================
 if (typeof window !== 'undefined') {
   window.addEventListener('resize', recalcCardTitleSizes);
+}
+
+// ============================================
+// SERIES TREE MOVE & REORDER
+// ============================================
+export async function moveSeriesTreeNode(listType, entry, direction) {
+  if (!entry || !entry.item) return;
+  const seriesName = entry.item.seriesName;
+  if (!seriesName) return;
+
+  const entries = collectSeriesEntriesAcrossLists(seriesName);
+  if (!entries || !entries.length) return;
+  
+  entries.sort(compareSeriesEntries);
+  
+  const currentIndex = entries.findIndex(e => e.id === entry.id && (e.listType === entry.listType || (!e.listType && !entry.listType)));
+  if (currentIndex === -1) return;
+  
+  const targetIndex = currentIndex + direction;
+  if (targetIndex < 0 || targetIndex >= entries.length) return;
+  
+  // Swap entries
+  const temp = entries[currentIndex];
+  entries[currentIndex] = entries[targetIndex];
+  entries[targetIndex] = temp;
+
+  // Find the card element
+  const treeList = document.querySelector('.series-tree-list');
+  const cardId = treeList ? treeList.dataset.cardId : entry.id;
+  const cardElement = document.querySelector(`.card[data-id="${cardId}"]`) || treeList?.closest('.card');
+
+  applySeriesTreeReorder(listType, cardId, entries, cardElement);
+}
+
+function applySeriesTreeReorder(listType, cardId, orderedEntries, cardElement) {
+  if (!listType || !cardId || !Array.isArray(orderedEntries) || !orderedEntries.length) return;
+  
+  const orderUpdates = [];
+  const orderMap = new Map();
+  
+  orderedEntries.forEach((entry, index) => {
+    if (!entry || !entry.id) return;
+    const newOrder = index + 1;
+    const entryListType = entry.listType || listType;
+    orderMap.set(buildSeriesEntryKey(entryListType, entry.id, entry.item), newOrder);
+    if (entry.order !== newOrder) {
+      orderUpdates.push({ entry, newOrder });
+    }
+    entry.order = newOrder;
+    if (entry.item) {
+      entry.item.seriesOrder = newOrder;
+    }
+    updateCachedSeriesOrderValue(entry, newOrder);
+  });
+  
+  if (!orderMap.size) return;
+  
+  const store = seriesGroups[listType];
+  if (store && store.has(cardId)) {
+    const existing = store.get(cardId) || [];
+    existing.sort((a, b) => {
+      const keyA = buildSeriesEntryKey(a.listType || listType, a.id, a.item);
+      const keyB = buildSeriesEntryKey(b.listType || listType, b.id, b.item);
+      const orderA = orderMap.get(keyA) || Number.MAX_SAFE_INTEGER;
+      const orderB = orderMap.get(keyB) || Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      return compareSeriesEntries(a, b);
+    });
+    store.set(cardId, existing);
+  }
+  
+  applySeriesOrderSnapshotUpdates(listType, orderMap);
+  
+  if (orderUpdates.length) {
+    persistSeriesTreeOrderUpdates(orderUpdates);
+  }
+  
+  invalidateSeriesCrossListCache();
+  
+  if (cardElement) {
+    refreshSeriesCardContent(cardElement);
+  }
+}
+
+function applySeriesOrderSnapshotUpdates(listType, orderMap) {
+  if (!orderMap || !orderMap.size) return;
+  
+  [listCaches, finishedCaches].forEach(cacheMap => {
+    const store = cacheMap && cacheMap[listType];
+    if (!store) return;
+    
+    Object.entries(store).forEach(([id, item]) => {
+      if (!item) return;
+      const key = buildSeriesEntryKey(listType, id, item);
+      const newOrder = orderMap.get(key);
+      if (newOrder !== undefined) {
+        item.seriesOrder = newOrder;
+      }
+    });
+  });
+}
+
+function persistSeriesTreeOrderUpdates(changedEntries) {
+  const db = getFirebaseDatabase();
+  if (!currentUser || !db || !Array.isArray(changedEntries) || !changedEntries.length) return;
+  
+  const tasks = changedEntries.map(({ entry, newOrder }) => {
+    if (!entry || !entry.listType || !entry.id) return null;
+    
+    if (entry.isVirtualSeason) {
+      const isFinished = Boolean(entry.item && entry.item.finishedAt);
+      const rootPath = isFinished 
+        ? `users/${currentUser.uid}/finished/${entry.listType}/${entry.parentId}`
+        : `users/${currentUser.uid}/${entry.listType}/${entry.parentId}`;
+      const seasonPath = `${rootPath}/${entry.seasonField}/${entry.seasonIndex}`;
+      return update(ref(db, seasonPath), { seriesOrder: newOrder }).catch(err => {
+        console.warn('Failed to update virtual season order', err);
+      });
+    }
+
+    const isFinished = Boolean(entry.item && entry.item.finishedAt);
+    if (isFinished) {
+       const path = `users/${currentUser.uid}/finished/${entry.listType}/${entry.id}`;
+       return update(ref(db, path), { seriesOrder: newOrder }).catch(err => {
+          console.warn('Failed to update series order (finished)', err);
+       });
+    }
+
+    return updateItem(entry.listType, entry.id, { seriesOrder: newOrder }).catch(err => {
+      console.warn('Failed to update series order', err);
+    });
+  }).filter(Boolean);
+  
+  if (tasks.length) {
+    Promise.allSettled(tasks).catch(err => {
+      console.warn('Series order persistence failed', err);
+    });
+  }
+}
+
+function updateCachedSeriesOrderValue(entry, newOrder) {
+  if (!entry || !entry.listType || !entry.id) return;
+  
+  if (entry.isVirtualSeason) {
+    [listCaches, finishedCaches].forEach(cacheMap => {
+      const store = cacheMap && cacheMap[entry.listType];
+      if (store && store[entry.parentId]) {
+        const parent = store[entry.parentId];
+        const seasons = parent[entry.seasonField];
+        if (seasons && seasons[entry.seasonIndex]) {
+          seasons[entry.seasonIndex].seriesOrder = newOrder;
+        }
+      }
+    });
+    return;
+  }
+
+  [listCaches, finishedCaches].forEach(cacheMap => {
+    const store = cacheMap && cacheMap[entry.listType];
+    if (store && store[entry.id]) {
+      store[entry.id].seriesOrder = newOrder;
+    }
+  });
+}
+
+function refreshSeriesCardContent(cardElement) {
+  if (!cardElement) return;
+  const listType = cardElement.dataset.listType;
+  const cardId = cardElement.dataset.id;
+  const entryId = cardElement.dataset.entryId || cardId;
+  if (!listType || !cardId) return;
+  
+  const item = getItemFromCache(listType, entryId) || getItemFromCache(listType, cardId);
+  if (!item) return;
+  
+  renderMovieCardContent(cardElement, listType, cardId, item, entryId);
+}
+
+// ============================================
+// SERIES TREE DRAG EVENTS
+// ============================================
+export function ensureSeriesTreeDragEvents() {
+  if (seriesTreeDragEventsBound) return;
+  document.addEventListener('dragstart', handleSeriesTreeDragStart);
+  document.addEventListener('dragover', handleSeriesTreeDragOver);
+  document.addEventListener('drop', handleSeriesTreeDrop);
+  document.addEventListener('dragend', handleSeriesTreeDragEnd);
+  seriesTreeDragEventsBound = true;
+}
+
+function handleSeriesTreeDragStart(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const node = target?.closest('.series-tree-node');
+  if (!node || node.classList.contains('series-tree-placeholder')) return;
+  const list = node.closest('.series-tree-list');
+  if (!list || list.children.length <= 1) return;
+  const listType = list.dataset.listType || node.closest('.series-tree')?.dataset.listType || '';
+  const cardId = list.dataset.cardId || node.closest('.series-tree')?.dataset.cardId || '';
+  const entries = getSeriesTreeEntries(listType, cardId);
+  if (!entries.length) return;
+  const entryMap = new Map(entries.map(entry => [buildSeriesTreeNodeKey(entry, listType), entry]));
+  seriesTreeDragState.activeNode = node;
+  seriesTreeDragState.listElement = list;
+  seriesTreeDragState.placeholder = null;
+  seriesTreeDragState.cardId = cardId;
+  seriesTreeDragState.listType = listType;
+  seriesTreeDragState.cardElement = node.closest('.card.collapsible.movie-card');
+  seriesTreeDragState.entries = entries;
+  seriesTreeDragState.entryMap = entryMap;
+  seriesTreeDragState.activeEntryKey = node.dataset.entryKey || node.dataset.entryId || '';
+  node.classList.add('is-dragging');
+  list.classList.add('is-dragging');
+  enableSeriesTreeWheelScroll();
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', node.dataset.entryId || '');
+  }
+}
+
+function handleSeriesTreeDragOver(event) {
+  if (!seriesTreeDragState.activeNode) return;
+  const list = seriesTreeDragState.listElement;
+  if (!list) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target && !target.closest('.series-tree-list') && target !== list) {
+    return;
+  }
+  event.preventDefault();
+  const placeholder = getSeriesTreePlaceholder();
+  if (placeholder.parentElement !== list) {
+    list.appendChild(placeholder);
+  }
+  let targetNode = target?.closest('.series-tree-node');
+  if (!targetNode || targetNode === placeholder) {
+    targetNode = getSeriesTreeNodeFromPosition(list, event.clientY);
+    if (!targetNode) {
+      list.appendChild(placeholder);
+      return;
+    }
+  }
+  if (targetNode === seriesTreeDragState.activeNode) return;
+  const rect = targetNode.getBoundingClientRect();
+  const insertBefore = event.clientY < rect.top + rect.height / 2;
+  if (insertBefore) {
+    list.insertBefore(placeholder, targetNode);
+  } else {
+    list.insertBefore(placeholder, targetNode.nextSibling);
+  }
+}
+
+function handleSeriesTreeDrop(event) {
+  if (!seriesTreeDragState.activeNode) return;
+  const list = seriesTreeDragState.listElement;
+  if (!list) {
+    clearSeriesTreeDragState();
+    return;
+  }
+  const target = event.target instanceof Element ? event.target : null;
+  if (target && !target.closest('.series-tree-list') && target !== list) {
+    clearSeriesTreeDragState();
+    return;
+  }
+  event.preventDefault();
+  const orderedKeys = computeSeriesTreeDropOrder();
+  const listType = seriesTreeDragState.listType;
+  const cardId = seriesTreeDragState.cardId;
+  const cardElement = seriesTreeDragState.cardElement;
+  const entryMap = seriesTreeDragState.entryMap;
+  let orderedEntries = null;
+  if (orderedKeys && orderedKeys.length) {
+    orderedEntries = orderedKeys
+      .map(key => entryMap?.get(key) || null)
+      .filter(Boolean);
+    if ((!orderedEntries || !orderedEntries.length) && listType && cardId) {
+      const fallbackEntries = getSeriesTreeEntries(listType, cardId);
+      const fallbackMap = new Map(fallbackEntries.map(entry => [buildSeriesTreeNodeKey(entry, listType), entry]));
+      orderedEntries = orderedKeys.map(key => fallbackMap.get(key)).filter(Boolean);
+    }
+  }
+  clearSeriesTreeDragState();
+  if (orderedEntries && orderedEntries.length) {
+    applySeriesTreeReorder(listType, cardId, orderedEntries, cardElement);
+  }
+}
+
+function handleSeriesTreeDragEnd() {
+  clearSeriesTreeDragState();
+}
+
+function getSeriesTreePlaceholder() {
+  if (seriesTreeDragState.placeholder) return seriesTreeDragState.placeholder;
+  const placeholder = document.createElement('div');
+  placeholder.className = 'series-tree-node series-tree-placeholder';
+  placeholder.setAttribute('draggable', 'false');
+  placeholder.textContent = 'Drop here';
+  seriesTreeDragState.placeholder = placeholder;
+  return placeholder;
+}
+
+function removeSeriesTreePlaceholder() {
+  const placeholder = seriesTreeDragState.placeholder;
+  if (placeholder && placeholder.parentElement) {
+    placeholder.parentElement.removeChild(placeholder);
+  }
+}
+
+function getSeriesTreeNodeFromPosition(list, clientY) {
+  if (!list || clientY === undefined || clientY === null) return null;
+  const nodes = Array.from(list.querySelectorAll('.series-tree-node'))
+    .filter(node => !node.classList.contains('series-tree-placeholder'));
+  if (!nodes.length) return null;
+  let closest = null;
+  let smallest = Infinity;
+  nodes.forEach(node => {
+    if (node.classList.contains('is-dragging')) return;
+    const rect = node.getBoundingClientRect();
+    const center = rect.top + rect.height / 2;
+    const delta = Math.abs(clientY - center);
+    if (delta < smallest) {
+      smallest = delta;
+      closest = node;
+    }
+  });
+  return closest;
+}
+
+function computeSeriesTreeDropOrder() {
+  const list = seriesTreeDragState.listElement;
+  const placeholder = seriesTreeDragState.placeholder;
+  const movingKey = seriesTreeDragState.activeEntryKey
+    || seriesTreeDragState.activeNode?.dataset.entryKey
+    || seriesTreeDragState.activeNode?.dataset.entryId;
+  if (!list || !movingKey) return null;
+  const nodes = Array.from(list.querySelectorAll('.series-tree-node'))
+    .filter(node => !node.classList.contains('series-tree-placeholder'));
+  const currentKeys = nodes
+    .map(node => node.dataset.entryKey || node.dataset.entryId)
+    .filter(Boolean);
+  if (!placeholder || placeholder.parentElement !== list) {
+    return currentKeys;
+  }
+  let insertionIndex = 0;
+  for (const child of Array.from(list.children)) {
+    if (child === placeholder) {
+      break;
+    }
+    if (child.classList && child.classList.contains('series-tree-node') && !child.classList.contains('series-tree-placeholder')) {
+      insertionIndex += 1;
+    }
+  }
+  insertionIndex = Math.max(0, Math.min(currentKeys.length, insertionIndex));
+  const withoutMoving = currentKeys.filter(key => key !== movingKey);
+  withoutMoving.splice(insertionIndex, 0, movingKey);
+  return withoutMoving;
+}
+
+function clearSeriesTreeDragState() {
+  removeSeriesTreePlaceholder();
+  if (seriesTreeDragState.activeNode) {
+    seriesTreeDragState.activeNode.classList.remove('is-dragging');
+  }
+  if (seriesTreeDragState.listElement) {
+    seriesTreeDragState.listElement.classList.remove('is-dragging');
+  }
+  disableSeriesTreeWheelScroll();
+  seriesTreeDragState.activeNode = null;
+  seriesTreeDragState.listElement = null;
+  seriesTreeDragState.placeholder = null;
+  seriesTreeDragState.cardId = null;
+  seriesTreeDragState.listType = null;
+  seriesTreeDragState.cardElement = null;
+  seriesTreeDragState.entries = null;
+  seriesTreeDragState.entryMap = null;
+  seriesTreeDragState.activeEntryKey = null;
+}
+
+function enableSeriesTreeWheelScroll() {
+  if (seriesTreeWheelUnsubscribe) return;
+  const handler = (event) => {
+    if (!seriesTreeDragState.activeNode || !seriesTreeDragState.listElement) return;
+    const scrollContainer = seriesTreeDragState.listElement.closest('.series-tree-scroll');
+    if (!scrollContainer) return;
+    const delta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
+    if (!delta) return;
+    event.preventDefault();
+    scrollContainer.scrollTop += delta;
+  };
+  window.addEventListener('wheel', handler, { passive: false });
+  seriesTreeWheelUnsubscribe = () => {
+    window.removeEventListener('wheel', handler);
+    seriesTreeWheelUnsubscribe = null;
+  };
+}
+
+function disableSeriesTreeWheelScroll() {
+  if (seriesTreeWheelUnsubscribe) {
+    seriesTreeWheelUnsubscribe();
+  }
 }

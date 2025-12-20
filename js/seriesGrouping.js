@@ -396,3 +396,11 @@ export function clearCrossListSeriesCache() {
 export function incrementSeriesIndexVersion() {
   setSeriesIndexVersion(seriesIndexVersion + 1);
 }
+
+// ============================================
+// INVALIDATE SERIES CROSS-LIST CACHE
+// ============================================
+export function invalidateSeriesCrossListCache() {
+  crossListSeriesCache.clear();
+  setSeriesIndexVersion(seriesIndexVersion + 1);
+}
