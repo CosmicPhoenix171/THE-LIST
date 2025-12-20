@@ -17,6 +17,7 @@ import * as bugReport from './bugReport.js';
 import * as crud from './crud.js';
 import * as easterEgg from './easterEgg.js';
 import * as collapsibleCards from './collapsibleCards.js';
+import * as seriesGrouping from './seriesGrouping.js';
 import { 
   VirtualScroller, 
   ensureVirtualListController, 
@@ -262,21 +263,7 @@ function updateUnifiedTypeControls() {
 }
 
 function collectUnifiedEntries() {
-  const allEntries = [];
-  config.PRIMARY_LIST_TYPES.forEach(listType => {
-    const cache = getDisplayCache(listType) || {};
-    Object.entries(cache).forEach(([id, item]) => {
-      if (!item) return;
-      allEntries.push({
-        listType,
-        id,
-        item,
-        displayItem: item,
-        displayEntryId: id,
-      });
-    });
-  });
-  return allEntries;
+  return seriesGrouping.collectUnifiedEntriesWithGrouping(config.PRIMARY_LIST_TYPES);
 }
 
 function matchesUnifiedSearch(item, queryStr) {
