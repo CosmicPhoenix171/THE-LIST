@@ -74,6 +74,7 @@ export function initApp() {
   notifications.initNotificationBell();
   autocomplete.initGlobalSuggestionClickHandler();
   franchise.setupFranchiseSort();
+  easterEgg.bindTriggers();
   
   // Bug report button
   bugReport.initBugReportButton({
