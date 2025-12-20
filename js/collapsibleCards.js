@@ -113,6 +113,19 @@ export function isAnimeMovieEntry(item) {
 }
 
 // ============================================
+// FORMAT ANIME RUNTIME LABEL
+// ============================================
+export function formatAnimeRuntimeLabel(item) {
+  if (!item) return '';
+  const duration = parseEpisodeValue(item.animeDuration);
+  if (!duration) return '';
+  if (isAnimeMovieEntry(item)) {
+    return `${duration} min`;
+  }
+  return `${duration} min/ep`;
+}
+
+// ============================================
 // COLLAPSIBLE CARD EXPANSION STATE
 // ============================================
 export function ensureExpandedSet(listType) {
