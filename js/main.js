@@ -119,14 +119,16 @@ function setupAddModalTrigger() {
 
 function getModalCallbacks() {
   return {
-    onAdd: (listType, item) => {
-      crud.addItem(listType, item);
+    onSubmit: async (listType, item, form) => {
+      await crud.addItem(listType, item);
     },
-    afterAdd: () => {
+    afterSubmit: () => {
       renderUnifiedLibrary();
     },
+    renderUnifiedLibrary,
     searchTmdb: metadata.searchTmdb,
-    enrichItem: metadata.enrichItemWithMetadata
+    enrichItem: metadata.enrichItemWithMetadata,
+    fetchSuggestions: autocomplete.fetchTmdbSuggestions
   };
 }
 
