@@ -5,6 +5,7 @@ export const userNameEl = document.getElementById('user-name');
 export const signOutBtn = document.getElementById('sign-out');
 export const backToTopBtn = document.getElementById('back-to-top');
 export const modalRoot = document.getElementById('modal-root');
+export const addModalTrigger = document.getElementById('open-add-modal');
 export const combinedListEl = document.getElementById('combined-list');
 export const franchiseSectionEl = document.getElementById('franchise-section');
 export const franchiseShelfEl = document.getElementById('franchise-shelf');

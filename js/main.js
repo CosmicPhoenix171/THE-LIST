@@ -70,14 +70,25 @@ export function initApp() {
     dom.signOutBtn.addEventListener('click', () => firebase.signOut());
   }
   
+  // Initialize UI components
   notifications.initNotificationBell();
   autocomplete.initGlobalSuggestionClickHandler();
   franchise.setupFranchiseSort();
   
+  // Bug report button
+  bugReport.initBugReportButton({
+    refreshAllMetadataSequential: () => bugReport.refreshAllMetadataSequential({
+      listCaches: state.listCaches,
+      showToast: notifications.pushNotification
+    })
+  });
+  
+  // Add modal trigger
+  setupAddModalTrigger();
+  
+  // Wheel modal
   wheel.setupWheelModal({
-    onSpin: (source) => {
-      console.log('Wheel spin requested for:', source);
-    },
+    onSpin: spinWheel,
     closeAddModal: modals.closeAddModal
   });
   
@@ -97,6 +108,26 @@ export function initApp() {
   ads.initializeRandomAds();
   
   console.info('[THE-LIST] App initialized with modular architecture');
+}
+
+function setupAddModalTrigger() {
+  if (!dom.addModalTrigger || !dom.modalRoot) return;
+  dom.addModalTrigger.addEventListener('click', () => {
+    modals.openAddModal(config.ADD_MODAL_LIST_TYPES[0], getModalCallbacks());
+  });
+}
+
+function getModalCallbacks() {
+  return {
+    onAdd: (listType, item) => {
+      crud.addItem(listType, item);
+    },
+    afterAdd: () => {
+      renderUnifiedLibrary();
+    },
+    searchTmdb: metadata.searchTmdb,
+    enrichItem: metadata.enrichItemWithMetadata
+  };
 }
 
 function showLogin() {
@@ -368,6 +399,125 @@ function buildUnifiedCard(entry, index = 0) {
     displayEntryId: id,
     interactive: true
   });
+}
+
+// ============================================
+// WHEEL SPIN FUNCTIONALITY
+// ============================================
+function spinWheel(listType) {
+  if (!state.currentUser) {
+    notifications.pushNotification({ message: 'Please sign in first', type: 'error' });
+    return;
+  }
+  
+  const spinnerEl = wheel.getWheelSpinnerEl();
+  const resultEl = wheel.getWheelResultEl();
+  
+  if (!spinnerEl || !resultEl) {
+    console.warn('Wheel spinner UI not ready');
+    return;
+  }
+  
+  wheel.clearWheelAnimation();
+  resultEl.innerHTML = '';
+  spinnerEl.classList.remove('hidden');
+  spinnerEl.classList.add('spinning');
+  
+  const placeholder = document.createElement('span');
+  placeholder.className = 'spin-text';
+  placeholder.textContent = 'Spinning…';
+  spinnerEl.appendChild(placeholder);
+  
+  wheel.startWheelSpinAudio();
+  
+  // Gather candidates from caches
+  const candidates = [];
+  const targetTypes = listType === 'all' 
+    ? config.PRIMARY_LIST_TYPES 
+    : [listType];
+  
+  targetTypes.forEach(type => {
+    const cache = state.listCaches[type] || {};
+    Object.entries(cache).forEach(([id, item]) => {
+      if (!item) return;
+      // Skip finished items
+      if (item.finished || item.finishedAt) return;
+      candidates.push({ id, item, listType: type });
+    });
+  });
+  
+  if (candidates.length === 0) {
+    wheel.clearWheelAnimation();
+    spinnerEl.innerHTML = '<span class="spin-text">No eligible items to spin.</span>';
+    resultEl.textContent = 'No eligible items. Add something new or check your filters.';
+    return;
+  }
+  
+  // Pick a random winner
+  const chosenIndex = Math.floor(Math.random() * candidates.length);
+  const winner = candidates[chosenIndex];
+  
+  // Animate through candidates
+  animateWheelSequence(candidates, chosenIndex, winner, spinnerEl, resultEl);
+}
+
+function animateWheelSequence(candidates, chosenIndex, winner, spinnerEl, resultEl) {
+  const totalTicks = 25 + Math.floor(Math.random() * 10);
+  let tickIndex = 0;
+  
+  const tick = () => {
+    if (tickIndex >= totalTicks) {
+      // Final winner
+      wheel.clearWheelAnimation();
+      spinnerEl.classList.add('hidden');
+      renderWheelWinner(winner, resultEl);
+      return;
+    }
+    
+    // Show random candidate during animation
+    const randomIdx = Math.floor(Math.random() * candidates.length);
+    const preview = candidates[randomIdx];
+    spinnerEl.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'spin-text';
+    label.textContent = preview.item?.title || 'Spinning...';
+    spinnerEl.appendChild(label);
+    
+    // Slow down towards end
+    const progress = tickIndex / totalTicks;
+    const delay = 50 + (progress * progress * 400);
+    
+    tickIndex++;
+    const timeoutId = setTimeout(tick, delay);
+    wheel.addSpinTimeout(timeoutId);
+  };
+  
+  tick();
+}
+
+function renderWheelWinner(winner, resultEl) {
+  if (!resultEl || !winner) return;
+  
+  const { item, listType, id } = winner;
+  const actionVerb = listType === 'books' ? 'read' : 'watch';
+  
+  resultEl.innerHTML = '';
+  
+  const heading = document.createElement('div');
+  heading.className = 'wheel-result-heading';
+  heading.textContent = `You should ${actionVerb} next:`;
+  resultEl.appendChild(heading);
+  
+  const cardNode = collapsibleCards.buildCollapsibleMovieCard(listType, id, item, 0, {
+    isUnified: false,
+    displayEntryId: id,
+    interactive: false
+  });
+  
+  if (cardNode) {
+    cardNode.classList.add('wheel-result-card', 'expanded');
+    resultEl.appendChild(cardNode);
+  }
 }
 
 function initBackToTop() {
