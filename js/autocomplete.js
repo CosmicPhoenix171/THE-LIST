@@ -47,15 +47,40 @@ export function renderTitleSuggestions(container, suggestions, onSelect) {
   suggestions.forEach(suggestion => {
     const button = document.createElement('button');
     button.type = 'button';
+    
+    // Add poster thumbnail if available
+    if (suggestion.poster) {
+      const posterImg = document.createElement('img');
+      posterImg.src = suggestion.poster;
+      posterImg.alt = '';
+      posterImg.className = 'suggestion-poster';
+      posterImg.style.width = '28px';
+      posterImg.style.height = '42px';
+      posterImg.style.objectFit = 'cover';
+      posterImg.style.borderRadius = '3px';
+      posterImg.style.flexShrink = '0';
+      button.appendChild(posterImg);
+    }
+    
+    const textWrapper = document.createElement('span');
+    textWrapper.className = 'suggestion-text';
+    textWrapper.style.flex = '1';
+    textWrapper.style.minWidth = '0';
+    textWrapper.style.overflow = 'hidden';
+    textWrapper.style.textOverflow = 'ellipsis';
+    
     const label = document.createElement('span');
     label.textContent = suggestion.title || '(no title)';
-    button.appendChild(label);
+    textWrapper.appendChild(label);
+    
     if (suggestion.year) {
       const year = document.createElement('span');
       year.className = 'year';
-      year.textContent = suggestion.year;
-      button.appendChild(year);
+      year.textContent = ` (${suggestion.year})`;
+      textWrapper.appendChild(year);
     }
+    
+    button.appendChild(textWrapper);
     button.addEventListener('click', () => onSelect && onSelect(suggestion));
     container.appendChild(button);
   });
@@ -95,6 +120,7 @@ export async function fetchTmdbSuggestions(listType, query) {
     return merged.map(entry => ({
       title: entry.title || entry.name || '',
       year: extractPrimaryYear(entry.release_date || entry.first_air_date || ''),
+      poster: entry.poster_path ? `${TMDB_IMAGE_BASE_URL}${entry.poster_path}` : '',
       imdbID: '',
       type: mediaType,
       tmdbId: entry.id,
