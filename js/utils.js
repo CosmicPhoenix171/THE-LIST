@@ -298,3 +298,39 @@ export function truncateText(value, limit = 240) {
   if (value.length <= limit) return value;
   return `${value.slice(0, limit - 1).trim()}…`;
 }
+
+export function buildComparisonSignature(item) {
+  if (!item) return null;
+  const imdbId = item.imdbId || item.imdbID || '';
+  const googleBooksId = item.googleBooksId || item.GoogleBooksId || '';
+  const title = normalizeTitleKey(item.title || item.Title || '');
+  const year = sanitizeYear(item.year || item.Year || '');
+  const series = normalizeTitleKey(item.seriesName || '');
+  const order = item.seriesOrder !== undefined && item.seriesOrder !== null ? item.seriesOrder : null;
+  return { imdbId, googleBooksId, title, year, series, order };
+}
+
+export function signaturesMatch(candidate, existing) {
+  if (!candidate || !existing) return false;
+  if (candidate.imdbId && existing.imdbId && candidate.imdbId === existing.imdbId) return true;
+  if (candidate.googleBooksId && existing.googleBooksId && candidate.googleBooksId === existing.googleBooksId) return true;
+  if (candidate.title && existing.title) {
+    if (candidate.title === existing.title) {
+      if (!candidate.year || !existing.year || candidate.year === existing.year) return true;
+    }
+  }
+  if (candidate.series && existing.series && candidate.series === existing.series) {
+    if (candidate.order !== null && existing.order !== null && candidate.order === existing.order) return true;
+  }
+  return false;
+}
+
+export function buildFranchiseEntryKey(mediaType, source) {
+  if (!source) return '';
+  const tmdbId = source.tmdbId || source.tmdbID || source.TmdbID || source.id || null;
+  if (tmdbId) return `${mediaType}:${tmdbId}`;
+  const title = normalizeTitleKey(source.title || source.name || '');
+  if (!title) return '';
+  const yearValue = sanitizeYear(source.year || source.releaseDate || source.firstAirDate || source.Year || '');
+  return `${mediaType}:${title}:${yearValue}`;
+}

@@ -126,8 +126,6 @@ function getModalCallbacks() {
       renderUnifiedLibrary();
     },
     renderUnifiedLibrary,
-    searchTmdb: metadata.searchTmdb,
-    enrichItem: metadata.enrichItemWithMetadata,
     fetchSuggestions: autocomplete.fetchTmdbSuggestions
   };
 }
