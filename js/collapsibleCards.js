@@ -1,6 +1,6 @@
 // Collapsible Card Rendering Module
 // Handles the advanced collapsible card building for movies, TV shows, and anime
-import { ANIME_STATUS_PRIORITY, COLLAPSIBLE_LISTS, MEDIA_TYPE_LABELS, SERIES_BULK_DELETE_LISTS } from './config.js';
+import { ANIME_STATUS_PRIORITY, COLLAPSIBLE_LISTS, MEDIA_TYPE_LABELS, SERIES_BULK_DELETE_LISTS, TMDB_API_KEY } from './config.js';
 import { 
   listCaches, 
   finishedCaches, 
@@ -19,6 +19,7 @@ import {
 } from './seriesGrouping.js';
 import { openEditModal } from './modals.js';
 import { handleFinishRequest, deleteItem, deleteSeriesEntries } from './crud.js';
+import { getUserRegion, ensureTmdbIdentity, fetchWatchProviders } from './metadata.js';
 
 // ============================================
 // CARD TITLE AUTO-SIZING
@@ -609,13 +610,160 @@ export function buildMovieCastLine(item) {
   return createEl('div', 'cast-line', { text: `Cast: ${actorPreview}` });
 }
 
+// ============================================
+// BUILD WATCH NOW SECTION (WHERE TO WATCH)
+// ============================================
+export function buildWatchNowSection(listType, item, inline = false) {
+  if (!TMDB_API_KEY) return null;
+  
+  const region = getUserRegion();
+  const block = inline ? createEl('span', 'watch-now-inline') : createEl('div', 'watch-now-block');
+  
+  const btnClass = inline ? 'meta-link' : 'btn secondary';
+  const btn = createEl('button', btnClass, { text: 'Watch Now' });
+  if (!inline) {
+    const controlRow = createEl('div', 'watch-now-controls');
+    controlRow.style.display = 'flex';
+    controlRow.style.gap = '.5rem';
+    controlRow.style.alignItems = 'center';
+    controlRow.appendChild(btn);
+    block.appendChild(controlRow);
+  } else {
+    block.appendChild(btn);
+  }
+
+  const dropdown = createEl('div', 'watch-dropdown');
+  dropdown.style.display = 'none';
+  dropdown.style.marginTop = inline ? '.25rem' : '.5rem';
+  dropdown.style.background = 'var(--card-bg, #1f1f1f)';
+  dropdown.style.border = '1px solid var(--border, #333)';
+  dropdown.style.borderRadius = '8px';
+  dropdown.style.padding = '.5rem';
+  dropdown.style.boxShadow = '0 4px 14px rgba(0,0,0,0.3)';
+  dropdown.textContent = 'Loading…';
+  block.appendChild(dropdown);
+
+  let opened = false;
+  let loaded = false;
+  let cache = item.__watchProvidersCache || null;
+
+  function toggle() {
+    opened = !opened;
+    dropdown.style.display = opened ? 'block' : 'none';
+    if (opened && !loaded) {
+      loadProviders();
+    }
+  }
+
+  async function loadProviders() {
+    loaded = true;
+    try {
+      if (cache && cache.expiresAt && Date.now() < cache.expiresAt) {
+        renderProviders(cache.payload, cache.region);
+        return;
+      }
+      const ident = await ensureTmdbIdentity(listType, item);
+      if (!ident) {
+        dropdown.textContent = 'Watch options not found.';
+        return;
+      }
+      const data = await fetchWatchProviders(ident.mediaType, ident.tmdbId);
+      if (!data || !data.results) {
+        dropdown.textContent = 'Watch options not available.';
+        return;
+      }
+      
+      const preferred = data.results[region] || data.results.US || data.results.GB || null;
+      const effectiveRegion = preferred ? (preferred.iso_3166_1 || region) : region;
+      const payload = { 
+        link: preferred?.link || '',
+        flatrate: preferred?.flatrate || [],
+        free: preferred?.free || [],
+        ads: preferred?.ads || [],
+        rent: preferred?.rent || [],
+        buy: preferred?.buy || [] 
+      };
+      
+      item.__watchProvidersCache = cache = { region: effectiveRegion, payload, expiresAt: Date.now() + 6 * 60 * 60 * 1000 };
+      renderProviders(payload, effectiveRegion);
+    } catch (err) {
+      console.warn('Watch providers load failed', err);
+      dropdown.textContent = 'Unable to load watch options.';
+    }
+  }
+
+  function renderProviders(payload, effRegion) {
+    dropdown.innerHTML = '';
+    const groups = [
+      { key: 'flatrate', label: 'Streaming' },
+      { key: 'free', label: 'Free' },
+      { key: 'ads', label: 'With Ads' },
+      { key: 'rent', label: 'Rent' },
+      { key: 'buy', label: 'Buy' },
+    ];
+    let any = false;
+    groups.forEach(g => {
+      const list = payload[g.key];
+      if (Array.isArray(list) && list.length) {
+        any = true;
+        const header = createEl('div', 'watch-group-header small', { text: g.label });
+        header.style.opacity = '0.8';
+        header.style.margin = '.25rem 0 .25rem 0';
+        dropdown.appendChild(header);
+        const row = createEl('div', 'watch-chip-row');
+        row.style.display = 'flex';
+        row.style.flexWrap = 'wrap';
+        row.style.gap = '.375rem';
+        list.forEach(p => {
+          if (!p || !p.provider_name) return;
+          const chip = createEl('a', 'watch-chip');
+          chip.href = payload.link || '#';
+          chip.target = '_blank';
+          chip.rel = 'noopener noreferrer';
+          chip.style.display = 'inline-flex';
+          chip.style.alignItems = 'center';
+          chip.style.gap = '.375rem';
+          chip.style.padding = '.25rem .5rem';
+          chip.style.borderRadius = '999px';
+          chip.style.background = 'var(--chip-bg, #2a2a2a)';
+          chip.style.border = '1px solid var(--border, #333)';
+          chip.style.textDecoration = 'none';
+          chip.style.color = 'inherit';
+          if (p.logo_path) {
+            const img = createEl('img');
+            img.src = `https://image.tmdb.org/t/p/w45${p.logo_path}`;
+            img.alt = p.provider_name;
+            img.width = 18; img.height = 18;
+            img.style.borderRadius = '3px';
+            chip.appendChild(img);
+          }
+          const name = createEl('span', 'watch-chip-label small', { text: p.provider_name });
+          chip.appendChild(name);
+          row.appendChild(chip);
+        });
+        dropdown.appendChild(row);
+      }
+    });
+
+    if (!any) {
+      const empty = createEl('div', 'small', { text: 'No providers found for this region.' });
+      empty.style.marginTop = '.25rem';
+      dropdown.appendChild(empty);
+    }
+  }
+
+  btn.addEventListener('click', (ev) => { ev.preventDefault?.(); ev.stopPropagation(); toggle(); });
+  dropdown.addEventListener('click', (ev) => ev.stopPropagation());
+
+  return block;
+}
+
 export function buildMovieLinks(listType, item) {
   if (!item) return null;
   const links = [];
   if (item.imdbUrl) links.push({ href: item.imdbUrl, label: 'IMDb' });
   if (item.trailerUrl) links.push({ href: item.trailerUrl, label: 'Trailer' });
   if (item.previewLink) links.push({ href: item.previewLink, label: 'Preview' });
-  if (!links.length) return null;
   
   const container = createEl('div', 'movie-links');
   links.forEach(link => {
@@ -625,7 +773,15 @@ export function buildMovieLinks(listType, item) {
     anchor.rel = 'noopener noreferrer';
     container.appendChild(anchor);
   });
-  return container;
+  
+  // Add Watch Now section for movies
+  if (listType === 'movies' && TMDB_API_KEY) {
+    const watchInline = buildWatchNowSection(listType, item, true);
+    if (watchInline) container.appendChild(watchInline);
+  }
+  
+  // Return container if it has any children
+  return container.children.length ? container : null;
 }
 
 // ============================================

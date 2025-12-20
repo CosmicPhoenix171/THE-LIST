@@ -819,3 +819,41 @@ export function ensureTvSeriesDefaults(listType, item) {
   if (item.seriesOrder === undefined || item.seriesOrder === null) item.seriesOrder = 1;
 }
 
+// ============================================
+// WATCH PROVIDERS (WHERE TO WATCH)
+// ============================================
+export function getUserRegion() {
+  try {
+    const lang = navigator.language || navigator.userLanguage || 'en-US';
+    const parts = String(lang).split('-');
+    return parts[1] ? parts[1].toUpperCase() : 'US';
+  } catch (_) {
+    return 'US';
+  }
+}
+
+export async function ensureTmdbIdentity(listType, item) {
+  if (!item) return null;
+  const mediaType = listType === 'movies' ? 'movie' : 'tv';
+  let tmdbId = item.tmdbId || item.tmdbID || '';
+  if (!tmdbId) {
+    const pick = await findTmdbCandidate({
+      mediaType,
+      title: item.title || '',
+      year: item.year || '',
+      imdbId: item.imdbId || item.imdbID || ''
+    });
+    if (pick && pick.id) tmdbId = pick.id;
+  }
+  if (!tmdbId) return null;
+  return { mediaType, tmdbId };
+}
+
+export async function fetchWatchProviders(mediaType, tmdbId) {
+  if (!TMDB_API_KEY) return null;
+  const url = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}/watch/providers?api_key=${TMDB_API_KEY}`;
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  return await resp.json();
+}
+
