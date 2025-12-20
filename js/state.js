@@ -119,7 +119,20 @@ export function setIntroPlayed(value) { introPlayed = value; }
 export function setFranchiseSortMode(value) { franchiseSortMode = value; }
 export function setFranchiseDragEventsBound(value) { franchiseDragEventsBound = value; }
 export function setFranchiseWheelUnsubscribe(value) { franchiseWheelUnsubscribe = value; }
-export function setShowFinishedOnly(value) { showFinishedOnly = value; }
+export function setShowFinishedOnly(value) {
+  const next = Boolean(value);
+  if (showFinishedOnly === next) return;
+  showFinishedOnly = next;
+
+  // Changing the display pool (main vs finished) must invalidate any
+  // cached cross-list series/collection grouping.
+  try {
+    crossListSeriesCache.clear();
+  } catch (_) {
+    // no-op
+  }
+  seriesIndexVersion += 1;
+}
 export function setLibraryFullyLoaded(value) { libraryFullyLoaded = value; }
 export function getLibraryFullyLoaded() { return libraryFullyLoaded; }
 export function setBugReports(value) { bugReports = value; }

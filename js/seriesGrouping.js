@@ -78,9 +78,15 @@ export function resolveSeriesDisplayEntry(listType, leaderId, entries) {
 export function collectSeriesEntriesAcrossLists(seriesName) {
   const normalizedKey = normalizeTitleKey(seriesName);
   if (!normalizedKey) return [];
+
+  // IMPORTANT:
+  // Grouping must not mix main-list entries with finished entries.
+  // Cache entries are therefore keyed by the current view mode.
+  const modeKey = showFinishedOnly ? 'finished' : 'main';
+  const cacheKey = `${modeKey}:${normalizedKey}`;
   
   // Check cache
-  const cached = crossListSeriesCache.get(normalizedKey);
+  const cached = crossListSeriesCache.get(cacheKey);
   if (cached && cached.version === seriesIndexVersion) {
     return cached.entries.slice();
   }
@@ -137,7 +143,7 @@ export function collectSeriesEntriesAcrossLists(seriesName) {
     });
   });
   
-  crossListSeriesCache.set(normalizedKey, { version: seriesIndexVersion, entries });
+  crossListSeriesCache.set(cacheKey, { version: seriesIndexVersion, entries });
   return entries.slice();
 }
 
