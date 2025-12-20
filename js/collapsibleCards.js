@@ -1008,10 +1008,14 @@ export function buildSeriesTreeBlock(listType, cardId, providedEntries = null, c
   list.dataset.cardId = cardId;
   list.dataset.listType = listType;
 
+  // When viewing Finished-only, entries should be numbered 1..N within that
+  // view (finished is kept separate from the main list).
+  const forceIndexOrder = Boolean(showFinishedOnly);
+
   const renderList = (items, isSorted = false) => {
     list.innerHTML = '';
     items.forEach((entry, index) => {
-      const node = buildSeriesTreeNode(listType, entry, index, isSorted, callbacks);
+      const node = buildSeriesTreeNode(listType, entry, index, isSorted || forceIndexOrder, callbacks);
       if (node) {
         list.appendChild(node);
       }
