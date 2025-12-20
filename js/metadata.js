@@ -10,6 +10,7 @@ import {
   METADATA_SCHEMA_VERSION
 } from './config.js';
 import { normalizeTitleKey, extractPrimaryYear, sanitizeYear, parseActorsList, buildTrailerUrl } from './utils.js';
+import { updateItem } from './crud.js';
 
 export async function tmdbFetch(path, params = {}) {
   if (!TMDB_API_KEY) {
@@ -855,5 +856,90 @@ export async function fetchWatchProviders(mediaType, tmdbId) {
   const resp = await fetch(url);
   if (!resp.ok) return null;
   return await resp.json();
+}
+
+// ============================================
+// REFRESH ITEM METADATA
+// ============================================
+export async function refreshItemMetadata(listType, itemId, item, options = {}) {
+  const supported = new Set(['movies', 'tvShows', 'books']);
+  if (!supported.has(listType)) {
+    alert('Metadata refresh is only available for movies, TV, or books.');
+    return;
+  }
+  if (listType === 'anime') {
+    alert('Anime metadata refresh is no longer supported.');
+    return;
+  }
+  const { title = '', year = '', button = null } = options;
+  const lookupTitle = title || item.title || '';
+  const lookupYear = year || item.year || '';
+
+  const setButtonState = (isBusy) => {
+    if (!button) return;
+    if (isBusy) {
+      if (!button.dataset.originalText) {
+        button.dataset.originalText = button.textContent || '';
+      }
+      button.disabled = true;
+      button.textContent = 'Refreshing...';
+    } else {
+      button.disabled = false;
+      if (button.dataset.originalText) {
+        button.textContent = button.dataset.originalText;
+        delete button.dataset.originalText;
+      }
+    }
+  };
+
+  setButtonState(true);
+  try {
+    let metadata = null;
+    if (listType === 'books') {
+      metadata = await fetchGoogleBooksMetadata({
+        volumeId: item.googleBooksId || '',
+        title: lookupTitle,
+        author: item.author || '',
+        isbn: item.isbn || '',
+      });
+    } else {
+      if (!TMDB_API_KEY) {
+        alert('TMDb metadata refresh requires an API key.');
+        return;
+      }
+      metadata = await fetchTmdbMetadata(listType, {
+        title: lookupTitle,
+        year: lookupYear,
+        imdbId: item.imdbId || item.imdbID || '',
+        tmdbId: item.tmdbId || item.tmdbID || '',
+      });
+    }
+
+    if (!metadata) {
+      alert('No metadata found for this title.');
+      return;
+    }
+
+    const updates = deriveMetadataAssignments(metadata, item, {
+      overwrite: true,
+      fallbackTitle: lookupTitle,
+      fallbackYear: lookupYear,
+      listType,
+    });
+
+    if (!updates || Object.keys(updates).length === 0) {
+      alert('Metadata already looks up to date.');
+      return;
+    }
+
+    await updateItem(listType, itemId, updates);
+    Object.assign(item, updates);
+    alert('Metadata refreshed!');
+  } catch (err) {
+    console.error('Manual metadata refresh failed', err);
+    alert('Unable to refresh metadata right now. Please try again.');
+  } finally {
+    setButtonState(false);
+  }
 }
 

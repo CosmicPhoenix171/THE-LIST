@@ -21,8 +21,8 @@ import {
   invalidateSeriesCrossListCache
 } from './seriesGrouping.js';
 import { openEditModal } from './modals.js';
-import { handleFinishRequest, deleteItem, deleteSeriesEntries, updateItem } from './crud.js';
-import { getUserRegion, ensureTmdbIdentity, fetchWatchProviders } from './metadata.js';
+import { handleFinishRequest, deleteItem, deleteSeriesEntries, updateItem, mergeSeriesEntriesByName } from './crud.js';
+import { getUserRegion, ensureTmdbIdentity, fetchWatchProviders, refreshItemMetadata } from './metadata.js';
 import { getFirebaseDatabase } from './firebase.js';
 import { ref, update } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
@@ -1454,7 +1454,10 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
     {
       className: 'btn secondary',
       label: 'Edit',
-      handler: () => openEditModal(listType, id, item)
+      handler: () => openEditModal(listType, id, item, {
+        onRefreshMetadata: (opts) => refreshItemMetadata(listType, id, item, opts),
+        onMergeSeries: (seriesName) => mergeSeriesEntriesByName(listType, seriesName)
+      })
     },
     {
       className: 'btn success',

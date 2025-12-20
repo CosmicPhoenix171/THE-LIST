@@ -470,7 +470,7 @@ async function addItemFromForm(listType, form, callbacks = {}) {
 }
 
 export function openEditModal(listType, id, item, callbacks = {}) {
-  const { onSubmit, onClose, setupAutocomplete } = callbacks;
+  const { onSubmit, onClose, setupAutocomplete, onRefreshMetadata, onMergeSeries } = callbacks;
   
   closeEditModal();
   
@@ -485,6 +485,26 @@ export function openEditModal(listType, id, item, callbacks = {}) {
   form.dataset.listType = listType;
   form.dataset.itemId = id;
   
+  // Type selector
+  const typeGroup = createEl('div', 'form-group');
+  const typeSelect = createEl('select');
+  typeSelect.name = 'listType';
+  const typeOptions = [
+    { value: 'movies', label: 'Movies' },
+    { value: 'tvShows', label: 'TV Shows' },
+    { value: 'anime', label: 'Anime' },
+    { value: 'books', label: 'Books' },
+  ];
+  typeOptions.forEach(opt => {
+    const option = createEl('option', '', { text: opt.label });
+    option.value = opt.value;
+    if (opt.value === listType) option.selected = true;
+    typeSelect.appendChild(option);
+  });
+  typeGroup.appendChild(typeSelect);
+  form.appendChild(typeGroup);
+  
+  // Title input
   const titleGroup = createEl('div', 'form-group');
   const titleInput = createEl('input');
   titleInput.type = 'text';
@@ -495,15 +515,73 @@ export function openEditModal(listType, id, item, callbacks = {}) {
   titleGroup.appendChild(titleInput);
   form.appendChild(titleGroup);
   
+  // Year input
   const yearGroup = createEl('div', 'form-group');
   const yearInput = createEl('input');
   yearInput.type = 'text';
   yearInput.name = 'year';
   yearInput.value = item.year || '';
   yearInput.placeholder = 'Year';
+  yearInput.pattern = '[0-9]{4}';
+  yearInput.maxLength = 4;
   yearGroup.appendChild(yearInput);
   form.appendChild(yearGroup);
   
+  // Creator input (Director/Author)
+  const creatorPlaceholderMap = {
+    movies: 'Director',
+    tvShows: 'Director / Showrunner',
+    anime: 'Director / Studio',
+    books: 'Author',
+  };
+  const creatorGroup = createEl('div', 'form-group');
+  const creatorInput = createEl('input');
+  creatorInput.type = 'text';
+  creatorInput.name = 'creator';
+  creatorInput.placeholder = creatorPlaceholderMap[listType] || 'Creator';
+  creatorInput.value = listType === 'books' ? (item.author || '') : (item.director || '');
+  creatorGroup.appendChild(creatorInput);
+  form.appendChild(creatorGroup);
+  
+  // Series name input
+  const seriesNameGroup = createEl('div', 'form-group');
+  const seriesNameInput = createEl('input');
+  seriesNameInput.type = 'text';
+  seriesNameInput.name = 'seriesName';
+  seriesNameInput.placeholder = 'Series/Franchise name (optional)';
+  seriesNameInput.value = item.seriesName || '';
+  seriesNameGroup.appendChild(seriesNameInput);
+  form.appendChild(seriesNameGroup);
+  
+  // Series order input
+  const seriesOrderGroup = createEl('div', 'form-group');
+  const seriesOrderInput = createEl('input');
+  seriesOrderInput.type = 'text';
+  seriesOrderInput.name = 'seriesOrder';
+  seriesOrderInput.placeholder = 'Series order (e.g., 1, 2, 3)';
+  seriesOrderInput.inputMode = 'numeric';
+  seriesOrderInput.pattern = '[0-9]{1,3}';
+  seriesOrderInput.value = item.seriesOrder !== undefined && item.seriesOrder !== null ? item.seriesOrder : '';
+  seriesOrderGroup.appendChild(seriesOrderInput);
+  form.appendChild(seriesOrderGroup);
+  
+  // Rating input (only for finished items)
+  let ratingInput = null;
+  if (item.finishedAt) {
+    const ratingGroup = createEl('div', 'form-group');
+    ratingInput = createEl('input');
+    ratingInput.type = 'number';
+    ratingInput.name = 'rating';
+    ratingInput.min = '1';
+    ratingInput.max = '10';
+    ratingInput.step = '0.5';
+    ratingInput.placeholder = 'Rating (1-10)';
+    ratingInput.value = item.finishedRating || '';
+    ratingGroup.appendChild(ratingInput);
+    form.appendChild(ratingGroup);
+  }
+  
+  // Notes input
   const notesGroup = createEl('div', 'form-group');
   const notesInput = createEl('textarea');
   notesInput.name = 'notes';
@@ -512,13 +590,28 @@ export function openEditModal(listType, id, item, callbacks = {}) {
   notesGroup.appendChild(notesInput);
   form.appendChild(notesGroup);
   
+  // Actions
   const actions = createEl('div', 'form-actions');
-  const submitBtn = createEl('button', 'btn primary', { text: 'Save' });
-  submitBtn.type = 'submit';
+  
+  // Refresh metadata button
+  const refreshBtn = createEl('button', 'btn ghost', { text: 'Refresh Metadata' });
+  refreshBtn.type = 'button';
+  actions.appendChild(refreshBtn);
+  
+  // Merge series button
+  const mergeSeriesBtn = createEl('button', 'btn warning', { text: 'Merge Series' });
+  mergeSeriesBtn.type = 'button';
+  mergeSeriesBtn.hidden = true;
+  actions.appendChild(mergeSeriesBtn);
+  
   const cancelBtn = createEl('button', 'btn secondary', { text: 'Cancel' });
   cancelBtn.type = 'button';
-  actions.appendChild(submitBtn);
   actions.appendChild(cancelBtn);
+  
+  const submitBtn = createEl('button', 'btn primary', { text: 'Save' });
+  submitBtn.type = 'submit';
+  actions.appendChild(submitBtn);
+  
   form.appendChild(actions);
   
   modal.appendChild(form);
@@ -528,10 +621,81 @@ export function openEditModal(listType, id, item, callbacks = {}) {
     modalRoot.appendChild(backdrop);
   }
   
+  const originalSeriesName = item.seriesName || '';
+  
+  // Helper functions
+  function updateMergeSeriesButtonState() {
+    const hasSeriesName = Boolean((seriesNameInput.value || '').trim());
+    const isBook = typeSelect.value === 'books';
+    mergeSeriesBtn.hidden = !hasSeriesName || isBook;
+    mergeSeriesBtn.disabled = mergeSeriesBtn.hidden;
+  }
+  
+  function applyTypeUiState(selectedType) {
+    const placeholder = creatorPlaceholderMap[selectedType] || 'Creator';
+    creatorInput.placeholder = placeholder;
+    const isBook = selectedType === 'books';
+    seriesNameGroup.hidden = isBook;
+    seriesOrderGroup.hidden = isBook;
+    updateMergeSeriesButtonState();
+  }
+  
+  // Initialize UI state
+  applyTypeUiState(listType);
+  
+  // Event listeners
+  typeSelect.addEventListener('change', () => {
+    applyTypeUiState(typeSelect.value);
+  });
+  
+  seriesNameInput.addEventListener('input', () => {
+    updateMergeSeriesButtonState();
+  });
+  
+  refreshBtn.addEventListener('click', async () => {
+    if (typeof onRefreshMetadata === 'function') {
+      const lookupTitle = (titleInput.value || '').trim();
+      const lookupYear = sanitizeYear((yearInput.value || '').trim());
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = 'Refreshing...';
+      try {
+        await onRefreshMetadata(listType, id, item, {
+          title: lookupTitle,
+          year: lookupYear,
+          button: refreshBtn,
+        });
+      } finally {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = 'Refresh Metadata';
+      }
+    }
+  });
+  
+  mergeSeriesBtn.addEventListener('click', async (event) => {
+    event.preventDefault();
+    const targetSeriesName = (seriesNameInput.value || '').trim();
+    if (!targetSeriesName) {
+      alert('Enter a series name before merging.');
+      return;
+    }
+    if (typeof onMergeSeries === 'function') {
+      const previousLabel = mergeSeriesBtn.textContent;
+      mergeSeriesBtn.disabled = true;
+      mergeSeriesBtn.textContent = 'Merging...';
+      try {
+        await onMergeSeries(targetSeriesName, originalSeriesName);
+      } finally {
+        mergeSeriesBtn.disabled = false;
+        mergeSeriesBtn.textContent = previousLabel;
+        updateMergeSeriesButtonState();
+      }
+    }
+  });
+  
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     if (typeof onSubmit === 'function') {
-      await onSubmit(form, listType, id, item);
+      await onSubmit(form, typeSelect.value, id, item);
     }
     closeEditModal();
   });
