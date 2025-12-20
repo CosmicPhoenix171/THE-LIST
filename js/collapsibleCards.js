@@ -1,13 +1,14 @@
 // Collapsible Card Rendering Module
 // Handles the advanced collapsible card building for movies, TV shows, and anime
-import { ANIME_STATUS_PRIORITY, COLLAPSIBLE_LISTS, MEDIA_TYPE_LABELS } from './config.js';
+import { ANIME_STATUS_PRIORITY, COLLAPSIBLE_LISTS, MEDIA_TYPE_LABELS, SERIES_BULK_DELETE_LISTS } from './config.js';
 import { 
   listCaches, 
   finishedCaches, 
   expandedCards, 
   seriesGroups,
   getSeriesGroupEntries,
-  seriesSortState
+  seriesSortState,
+  showFinishedOnly
 } from './state.js';
 import { createEl, debounce, titleSortKey, sanitizeYear, numericSeriesOrder, truncateText } from './utils.js';
 import { isCollapsibleList, buildSeriesLine, buildActorPreview, buildFinishedRatingBadge } from './cards.js';
@@ -16,6 +17,8 @@ import {
   buildSeriesEntryKey,
   compareSeriesEntries 
 } from './seriesGrouping.js';
+import { openEditModal } from './modals.js';
+import { handleFinishRequest, deleteItem, deleteSeriesEntries } from './crud.js';
 
 // ============================================
 // CARD TITLE AUTO-SIZING
@@ -1251,7 +1254,7 @@ export function buildTvDetailBlock(listType, entryId, item, options = {}) {
 // BUILD MOVIE CARD ACTIONS
 // ============================================
 export function buildMovieCardActions(listType, id, item, options = {}) {
-  const { variant = 'details', callbacks = {} } = options;
+  const { variant = 'details' } = options;
   const classNames = ['actions', 'collapsible-actions'];
   if (variant === 'inline') {
     classNames.push('inline-actions');
@@ -1262,29 +1265,22 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
     {
       className: 'btn secondary',
       label: 'Edit',
-      handler: () => {
-        if (callbacks.openEditModal) {
-          callbacks.openEditModal(listType, id, item);
-        }
-      }
+      handler: () => openEditModal(listType, id, item)
     },
     {
       className: 'btn success',
       label: 'Finished',
-      handler: () => {
-        if (callbacks.handleFinishRequest) {
-          callbacks.handleFinishRequest(listType, id);
-        }
-      }
+      handler: () => handleFinishRequest(listType, id)
     },
+    ...(SERIES_BULK_DELETE_LISTS.has(listType) && item?.seriesName ? [{
+      className: 'btn danger',
+      label: 'Delete Series',
+      handler: () => deleteSeriesEntries(listType, item.seriesName)
+    }] : []),
     {
       className: 'btn ghost',
       label: 'Delete',
-      handler: () => {
-        if (callbacks.deleteItem) {
-          callbacks.deleteItem(listType, id);
-        }
-      }
+      handler: () => deleteItem(listType, id, { fromFinished: showFinishedOnly })
     }
   ];
 
