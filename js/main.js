@@ -146,6 +146,8 @@ function showAppForUser(user) {
   playTheListIntro();
   loadPrimaryLists();
   initUnifiedLibraryControls();
+  bugReport.startBugReportSync();
+  bugReport.initGlobalNotificationsListener();
 }
 
 function playTheListIntro() {

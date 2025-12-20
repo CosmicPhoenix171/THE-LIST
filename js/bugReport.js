@@ -11,7 +11,7 @@ import {
   limitToLast,
 } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 import { getFirebaseDatabase } from './firebase.js';
-import { currentUser, listCaches } from './state.js';
+import { getCurrentUser, listCaches } from './state.js';
 import { 
   BUG_REPORT_DB_PATH, 
   GLOBAL_NOTIFICATIONS_PATH, 
@@ -121,7 +121,8 @@ async function handleBugReportSubmit(event) {
   if (!bugReportInput) return;
   const value = bugReportInput.value.trim();
   if (!value) return;
-  if (!currentUser) {
+  const user = getCurrentUser();
+  if (!user) {
     alert('Sign in to report bugs.');
     return;
   }
@@ -133,9 +134,9 @@ async function handleBugReportSubmit(event) {
   const record = {
     message: value,
     createdAt: Date.now(),
-    author: currentUser.displayName || currentUser.email || 'Anonymous',
-    authorUid: currentUser.uid || '',
-    authorEmail: currentUser.email || '',
+    author: user.displayName || user.email || 'Anonymous',
+    authorUid: user.uid || '',
+    authorEmail: user.email || '',
   };
   try {
     await push(ref(db, BUG_REPORT_DB_PATH), record);
@@ -180,7 +181,7 @@ function pushBugReportAsNotification(reportId) {
     title: 'Bug Fixed',
     message: `The bug "${report.message}" has been fixed.`,
     createdAt: Date.now(),
-    author: currentUser.displayName || 'Admin'
+    author: getCurrentUser()?.displayName || 'Admin'
   }).then(() => {
     alert('Notification sent!');
   }).catch(err => {
@@ -194,7 +195,7 @@ function pushBugReportAsNotification(reportId) {
 // ============================================
 export function renderBugReportList() {
   if (!bugReportListEl) return;
-  if (!currentUser) {
+  if (!getCurrentUser()) {
     bugReportListEl.innerHTML = '<div class="bug-report-empty">Sign in to view bug reports.</div>';
     return;
   }
@@ -232,7 +233,7 @@ export function renderBugReportList() {
       footer.appendChild(removeBtn);
     }
 
-    if (isBugReportAdmin(currentUser)) {
+    if (isBugReportAdmin(getCurrentUser())) {
       const pushBtn = document.createElement('button');
       pushBtn.type = 'button';
       pushBtn.textContent = 'Fixed';
@@ -276,9 +277,10 @@ export function isBugReportAdmin(user) {
 }
 
 function canCurrentUserRemoveBugReport(report) {
-  if (!currentUser || !report) return false;
-  if (isBugReportAdmin(currentUser)) return true;
-  return Boolean(report.authorUid && currentUser.uid === report.authorUid);
+  const user = getCurrentUser();
+  if (!user || !report) return false;
+  if (isBugReportAdmin(user)) return true;
+  return Boolean(report.authorUid && user.uid === report.authorUid);
 }
 
 // ============================================

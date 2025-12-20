@@ -107,6 +107,7 @@ export let globalNotificationsUnsubscribe = null;
 
 export function setAppInitialized(value) { appInitialized = value; }
 export function setCurrentUser(value) { currentUser = value; }
+export function getCurrentUser() { return currentUser; }
 export function setTmdbWarningShown(value) { tmdbWarningShown = value; }
 export function setGlobalSuggestionClickBound(value) { globalSuggestionClickBound = value; }
 export function setActiveSeasonEditor(value) { activeSeasonEditor = value; }
