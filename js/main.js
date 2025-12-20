@@ -146,6 +146,7 @@ function showAppForUser(user) {
   }
   playTheListIntro();
   loadPrimaryLists();
+  franchise.loadFranchises();
   initUnifiedLibraryControls();
   bugReport.startBugReportSync();
   bugReport.initGlobalNotificationsListener();
