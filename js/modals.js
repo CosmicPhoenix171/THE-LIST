@@ -809,7 +809,7 @@ async function promptAddMissingCollectionParts(listType, collInfo, currentItem, 
 
       for (const cb of selections) {
         if (cb.dataset.source === 'keyword') {
-          // Add keyword entry
+          // Add keyword entry with full metadata
           const targetListType = cb.dataset.mediaType === 'tv' ? 'tvShows' : 'movies';
           const payload = {
             title: cb.dataset.title,
@@ -820,6 +820,29 @@ async function promptAddMissingCollectionParts(listType, collInfo, currentItem, 
           if (isDuplicateCandidate(targetListType, payload)) continue;
           const trailerUrl = buildTrailerUrl(payload.title, payload.year);
           if (trailerUrl) payload.trailerUrl = trailerUrl;
+          
+          // Fetch full metadata for keyword entries
+          if (TMDB_API_KEY && cb.dataset.tmdbId) {
+            try {
+              const metadata = await fetchTmdbMetadata(targetListType, {
+                title: cb.dataset.title,
+                year: cb.dataset.year,
+                tmdbId: Number(cb.dataset.tmdbId) || null,
+              });
+              if (metadata) {
+                const updates = deriveMetadataAssignments(metadata, payload, {
+                  overwrite: true,
+                  fallbackTitle: cb.dataset.title,
+                  fallbackYear: cb.dataset.year,
+                  listType: targetListType,
+                });
+                Object.assign(payload, updates);
+              }
+            } catch (e) {
+              console.warn('Failed to fetch metadata for keyword entry', cb.dataset.title, e);
+            }
+          }
+          
           try {
             await addItem(targetListType, payload);
           } catch (e) {
@@ -828,7 +851,7 @@ async function promptAddMissingCollectionParts(listType, collInfo, currentItem, 
           continue;
         }
         
-        // Add collection part
+        // Add collection part with full metadata
         const part = {
           title: cb.dataset.title,
           year: sanitizeYear(cb.dataset.year),
@@ -848,6 +871,30 @@ async function promptAddMissingCollectionParts(listType, collInfo, currentItem, 
           if (isDuplicateCandidate(listType, payload)) continue;
           const trailerUrl = buildTrailerUrl(part.title, part.year);
           if (trailerUrl) payload.trailerUrl = trailerUrl;
+          
+          // Fetch full metadata for collection parts
+          if (TMDB_API_KEY) {
+            try {
+              const metadata = await fetchTmdbMetadata(listType, {
+                title: part.title,
+                year: part.year,
+                tmdbId: part.tmdbId,
+                imdbId: part.imdbId,
+              });
+              if (metadata) {
+                const updates = deriveMetadataAssignments(metadata, payload, {
+                  overwrite: true,
+                  fallbackTitle: part.title,
+                  fallbackYear: part.year,
+                  listType,
+                });
+                Object.assign(payload, updates);
+              }
+            } catch (e) {
+              console.warn('Failed to fetch metadata for collection part', part.title, e);
+            }
+          }
+          
           await addItem(listType, payload);
           if (existingKeys) {
             existingKeys.add(normalizeTitleKey(part.title));
