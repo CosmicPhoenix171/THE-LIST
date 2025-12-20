@@ -292,3 +292,9 @@ export function setButtonBusy(btn, busy) {
     }
   }
 }
+
+export function truncateText(value, limit = 240) {
+  if (!value) return '';
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit - 1).trim()}…`;
+}

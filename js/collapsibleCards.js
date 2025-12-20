@@ -1,15 +1,21 @@
 // Collapsible Card Rendering Module
 // Handles the advanced collapsible card building for movies, TV shows, and anime
-import { ANIME_STATUS_PRIORITY, COLLAPSIBLE_LISTS } from './config.js';
+import { ANIME_STATUS_PRIORITY, COLLAPSIBLE_LISTS, MEDIA_TYPE_LABELS } from './config.js';
 import { 
   listCaches, 
   finishedCaches, 
   expandedCards, 
   seriesGroups,
-  getSeriesGroupEntries 
+  getSeriesGroupEntries,
+  seriesSortState
 } from './state.js';
-import { createEl, debounce } from './utils.js';
+import { createEl, debounce, titleSortKey, sanitizeYear, numericSeriesOrder, truncateText } from './utils.js';
 import { isCollapsibleList, buildSeriesLine, buildActorPreview, buildFinishedRatingBadge } from './cards.js';
+import { 
+  mergeSeriesEntriesAcrossLists, 
+  buildSeriesEntryKey,
+  compareSeriesEntries 
+} from './seriesGrouping.js';
 
 // ============================================
 // CARD TITLE AUTO-SIZING
@@ -774,9 +780,317 @@ export function buildMovieCardInfo(listType, item, context = {}) {
 }
 
 // ============================================
+// SERIES TREE BLOCK (FRANCHISE ORDER)
+// ============================================
+export function getSeriesTreeEntries(listType, cardId, options = {}) {
+  if (!listType || !cardId) return [];
+  const { sourceEntries = null, displayItem = null } = options;
+  if (Array.isArray(sourceEntries) && sourceEntries.length) {
+    return sourceEntries;
+  }
+  const store = seriesGroups[listType] || seriesGroups.unified;
+  const baseEntries = store?.get(cardId) || null;
+  const resolvedItem = displayItem || getItemFromCache(listType, cardId);
+  const merged = mergeSeriesEntriesAcrossLists(listType, cardId, resolvedItem, baseEntries);
+  return Array.isArray(merged) ? merged : [];
+}
+
+export function buildSeriesTreeBlock(listType, cardId, providedEntries = null, callbacks = {}) {
+  const entries = getSeriesTreeEntries(listType, cardId, { sourceEntries: providedEntries });
+  if (!entries || entries.length <= 1) return null;
+
+  const block = createEl('div', 'series-tree detail-block');
+  block.dataset.cardId = cardId;
+  block.dataset.listType = listType;
+
+  const list = createEl('div', 'series-tree-list');
+  list.dataset.cardId = cardId;
+  list.dataset.listType = listType;
+
+  const renderList = (items, isSorted = false) => {
+    list.innerHTML = '';
+    items.forEach((entry, index) => {
+      const node = buildSeriesTreeNode(listType, entry, index, isSorted, callbacks);
+      if (node) {
+        list.appendChild(node);
+      }
+    });
+  };
+
+  const isYearSort = seriesSortState.get(cardId) || false;
+
+  const handleSort = (btn) => {
+    seriesSortState.set(cardId, true);
+    btn.classList.add('active');
+    const sorted = [...entries].sort((a, b) => {
+      const yearA = Number(a.item?.year) || 9999;
+      const yearB = Number(b.item?.year) || 9999;
+      if (yearA !== yearB) return yearA - yearB;
+      return (a.item?.title || '').localeCompare(b.item?.title || '');
+    });
+    renderList(sorted, true);
+  };
+
+  const header = buildSeriesTreeHeader(entries.length, listType, cardId, handleSort);
+  block.appendChild(header);
+
+  if (isYearSort) {
+    const btn = header.querySelector('.series-sort-btn');
+    if (btn) handleSort(btn);
+  } else {
+    renderList(entries);
+  }
+
+  if (!list.children.length) return null;
+  const listWrapper = createEl('div', 'series-tree-scroll');
+  listWrapper.appendChild(list);
+  block.appendChild(listWrapper);
+  return block;
+}
+
+function buildSeriesTreeHeader(count, listType, cardId, onSort) {
+  const heading = createEl('div', 'series-tree-heading');
+  
+  const leftSide = createEl('div', 'series-tree-heading-left');
+  leftSide.style.display = 'flex';
+  leftSide.style.alignItems = 'center';
+  leftSide.style.gap = '0.75rem';
+
+  leftSide.appendChild(createEl('div', 'series-tree-heading-title', { text: 'Franchise order' }));
+  
+  if (onSort) {
+    const sortBtn = createEl('button', 'btn secondary small series-sort-btn', { text: 'Sort by Year' });
+    sortBtn.type = 'button';
+    sortBtn.style.padding = '0.2rem 0.5rem';
+    sortBtn.style.fontSize = '0.75rem';
+    sortBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onSort(sortBtn);
+    });
+    leftSide.appendChild(sortBtn);
+  }
+
+  heading.appendChild(leftSide);
+
+  const rightSide = createEl('div', 'series-tree-heading-right');
+  rightSide.appendChild(createEl('div', 'series-tree-heading-count', { text: `${count} ${count === 1 ? 'entry' : 'entries'}` }));
+  heading.appendChild(rightSide);
+  return heading;
+}
+
+function buildSeriesTreeNode(listType, entry, fallbackIndex = 0, forceIndex = false, callbacks = {}) {
+  if (!entry || !entry.item) return null;
+  const { item } = entry;
+  const entryListType = entry.listType || listType;
+  const node = createEl('div', 'series-tree-node');
+  node.dataset.entryId = entry.id || '';
+  node.dataset.listType = entryListType || '';
+  node.dataset.entryKey = buildSeriesTreeNodeKey(entry, listType);
+  node.setAttribute('draggable', 'true');
+
+  const orderLabel = forceIndex ? (fallbackIndex + 1) : resolveSeriesNodeOrder(entry, fallbackIndex);
+  
+  const orderContainer = createEl('div', 'series-tree-order-container');
+  const upBtn = createEl('button', 'series-tree-order-btn', { text: '▲' });
+  upBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (callbacks.moveSeriesTreeNode) {
+      callbacks.moveSeriesTreeNode(listType, entry, -1);
+    }
+  };
+  const label = createEl('div', 'series-tree-order', { text: `#${orderLabel}` });
+  const downBtn = createEl('button', 'series-tree-order-btn', { text: '▼' });
+  downBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (callbacks.moveSeriesTreeNode) {
+      callbacks.moveSeriesTreeNode(listType, entry, 1);
+    }
+  };
+  orderContainer.appendChild(upBtn);
+  orderContainer.appendChild(label);
+  orderContainer.appendChild(downBtn);
+  node.appendChild(orderContainer);
+
+  const poster = buildSeriesTreePoster(item);
+  if (poster) {
+    node.appendChild(poster);
+  }
+
+  const body = createEl('div', 'series-tree-body');
+  const titleRow = createEl('div', 'series-tree-title-row');
+  titleRow.appendChild(createEl('div', 'series-tree-node-title', { text: item.title || '(no title)' }));
+  const mediaLabel = buildSeriesTreeMediaLabel(entryListType);
+  if (mediaLabel) {
+    titleRow.appendChild(mediaLabel);
+  }
+  const statusBadge = buildSeriesTreeStatusBadge(item);
+  if (statusBadge) {
+    titleRow.appendChild(statusBadge);
+  }
+  body.appendChild(titleRow);
+
+  const meta = buildSeriesTreeMeta(item);
+  if (meta) {
+    body.appendChild(meta);
+  }
+
+  const seriesLineEl = buildSeriesLine(item, 'series-tree-line');
+  if (seriesLineEl) {
+    body.appendChild(seriesLineEl);
+  }
+
+  const plot = buildSeriesTreePlot(item);
+  if (plot) {
+    body.appendChild(plot);
+  }
+
+  if (item.notes) {
+    body.appendChild(createEl('div', 'series-tree-notes', { text: item.notes }));
+  }
+
+  node.appendChild(body);
+  
+  node.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const card = node.closest('.card');
+    if (card && callbacks.renderMovieCardContent) {
+      const cardListType = card.dataset.listType;
+      const cardId = card.dataset.id;
+      const isUnified = card.dataset.isUnified === 'true';
+      callbacks.renderMovieCardContent(card, cardListType, cardId, item, entry.id, { 
+        isUnified,
+        contentListType: entryListType 
+      });
+    }
+  });
+
+  return node;
+}
+
+function buildSeriesTreeNodeKey(entry, fallbackListType) {
+  const sourceType = entry?.listType || fallbackListType || 'unknown';
+  const entryId = entry?.id || 'unknown';
+  return `${sourceType}::${entryId}`;
+}
+
+function resolveSeriesNodeOrder(entry, fallbackIndex = 0) {
+  const numericOrder = numericSeriesOrder(entry?.order ?? entry?.item?.seriesOrder);
+  if (numericOrder !== null && numericOrder !== undefined) {
+    return numericOrder;
+  }
+  return fallbackIndex + 1;
+}
+
+function buildSeriesTreePoster(item) {
+  const wrapper = createEl('div', 'series-tree-poster');
+  if (item.poster) {
+    const img = createEl('img');
+    img.src = item.poster;
+    img.alt = `${item.title || 'Poster'} artwork`;
+    img.loading = 'lazy';
+    wrapper.appendChild(img);
+  } else {
+    wrapper.classList.add('placeholder');
+    wrapper.textContent = 'No Poster';
+  }
+  return wrapper;
+}
+
+function buildSeriesTreeStatusBadge(item) {
+  const status = deriveSeriesTreeStatus(item);
+  if (!status) return null;
+  const badge = createEl('span', 'series-tree-status', { text: status.label });
+  if (status.state) {
+    badge.dataset.state = status.state;
+  }
+  return badge;
+}
+
+function buildSeriesTreeMediaLabel(listType) {
+  if (!listType) return null;
+  const label = MEDIA_TYPE_LABELS[listType];
+  if (!label) return null;
+  const badge = createEl('span', 'series-tree-media', { text: label });
+  badge.dataset.type = listType;
+  return badge;
+}
+
+function deriveSeriesTreeStatus(item) {
+  if (!item) return null;
+  if (item.finished || item.finishedAt) {
+    return { label: 'Finished', state: 'finished' };
+  }
+  const candidates = [item.watchStatus, item.animeStatus, item.status];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const normalized = String(candidate).trim().toLowerCase();
+    if (!normalized) continue;
+    if (normalized.startsWith('finish') || normalized.startsWith('complete')) {
+      return { label: 'Finished', state: 'finished' };
+    }
+    if (normalized.startsWith('watch')) {
+      return { label: 'Watching', state: 'watching' };
+    }
+    if (normalized.startsWith('soon') || normalized.startsWith('plan')) {
+      return { label: 'Soon™', state: 'soon' };
+    }
+    if (normalized.startsWith('releas') || normalized === 'airing' || normalized === 'ongoing') {
+      return { label: 'Airing', state: 'airing' };
+    }
+    if (normalized.startsWith('hiatus') || normalized.startsWith('pause')) {
+      return { label: 'Hiatus', state: 'paused' };
+    }
+    if (normalized.startsWith('cancel')) {
+      return { label: 'Cancelled', state: 'cancelled' };
+    }
+    if (normalized.startsWith('not') || normalized === 'tba') {
+      return { label: 'Announced', state: 'soon' };
+    }
+    return { label: normalized.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()), state: 'other' };
+  }
+  return null;
+}
+
+function buildSeriesTreeMeta(item) {
+  if (!item) return null;
+  const parts = [];
+  if (item.year) parts.push(item.year);
+  
+  const isMovie = isAnimeMovieEntry(item) || (item.imdbType && String(item.imdbType).toLowerCase() === 'movie');
+  
+  let episodeCount = null;
+  if (!isMovie) {
+    if (item.seasonNumber !== undefined && (item.episodes || item.episodeCount)) {
+      episodeCount = Number(item.episodes || item.episodeCount);
+    } else {
+      episodeCount = extractEpisodeCount(item);
+    }
+    if (episodeCount > 0) {
+      parts.push(`${episodeCount} ep`);
+    }
+  }
+  const runtimeLabel = item.runtime || formatAnimeRuntimeLabel(item);
+  if (runtimeLabel) {
+    parts.push(runtimeLabel);
+  }
+  if (item.director) {
+    parts.push(item.director);
+  }
+  if (!parts.length) return null;
+  return createEl('div', 'series-tree-meta', { text: parts.join(' • ') });
+}
+
+function buildSeriesTreePlot(item) {
+  const text = typeof item.plot === 'string' ? item.plot.trim() : '';
+  if (!text) return null;
+  return createEl('div', 'series-tree-plot', { text: truncateText(text, 240) });
+}
+
+// ============================================
 // BUILD MOVIE CARD DETAILS (EXPANDED VIEW)
 // ============================================
 export function buildMovieCardDetails(listType, cardId, entryId, item, context = {}) {
+  const { callbacks = {} } = context;
   const details = createEl('div', 'collapsible-details movie-card-details');
   const infoStack = createEl('div', 'movie-card-detail-stack');
   
@@ -822,19 +1136,31 @@ export function buildMovieCardDetails(listType, cardId, entryId, item, context =
     details.appendChild(createEl('div', 'notes detail-block', { text: item.notes }));
   }
 
+  // Build series tree block (franchise order) for collapsible lists
+  let seriesBlock = null;
+  if (isCollapsibleList(listType)) {
+    seriesBlock = buildSeriesTreeBlock(listType, cardId, context.seriesEntries, callbacks);
+  }
+  const hasFranchiseOrder = Boolean(seriesBlock);
+
   // Build type-specific detail blocks
   if (listType === 'anime') {
-    const animeBlock = buildAnimeDetailBlock(listType, entryId, item);
+    const animeBlock = buildAnimeDetailBlock(listType, entryId, item, { suppressSeasons: hasFranchiseOrder });
     if (animeBlock) {
       details.appendChild(animeBlock);
     }
   }
 
   if (listType === 'tvShows') {
-    const tvBlock = buildTvDetailBlock(listType, entryId, item);
+    const tvBlock = buildTvDetailBlock(listType, entryId, item, { suppressSeasons: hasFranchiseOrder });
     if (tvBlock) {
       details.appendChild(tvBlock);
     }
+  }
+
+  // Add series tree block after type-specific blocks
+  if (seriesBlock) {
+    details.appendChild(seriesBlock);
   }
 
   // Add action buttons
@@ -849,7 +1175,8 @@ export function buildMovieCardDetails(listType, cardId, entryId, item, context =
 // ============================================
 // BUILD ANIME DETAIL BLOCK
 // ============================================
-export function buildAnimeDetailBlock(listType, entryId, item) {
+export function buildAnimeDetailBlock(listType, entryId, item, options = {}) {
+  const { suppressSeasons = false } = options;
   if (!item) return null;
   const block = createEl('div', 'detail-block anime-detail-block');
   const chips = [];
@@ -887,7 +1214,8 @@ export function buildAnimeDetailBlock(listType, entryId, item) {
 // ============================================
 // BUILD TV DETAIL BLOCK
 // ============================================
-export function buildTvDetailBlock(listType, entryId, item) {
+export function buildTvDetailBlock(listType, entryId, item, options = {}) {
+  const { suppressSeasons = false } = options;
   if (!item) return null;
   const chips = buildTvStatChips(item, { isExpanded: true });
   const hasChips = chips.length > 0;
