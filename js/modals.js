@@ -17,7 +17,10 @@ import {
   fetchGoogleBooksMetadata,
   ensureTvSeriesDefaults
 } from './metadata.js';
-import { addItem } from './crud.js';
+import { addItem, updateItem, normalizeFinishRating } from './crud.js';
+import { getFirebaseDatabase } from './firebase.js';
+import { FINISH_RATING_MIN, FINISH_RATING_MAX } from './config.js';
+import { ref, update } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
 let activeAddModal = null;
 let activeEditModal = null;
@@ -694,9 +697,117 @@ export function openEditModal(listType, id, item, callbacks = {}) {
   
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    if (typeof onSubmit === 'function') {
-      await onSubmit(form, typeSelect.value, id, item);
+    
+    const newTitle = (titleInput.value || '').trim();
+    if (!newTitle) {
+      alert('Title is required');
+      return;
     }
+    
+    const updatedYear = sanitizeYear((yearInput.value || '').trim());
+    const creatorVal = (creatorInput.value || '').trim();
+    const targetListType = typeSelect.value;
+    const isBooksTarget = targetListType === 'books';
+    
+    const payload = {
+      title: newTitle,
+      notes: (notesInput.value || '').trim() || null,
+      year: updatedYear || null,
+    };
+    
+    if (ratingInput) {
+      const newRating = normalizeFinishRating(ratingInput.value);
+      if (newRating !== null) {
+        payload.finishedRating = newRating;
+      }
+    }
+    
+    if (isBooksTarget) {
+      payload.author = creatorVal || null;
+      payload.director = null;
+      payload.seriesName = null;
+      payload.seriesOrder = null;
+    } else {
+      payload.director = creatorVal || null;
+      payload.author = null;
+      const seriesNameVal = seriesNameInput.value ? seriesNameInput.value.trim() : '';
+      const seriesOrderValRaw = seriesOrderInput.value ? seriesOrderInput.value.trim() : '';
+      const normalizedSeriesOrder = sanitizeSeriesOrder(seriesOrderValRaw);
+      payload.seriesName = seriesNameVal || null;
+      payload.seriesOrder = normalizedSeriesOrder !== null ? normalizedSeriesOrder : null;
+      if (targetListType === 'tvShows') {
+        ensureTvSeriesDefaults(targetListType, payload);
+      }
+    }
+    
+    setButtonBusy(submitBtn, true);
+    submitBtn.textContent = 'Saving...';
+    
+    try {
+      const currentUser = getCurrentUser();
+      if (!currentUser) {
+        alert('Not logged in');
+        return;
+      }
+      
+      if (targetListType === listType) {
+        if (item.finishedAt) {
+          const db = getFirebaseDatabase();
+          const finishedRef = ref(db, `users/${currentUser.uid}/finished/${listType}/${id}`);
+          await update(finishedRef, payload);
+          
+          if (finishedCaches[listType] && finishedCaches[listType][id]) {
+            Object.assign(finishedCaches[listType][id], payload);
+          }
+        } else {
+          await updateItem(listType, id, payload);
+          if (listCaches[listType] && listCaches[listType][id]) {
+            Object.assign(listCaches[listType][id], payload);
+          }
+        }
+        Object.assign(item, payload);
+      } else {
+        // Type change: delete from old list, add to new list
+        const db = getFirebaseDatabase();
+        if (item.finishedAt) {
+          const oldRef = ref(db, `users/${currentUser.uid}/finished/${listType}/${id}`);
+          await update(oldRef, null);
+          if (finishedCaches[listType] && finishedCaches[listType][id]) {
+            delete finishedCaches[listType][id];
+          }
+        } else {
+          const oldRef = ref(db, `users/${currentUser.uid}/lists/${listType}/${id}`);
+          await update(oldRef, null);
+          if (listCaches[listType] && listCaches[listType][id]) {
+            delete listCaches[listType][id];
+          }
+        }
+        
+        // Add to new list preserving finished state
+        const newItemData = { ...item, ...payload };
+        delete newItemData.id;
+        
+        if (item.finishedAt) {
+          const newRef = ref(db, `users/${currentUser.uid}/finished/${targetListType}`);
+          const { push } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
+          await push(newRef, newItemData);
+        } else {
+          await addItem(targetListType, newItemData);
+        }
+      }
+      
+      // Custom submit handler if provided
+      if (typeof onSubmit === 'function') {
+        await onSubmit(form, targetListType, id, item);
+      }
+    } catch (err) {
+      console.error('Edit modal save failed', err);
+      alert('Failed to save changes. Please try again.');
+    } finally {
+      setButtonBusy(submitBtn, false);
+      submitBtn.textContent = 'Save';
+    }
+    
     closeEditModal();
   });
   
