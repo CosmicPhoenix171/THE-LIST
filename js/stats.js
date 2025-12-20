@@ -1,6 +1,6 @@
 // Library Statistics Module
 import { PRIMARY_LIST_TYPES, RUNTIME_THRESHOLDS, RUNTIME_PILL_UNITS } from './config.js';
-import { listCaches, finishedCaches, libraryFullyLoaded, getDisplayCacheMap } from './state.js';
+import { listCaches, finishedCaches, getLibraryFullyLoaded, getDisplayCacheMap } from './state.js';
 import { libraryStatsSummaryEl } from './dom.js';
 import { createEl } from './utils.js';
 
@@ -504,7 +504,7 @@ export function updateLibraryRuntimeStats() {
   if (!targetEl) return;
   
   const stats = computeLibraryRuntimeStats();
-  if (!stats.hasAnyData || !libraryFullyLoaded) {
+  if (!stats.hasAnyData || !getLibraryFullyLoaded()) {
     if (targetEl === libraryStatsSummaryEl) {
       targetEl.textContent = 'Totals update once your lists load.';
       targetEl.classList.remove('has-data');

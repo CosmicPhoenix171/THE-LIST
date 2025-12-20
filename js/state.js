@@ -121,6 +121,7 @@ export function setFranchiseDragEventsBound(value) { franchiseDragEventsBound = 
 export function setFranchiseWheelUnsubscribe(value) { franchiseWheelUnsubscribe = value; }
 export function setShowFinishedOnly(value) { showFinishedOnly = value; }
 export function setLibraryFullyLoaded(value) { libraryFullyLoaded = value; }
+export function getLibraryFullyLoaded() { return libraryFullyLoaded; }
 export function setBugReports(value) { bugReports = value; }
 export function setBugReportsLoaded(value) { bugReportsLoaded = value; }
 export function setBugReportLoadError(value) { bugReportLoadError = value; }

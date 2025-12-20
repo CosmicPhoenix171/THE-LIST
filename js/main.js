@@ -310,6 +310,13 @@ function matchesUnifiedSearch(item, queryStr) {
 }
 
 function renderUnifiedLibrary() {
+  // Update stats panel
+  try {
+    stats.updateLibraryRuntimeStats();
+  } catch (err) {
+    console.warn('Stats update error:', err);
+  }
+  
   if (!dom.combinedListEl) return;
   
   const displayCaches = getDisplayCacheMap();
