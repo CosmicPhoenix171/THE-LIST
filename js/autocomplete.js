@@ -1,5 +1,6 @@
-import { TMDB_API_KEY, TMDB_IMAGE_BASE_URL, AUTOCOMPLETE_LISTS } from './config.js';
+import { TMDB_API_KEY, TMDB_IMAGE_BASE_URL, AUTOCOMPLETE_LISTS, GOOGLE_BOOKS_API_KEY, GOOGLE_BOOKS_API_URL } from './config.js';
 import { debounce, extractPrimaryYear } from './utils.js';
+import { fetchTmdbMetadata, fetchGoogleBooksMetadata } from './metadata.js';
 
 const suggestionForms = new Set();
 let globalSuggestionClickBound = false;
@@ -101,6 +102,40 @@ export async function fetchTmdbSuggestions(listType, query) {
     })).filter(suggestion => suggestion.title);
   } catch (err) {
     console.warn('TMDb suggestion lookup failed', err);
+    return [];
+  }
+}
+
+export async function fetchGoogleBooksSuggestions(query) {
+  if (!query || query.length < 2) return [];
+  const params = new URLSearchParams({
+    q: query,
+    printType: 'books',
+    maxResults: '10',
+  });
+  if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
+  try {
+    const resp = await fetch(`${GOOGLE_BOOKS_API_URL}/volumes?${params.toString()}`);
+    if (!resp.ok) return [];
+    const json = await resp.json();
+    if (!json || !Array.isArray(json.items)) return [];
+    return json.items.map(item => {
+      const info = item.volumeInfo || {};
+      const identifiers = Array.isArray(info.industryIdentifiers) ? info.industryIdentifiers : [];
+      const isbn = identifiers.find(id => id.type === 'ISBN_13')?.identifier 
+                || identifiers.find(id => id.type === 'ISBN_10')?.identifier 
+                || '';
+      return {
+        title: info.title || '',
+        year: extractPrimaryYear(info.publishedDate || ''),
+        author: Array.isArray(info.authors) ? info.authors.join(', ') : '',
+        googleBooksId: item.id || '',
+        isbn,
+        source: 'googleBooks',
+      };
+    }).filter(s => s.title);
+  } catch (err) {
+    console.warn('Google Books suggestion lookup failed', err);
     return [];
   }
 }
@@ -253,8 +288,6 @@ export function setupActorAutocomplete(form, listType, callbacks = {}) {
 }
 
 export function setupFormAutocomplete(form, listType, callbacks = {}) {
-  const { fetchSuggestions, onSelect, applyMetadata } = callbacks;
-  
   if (!form) return;
   const wrapper = form.querySelector('.input-suggest');
   const titleInput = wrapper ? wrapper.querySelector('input[name="title"]') : null;
@@ -266,47 +299,176 @@ export function setupFormAutocomplete(form, listType, callbacks = {}) {
     return;
   }
 
+  const useGoogleBooks = listType === 'books';
+  const yearInput = form.querySelector('input[name="year"]');
+  const creatorInput = form.querySelector(listType === 'books' ? 'input[name="author"]' : 'input[name="director"]');
+  const preview = form.querySelector('[data-role="movie-details-preview"]');
+
   suggestionForms.add(form);
+
+  const clearFormMetadata = () => {
+    form.__selectedMetadata = null;
+    delete form.dataset.selectedImdbId;
+    delete form.dataset.selectedTmdbId;
+    delete form.dataset.selectedGoogleBookId;
+    delete form.dataset.selectedGoogleIsbn;
+    if (preview) preview.classList.add('hidden');
+  };
+
+  const updatePreview = (detail) => {
+    if (!preview || !detail) return;
+    preview.classList.remove('hidden');
+    
+    const posterEl = preview.querySelector('[data-role="movie-details-poster"]');
+    if (posterEl) {
+      posterEl.innerHTML = detail.Poster && detail.Poster !== 'N/A'
+        ? `<img src="${detail.Poster}" alt="Poster for ${detail.Title || ''}" />`
+        : '';
+    }
+    
+    const yearEl = preview.querySelector('[data-role="movie-details-year"]');
+    if (yearEl) {
+      yearEl.textContent = (yearInput && yearInput.value) ? '' : (detail.Year ? `Year: ${detail.Year}` : '');
+    }
+    
+    const directorEl = preview.querySelector('[data-role="movie-details-director"]');
+    if (directorEl) {
+      const directorLabel = listType === 'books' ? 'Author' : 'Director';
+      const directorValue = listType === 'books' ? detail.Author : detail.Director;
+      directorEl.textContent = (creatorInput && creatorInput.value) ? '' : (directorValue ? `${directorLabel}: ${directorValue}` : '');
+    }
+    
+    const genresEl = preview.querySelector('[data-role="movie-details-genres"]');
+    if (genresEl) {
+      const genres = detail.Genres || detail.Categories || [];
+      genresEl.textContent = genres.length ? `Genres: ${genres.join(', ')}` : '';
+    }
+    
+    const descEl = preview.querySelector('[data-role="movie-details-description"]');
+    if (descEl) descEl.textContent = detail.Plot || '';
+  };
 
   let lastFetchToken = 0;
   const performSearch = debounce(async (query) => {
     const currentToken = ++lastFetchToken;
     
-    let results = [];
-    if (typeof fetchSuggestions === 'function') {
-      results = await fetchSuggestions(listType, query);
-    } else {
-      results = await fetchTmdbSuggestions(listType, query);
-    }
+    const results = useGoogleBooks
+      ? await fetchGoogleBooksSuggestions(query)
+      : await fetchTmdbSuggestions(listType, query);
     
     if (currentToken !== lastFetchToken) return;
     
     suggestionsEl.classList.add('visible');
     renderTitleSuggestions(suggestionsEl, results, async (suggestion) => {
       titleInput.value = suggestion.title || '';
+      const suggestionYear = extractPrimaryYear(suggestion.year);
+      if (yearInput && suggestionYear) {
+        yearInput.value = suggestionYear;
+      }
+      
+      clearFormMetadata();
+      
+      // Store selection IDs for later metadata fetch
+      if (useGoogleBooks) {
+        if (suggestion.googleBooksId) form.dataset.selectedGoogleBookId = suggestion.googleBooksId;
+        if (suggestion.isbn) form.dataset.selectedGoogleIsbn = suggestion.isbn;
+        
+        // Fetch and apply Google Books metadata
+        try {
+          const detail = await fetchGoogleBooksMetadata({
+            volumeId: suggestion.googleBooksId,
+            title: suggestion.title,
+            author: suggestion.author,
+            isbn: suggestion.isbn,
+          });
+          if (detail) {
+            form.__selectedMetadata = detail;
+            if (yearInput && detail.Year) {
+              const detailYear = extractPrimaryYear(detail.Year);
+              if (detailYear) yearInput.value = detailYear;
+            }
+            if (creatorInput && !creatorInput.value && detail.Author) {
+              creatorInput.value = detail.Author;
+            }
+            updatePreview(detail);
+          }
+        } catch (err) {
+          console.warn('Unable to prefill Google Books metadata', err);
+        }
+      } else {
+        // TMDB flow
+        if (suggestion.imdbID) form.dataset.selectedImdbId = suggestion.imdbID;
+        if (suggestion.tmdbId) form.dataset.selectedTmdbId = suggestion.tmdbId;
+        
+        if (TMDB_API_KEY && suggestion.tmdbId) {
+          try {
+            const detail = await fetchTmdbMetadata(listType, {
+              title: suggestion.title,
+              year: suggestionYear,
+              imdbId: suggestion.imdbID,
+              tmdbId: suggestion.tmdbId,
+            });
+            if (detail) {
+              form.__selectedMetadata = detail;
+              if (yearInput && detail.Year) {
+                const detailYear = extractPrimaryYear(detail.Year);
+                if (detailYear) yearInput.value = detailYear;
+              }
+              if (creatorInput && !creatorInput.value && detail.Director && detail.Director !== 'N/A') {
+                creatorInput.value = detail.Director;
+              }
+              updatePreview(detail);
+            }
+          } catch (err) {
+            console.warn('Unable to prefill TMDB metadata', err);
+          }
+        }
+      }
+      
+      if (!form.__selectedMetadata && preview) {
+        preview.classList.add('hidden');
+      }
+      
       hideTitleSuggestions(form);
-      
-      if (typeof onSelect === 'function') {
-        onSelect(suggestion, form);
-      }
-      
-      if (typeof applyMetadata === 'function') {
-        await applyMetadata(form, listType, suggestion);
-      }
+      titleInput.focus();
     });
-  }, 300);
+  }, 260);
 
   titleInput.addEventListener('input', () => {
-    const val = titleInput.value.trim();
-    if (val.length < 2) {
+    const query = titleInput.value.trim();
+    
+    if (query.length === 0) {
+      clearFormMetadata();
+      if (yearInput) yearInput.value = '';
+      if (creatorInput) creatorInput.value = '';
       hideTitleSuggestions(form);
       return;
     }
-    performSearch(val);
+    
+    clearFormMetadata();
+    
+    if (query.length < 3) {
+      lastFetchToken++;
+      hideTitleSuggestions(form);
+      return;
+    }
+    performSearch(query);
+  });
+  
+  titleInput.addEventListener('focus', () => {
+    if (suggestionsEl.children.length > 0) {
+      suggestionsEl.classList.add('visible');
+    }
   });
   
   titleInput.addEventListener('blur', () => {
-    setTimeout(() => hideTitleSuggestions(form), 200);
+    setTimeout(() => hideTitleSuggestions(form), 150);
+  });
+  
+  titleInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') {
+      hideTitleSuggestions(form);
+    }
   });
 }
 

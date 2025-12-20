@@ -160,6 +160,18 @@
                         <input name="actor" placeholder="Actor Name" autocomplete="off" />
                         <div class="suggestions" data-role="actor-suggestions"></div>
                       </div>
+                      <!-- TV details preview (hidden by default) -->
+                      <div class="movie-details-preview hidden" data-role="movie-details-preview">
+                        <div style="display: flex; gap: 1rem; align-items: flex-start; width: 100%;">
+                          <div class="movie-details-info" style="flex:1; min-width:0;">
+                            <div class="movie-details-meta">
+                              <span class="movie-details-genres" data-role="movie-details-genres"></span>
+                            </div>
+                            <div class="movie-details-description" data-role="movie-details-description"></div>
+                          </div>
+                          <div class="movie-details-poster" data-role="movie-details-poster"></div>
+                        </div>
+                      </div>
                       <div class="standard-fields">
                         <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
                         <input name="director" placeholder="Director / Showrunner (optional)" />
@@ -178,6 +190,18 @@
                       <div class="input-suggest">
                         <input name="title" placeholder="Title" autocomplete="off" required />
                         <div class="suggestions" data-role="title-suggestions"></div>
+                      </div>
+                      <!-- Book details preview (hidden by default) -->
+                      <div class="movie-details-preview hidden" data-role="movie-details-preview">
+                        <div style="display: flex; gap: 1rem; align-items: flex-start; width: 100%;">
+                          <div class="movie-details-info" style="flex:1; min-width:0;">
+                            <div class="movie-details-meta">
+                              <span class="movie-details-genres" data-role="movie-details-genres"></span>
+                            </div>
+                            <div class="movie-details-description" data-role="movie-details-description"></div>
+                          </div>
+                          <div class="movie-details-poster" data-role="movie-details-poster"></div>
+                        </div>
                       </div>
                       <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
                       <input name="author" placeholder="Author (optional)" />
