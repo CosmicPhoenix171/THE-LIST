@@ -12,6 +12,11 @@ import * as autocomplete from './autocomplete.js';
 import * as wheel from './wheel.js';
 import * as franchise from './franchise.js';
 import * as ads from './ads.js';
+import * as stats from './stats.js';
+import * as bugReport from './bugReport.js';
+import * as crud from './crud.js';
+import * as easterEgg from './easterEgg.js';
+import * as collapsibleCards from './collapsibleCards.js';
 import { 
   VirtualScroller, 
   ensureVirtualListController, 
@@ -41,6 +46,11 @@ export {
   wheel,
   franchise,
   ads,
+  stats,
+  bugReport,
+  crud,
+  easterEgg,
+  collapsibleCards,
   VirtualScroller,
   ensureVirtualListController,
   destroyVirtualListController,

@@ -139,3 +139,29 @@ export function setLibrarySortMode(value) { librarySortMode = value; }
 export function setGlobalNotificationsUnsubscribe(value) { globalNotificationsUnsubscribe = value; }
 export function setPersistedNotifications(value) { persistedNotifications = value; }
 export function setNotificationSignatureCache(value) { notificationSignatureCache = value; }
+
+export function getDisplayCacheMap() {
+  return showFinishedOnly ? finishedCaches : listCaches;
+}
+
+export function getDisplayCache(listType) {
+  return getDisplayCacheMap()[listType];
+}
+
+export function getSeriesGroupEntries(listType, cardId) {
+  if (!seriesGroups[listType]) return null;
+  return seriesGroups[listType].get(cardId) || null;
+}
+
+export function setSeriesGroup(listType, cardId, entries) {
+  if (!seriesGroups[listType]) {
+    seriesGroups[listType] = new Map();
+  }
+  seriesGroups[listType].set(cardId, entries);
+}
+
+export function clearSeriesGroups(listType) {
+  if (seriesGroups[listType]) {
+    seriesGroups[listType].clear();
+  }
+}
