@@ -607,6 +607,393 @@ export function buildMovieLinks(listType, item) {
 }
 
 // ============================================
+// BUILD COLLAPSIBLE MOVIE CARD (MAIN ENTRY POINT)
+// ============================================
+export function buildCollapsibleMovieCard(listType, id, item, positionIndex = 0, options = {}) {
+  const { hideCard = false, displayEntryId = id, interactive = true } = options;
+  const card = createEl('div', 'card collapsible movie-card');
+  card.dataset.id = id;
+  card.dataset.index = String(positionIndex);
+  card.dataset.entryId = displayEntryId;
+  card.dataset.listType = listType;
+  
+  if (itemHasAnimeKeyword(item)) {
+    card.dataset.isAnime = 'true';
+  }
+  if (hideCard) {
+    card.classList.add('series-hidden');
+  }
+  if (ensureExpandedSet(listType).has(id)) {
+    card.classList.add('expanded');
+  }
+  if (interactive) {
+    card.addEventListener('click', (ev) => {
+      // Don't toggle if clicking on a button or link
+      if (ev.target.closest('button, a, input, textarea, select')) return;
+      toggleCardExpansion(listType, id, {
+        updateStates: () => updateCollapsibleCardStates(listType)
+      });
+    });
+  }
+  if (options.isUnified) {
+    card.dataset.isUnified = 'true';
+  }
+  
+  renderMovieCardContent(card, listType, id, item, displayEntryId, options);
+  ensureCardTitleResizeListener(card);
+  return card;
+}
+
+// ============================================
+// RENDER MOVIE CARD CONTENT
+// ============================================
+export function renderMovieCardContent(card, listType, cardId, item, entryId = cardId, options = {}) {
+  if (!card) return;
+  card.dataset.entryId = entryId;
+  
+  // Remove existing content
+  card.querySelectorAll('.movie-card-summary, .movie-card-details').forEach(el => el.remove());
+  
+  const isExpanded = card.classList.contains('expanded');
+  const isUnified = options.isUnified || card.dataset.isUnified === 'true';
+  
+  // Get series entries
+  let seriesEntries = null;
+  if (isUnified && seriesGroups.unified) {
+    seriesEntries = seriesGroups.unified.get(cardId) || null;
+  } else if (isCollapsibleList(listType)) {
+    seriesEntries = getSeriesGroupEntries(listType, cardId);
+  }
+  
+  const contentListType = options.contentListType || listType;
+  const context = { cardId, entryId, seriesEntries, isExpanded, listType: contentListType };
+  
+  const summary = buildMovieCardSummary(contentListType, item, context);
+  const details = buildMovieCardDetails(contentListType, cardId, entryId, item, context);
+  
+  card.insertBefore(summary, card.firstChild || null);
+  card.appendChild(details);
+  queueCardTitleAutosize(card);
+}
+
+// ============================================
+// BUILD MOVIE CARD SUMMARY (COLLAPSED VIEW)
+// ============================================
+export function buildMovieCardSummary(listType, item, context = {}) {
+  const summary = createEl('div', 'movie-card-summary');
+  summary.appendChild(buildMovieArtwork(listType, item, context));
+  summary.appendChild(buildMovieCardInfo(listType, item, context));
+  return summary;
+}
+
+// ============================================
+// BUILD MOVIE ARTWORK
+// ============================================
+export function buildMovieArtwork(listType, item, context = {}) {
+  const wrapper = createEl('div', 'artwork-wrapper');
+  const seriesEntries = Array.isArray(context.seriesEntries) ? context.seriesEntries : [];
+  const stackItems = buildSeriesPosterStackItems(item, seriesEntries);
+  const shouldStack = stackItems.length > 1 || (!context.isExpanded && stackItems.length > 0);
+  
+  if (shouldStack) {
+    wrapper.classList.add('artwork-stack-wrapper');
+    const stackClasses = ['artwork-stack'];
+    if (!context.isExpanded) {
+      stackClasses.push('artwork-deck', 'artwork-deck-collapsed');
+    } else {
+      stackClasses.push('artwork-deck', 'artwork-deck-expanded');
+    }
+    const stack = createEl('div', stackClasses.join(' '));
+    const visibleItems = stackItems.slice(0, 3);
+    const { baseStep, hoverStep } = computeDeckStepValues({
+      isExpanded: Boolean(context.isExpanded),
+      visibleCount: visibleItems.length,
+    });
+    if (!Number.isNaN(baseStep)) {
+      stack.style.setProperty('--deck-step', `${baseStep}px`);
+      stack.style.setProperty('--deck-hover-step', `${hoverStep}px`);
+    }
+    visibleItems.forEach((entry, index) => {
+      const art = buildPosterNode(entry.poster, entry.title, index === 0);
+      art.classList.add('artwork-stack-item');
+      stack.appendChild(art);
+    });
+    if (stackItems.length > 3) {
+      const spill = createEl('div', 'artwork-stack-count', { text: `+${stackItems.length - 3}` });
+      stack.appendChild(spill);
+    }
+    wrapper.appendChild(stack);
+    const statusBadge = buildStatusBadge(listType, item, context);
+    if (statusBadge) wrapper.appendChild(statusBadge);
+    return wrapper;
+  }
+
+  const fallbackPoster = stackItems.length ? stackItems[0].poster : '';
+  const fallbackTitle = stackItems.length ? stackItems[0].title : '';
+  const posterNode = buildPosterNode(item?.poster || fallbackPoster, item?.title || fallbackTitle || 'Poster');
+  if (posterNode) {
+    wrapper.appendChild(posterNode);
+    const statusBadge = buildStatusBadge(listType, item, context);
+    if (statusBadge) wrapper.appendChild(statusBadge);
+    return wrapper;
+  }
+  wrapper.appendChild(createEl('div', 'artwork placeholder', { text: 'No Poster' }));
+  const statusBadge = buildStatusBadge(listType, item, context);
+  if (statusBadge) wrapper.appendChild(statusBadge);
+  return wrapper;
+}
+
+// ============================================
+// BUILD MOVIE CARD INFO (HEADER + BADGES)
+// ============================================
+export function buildMovieCardInfo(listType, item, context = {}) {
+  const info = createEl('div', 'movie-card-info');
+  const header = createEl('div', 'movie-card-header');
+  
+  const { titleText, subtitleText } = resolveSeriesCardTitleParts(item, context);
+  const title = createEl('div', 'title', { text: titleText });
+  header.appendChild(title);
+  
+  if (subtitleText) {
+    header.appendChild(createEl('div', 'series-card-subtitle', { text: subtitleText }));
+  }
+  
+  const ratingBadge = buildFinishedRatingBadge(item);
+  if (ratingBadge) {
+    header.appendChild(ratingBadge);
+  }
+  
+  info.appendChild(header);
+
+  if (isCollapsibleList(listType)) {
+    const badges = buildMediaSummaryBadges(listType, item, { ...context, listType, isExpanded: true });
+    if (badges) info.appendChild(badges);
+  }
+
+  return info;
+}
+
+// ============================================
+// BUILD MOVIE CARD DETAILS (EXPANDED VIEW)
+// ============================================
+export function buildMovieCardDetails(listType, cardId, entryId, item, context = {}) {
+  const details = createEl('div', 'collapsible-details movie-card-details');
+  const infoStack = createEl('div', 'movie-card-detail-stack');
+  
+  const metaText = buildMovieMetaText(item);
+  if (metaText) {
+    infoStack.appendChild(createEl('div', 'meta', { text: metaText }));
+  }
+
+  const extendedMeta = buildMovieExtendedMeta(item);
+  if (extendedMeta) {
+    infoStack.appendChild(extendedMeta);
+  }
+
+  const genreRow = buildMovieGenreRow(item);
+  if (genreRow) {
+    infoStack.appendChild(genreRow);
+  }
+
+  const seriesLine = buildSeriesLine(item);
+  if (seriesLine) {
+    infoStack.appendChild(seriesLine);
+  }
+
+  const actorLine = buildMovieCastLine(item);
+  if (actorLine) {
+    infoStack.appendChild(actorLine);
+  }
+
+  const links = buildMovieLinks(listType, item);
+  if (links) {
+    infoStack.appendChild(links);
+  }
+
+  if (infoStack.children.length) {
+    details.appendChild(infoStack);
+  }
+
+  if (item.plot) {
+    details.appendChild(createEl('div', 'plot-summary detail-block', { text: item.plot.trim() }));
+  }
+
+  if (item.notes) {
+    details.appendChild(createEl('div', 'notes detail-block', { text: item.notes }));
+  }
+
+  // Build type-specific detail blocks
+  if (listType === 'anime') {
+    const animeBlock = buildAnimeDetailBlock(listType, entryId, item);
+    if (animeBlock) {
+      details.appendChild(animeBlock);
+    }
+  }
+
+  if (listType === 'tvShows') {
+    const tvBlock = buildTvDetailBlock(listType, entryId, item);
+    if (tvBlock) {
+      details.appendChild(tvBlock);
+    }
+  }
+
+  // Add action buttons
+  const actions = buildMovieCardActions(listType, entryId || cardId, item);
+  if (actions) {
+    details.appendChild(actions);
+  }
+
+  return details;
+}
+
+// ============================================
+// BUILD ANIME DETAIL BLOCK
+// ============================================
+export function buildAnimeDetailBlock(listType, entryId, item) {
+  if (!item) return null;
+  const block = createEl('div', 'detail-block anime-detail-block');
+  const chips = [];
+  
+  if (!isAnimeMovieEntry(item)) {
+    const episodeLabel = formatAnimeEpisodesLabel(extractEpisodeCount(item) || item.animeEpisodes);
+    if (episodeLabel) chips.push(episodeLabel);
+    if (item.animeDuration) chips.push(`${item.animeDuration} min/ep`);
+  }
+  if (item.animeFormat) chips.push(formatAnimeFormatLabel(item.animeFormat));
+  if (item.animeStatus) chips.push(formatAnimeStatusLabel(item.animeStatus));
+  
+  if (chips.length) {
+    const row = createEl('div', 'anime-stats-row');
+    chips.forEach(text => row.appendChild(createEl('span', 'anime-chip', { text })));
+    block.appendChild(row);
+  }
+  
+  if (Array.isArray(item.animeGenres) && item.animeGenres.length) {
+    const genres = createEl('div', 'anime-genres', { text: `Genres: ${item.animeGenres.join(', ')}` });
+    block.appendChild(genres);
+  }
+  
+  if (item.aniListUrl) {
+    const link = createEl('a', 'meta-link', { text: 'View on MyAnimeList' });
+    link.href = item.aniListUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    block.appendChild(link);
+  }
+  
+  return block.children.length ? block : null;
+}
+
+// ============================================
+// BUILD TV DETAIL BLOCK
+// ============================================
+export function buildTvDetailBlock(listType, entryId, item) {
+  if (!item) return null;
+  const chips = buildTvStatChips(item, { isExpanded: true });
+  const hasChips = chips.length > 0;
+  
+  if (!hasChips) return null;
+  
+  const block = createEl('div', 'detail-block tv-detail-block');
+  if (hasChips) {
+    const row = createEl('div', 'tv-stats-row');
+    row.dataset.cardId = entryId || '';
+    row.dataset.listType = listType;
+    chips.forEach(text => row.appendChild(createEl('span', 'tv-chip', { text })));
+    block.appendChild(row);
+  }
+  
+  return block;
+}
+
+// ============================================
+// BUILD MOVIE CARD ACTIONS
+// ============================================
+export function buildMovieCardActions(listType, id, item, options = {}) {
+  const { variant = 'details', callbacks = {} } = options;
+  const classNames = ['actions', 'collapsible-actions'];
+  if (variant === 'inline') {
+    classNames.push('inline-actions');
+  }
+  const actions = createEl('div', classNames.join(' '));
+  
+  const configs = [
+    {
+      className: 'btn secondary',
+      label: 'Edit',
+      handler: () => {
+        if (callbacks.openEditModal) {
+          callbacks.openEditModal(listType, id, item);
+        }
+      }
+    },
+    {
+      className: 'btn success',
+      label: 'Finished',
+      handler: () => {
+        if (callbacks.handleFinishRequest) {
+          callbacks.handleFinishRequest(listType, id);
+        }
+      }
+    },
+    {
+      className: 'btn ghost',
+      label: 'Delete',
+      handler: () => {
+        if (callbacks.deleteItem) {
+          callbacks.deleteItem(listType, id);
+        }
+      }
+    }
+  ];
+
+  configs.forEach(cfg => {
+    const btn = createEl('button', cfg.className, { text: cfg.label });
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      cfg.handler();
+    });
+    actions.appendChild(btn);
+  });
+
+  return actions;
+}
+
+// ============================================
+// UPDATE COLLAPSIBLE CARD STATES
+// ============================================
+export function updateCollapsibleCardStates(listType) {
+  const expandedSet = expandedCards[listType];
+  
+  document.querySelectorAll(`.card.collapsible.movie-card[data-list-type="${listType}"]`).forEach(card => {
+    const cardId = card.dataset.id;
+    const isMatch = expandedSet instanceof Set
+      ? expandedSet.has(cardId)
+      : expandedSet === cardId;
+    const wasExpanded = card.classList.contains('expanded');
+    card.classList.toggle('expanded', isMatch);
+    
+    // Re-render content if expansion state changed
+    if (wasExpanded !== isMatch) {
+      const item = getItemFromCache(listType, cardId);
+      if (item) {
+        renderMovieCardContent(card, listType, cardId, item, card.dataset.entryId);
+      }
+    }
+    queueCardTitleAutosize(card);
+  });
+}
+
+// ============================================
+// HELPER: GET ITEM FROM CACHE
+// ============================================
+function getItemFromCache(listType, id) {
+  const cache = listCaches[listType] || {};
+  const finishedCache = finishedCaches[listType] || {};
+  return cache[id] || finishedCache[id] || null;
+}
+
+// ============================================
 // WINDOW RESIZE LISTENER
 // ============================================
 if (typeof window !== 'undefined') {

@@ -355,7 +355,7 @@ function renderUnifiedLibrary() {
       overscan: 8,
       hostClass: 'movies-grid unified-grid virtualized-grid',
       scrollTarget: window,
-      renderItem: (entry) => buildUnifiedCard(entry),
+      renderItem: (entry, index) => buildUnifiedCard(entry, index),
     });
     controller?.setItems(filtered);
     return;
@@ -364,47 +364,23 @@ function renderUnifiedLibrary() {
   destroyUnifiedVirtualizer();
   dom.combinedListEl.innerHTML = '';
   const grid = utils.createEl('div', 'movies-grid unified-grid');
-  filtered.forEach(entry => {
-    const node = buildUnifiedCard(entry);
+  filtered.forEach((entry, index) => {
+    const node = buildUnifiedCard(entry, index);
     if (node) grid.appendChild(node);
   });
   dom.combinedListEl.appendChild(grid);
 }
 
-function buildUnifiedCard(entry) {
+function buildUnifiedCard(entry, index = 0) {
   const { listType, id, displayItem } = entry;
   if (!displayItem) return null;
 
-  const card = utils.createEl('div', 'movie-card');
-  card.dataset.listType = listType;
-  card.dataset.itemId = id;
-
-  const posterUrl = displayItem.poster || displayItem.posterUrl || '';
-  const title = displayItem.title || 'Untitled';
-  const year = displayItem.year || '';
-  const director = displayItem.director || displayItem.author || '';
-
-  const typeLabel = config.MEDIA_TYPE_LABELS[listType] || listType;
-  
-  card.innerHTML = `
-    <div class="card-poster">
-      ${posterUrl 
-        ? `<img src="${posterUrl}" alt="${title}" loading="lazy" />` 
-        : `<div class="no-poster">No Poster</div>`}
-    </div>
-    <div class="card-info">
-      <div class="card-title">${title}</div>
-      ${year ? `<div class="card-year">${year}</div>` : ''}
-      ${director ? `<div class="card-director">${director}</div>` : ''}
-      <div class="card-type-badge">${typeLabel}</div>
-    </div>
-  `;
-
-  card.addEventListener('click', () => {
-    modals.openEditModal(listType, id, displayItem);
+  // Use the full collapsible card system
+  return collapsibleCards.buildCollapsibleMovieCard(listType, id, displayItem, index, {
+    isUnified: true,
+    displayEntryId: id,
+    interactive: true
   });
-
-  return card;
 }
 
 function initBackToTop() {
