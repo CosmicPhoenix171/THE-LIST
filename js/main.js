@@ -109,9 +109,6 @@ export function initApp() {
   initBackToTop();
   ads.initializeRandomAds();
   
-  // Check for incoming share links
-  share.checkForIncomingShare();
-  
   console.info('[THE-LIST] App initialized with modular architecture');
 }
 
@@ -154,6 +151,9 @@ function showAppForUser(user) {
   initUnifiedLibraryControls();
   bugReport.startBugReportSync();
   bugReport.initGlobalNotificationsListener();
+  
+  // Check for incoming share links after user is authenticated
+  share.checkForIncomingShare();
 }
 
 function playTheListIntro() {
