@@ -446,20 +446,63 @@ function spinWheel(listType) {
   wheel.startWheelSpinAudio();
   
   // Gather candidates from caches
+  // For items in a series, only include the first unwatched entry
   const candidates = [];
   const targetTypes = listType === 'all' 
     ? config.PRIMARY_LIST_TYPES 
     : [listType];
   
+  // Group items by series and find the first unwatched in each
+  const seriesFirstUnwatched = new Map(); // key: "listType:seriesName" -> first unwatched item
+  const standaloneItems = []; // items not in a series
+  
   targetTypes.forEach(type => {
     const cache = state.listCaches[type] || {};
+    const seriesItems = new Map(); // seriesName -> array of items with order
+    
     Object.entries(cache).forEach(([id, item]) => {
       if (!item) return;
       // Skip finished items
       if (item.finished || item.finishedAt) return;
-      candidates.push({ id, item, listType: type });
+      
+      if (item.seriesName) {
+        // Item belongs to a series - group it
+        const key = item.seriesName.toLowerCase().trim();
+        if (!seriesItems.has(key)) {
+          seriesItems.set(key, []);
+        }
+        seriesItems.set(key, [...seriesItems.get(key), { id, item, listType: type }]);
+      } else {
+        // Standalone item - add directly
+        standaloneItems.push({ id, item, listType: type });
+      }
+    });
+    
+    // For each series, find the first unwatched item (by seriesOrder)
+    seriesItems.forEach((items, seriesKey) => {
+      // Sort by seriesOrder (numeric)
+      items.sort((a, b) => {
+        const orderA = utils.numericSeriesOrder(a.item.seriesOrder);
+        const orderB = utils.numericSeriesOrder(b.item.seriesOrder);
+        if (orderA === null && orderB === null) return 0;
+        if (orderA === null) return 1;
+        if (orderB === null) return -1;
+        return orderA - orderB;
+      });
+      
+      // Take only the first item (lowest order number that's unwatched)
+      if (items.length > 0) {
+        const compositeKey = `${type}:${seriesKey}`;
+        if (!seriesFirstUnwatched.has(compositeKey)) {
+          seriesFirstUnwatched.set(compositeKey, items[0]);
+        }
+      }
     });
   });
+  
+  // Combine standalone items with first unwatched from each series
+  candidates.push(...standaloneItems);
+  seriesFirstUnwatched.forEach(item => candidates.push(item));
   
   if (candidates.length === 0) {
     wheel.clearWheelAnimation();
