@@ -25,6 +25,7 @@ export function generateShareUrl(listType, item) {
   params.set('type', listType || 'movies');
   
   if (item.year) params.set('year', String(item.year));
+  if (item.rating) params.set('rating', String(item.rating));
   if (item.poster) params.set('poster', item.poster);
   if (item.director) params.set('director', item.director);
   if (item.author) params.set('author', item.author);
