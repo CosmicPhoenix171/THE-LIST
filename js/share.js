@@ -10,39 +10,28 @@ import { fetchTmdbMetadata, deriveMetadataAssignments } from './metadata.js';
 // ============================================
 // CONSTANTS
 // ============================================
+const SHARE_WORKER_URL = 'https://share-the-list.cosmicphoenix171.workers.dev/';
 const SHARE_BASE_URL = 'https://cosmicphoenix171.github.io/THE-LIST/';
 const SHARE_PARAM_PREFIX = 'share_';
 
 // ============================================
-// GENERATE SHARE URL
+// GENERATE SHARE URL (uses Cloudflare Worker for Discord embeds)
 // ============================================
 export function generateShareUrl(listType, item) {
   if (!item) return null;
   
   const params = new URLSearchParams();
-  params.set(`${SHARE_PARAM_PREFIX}type`, listType || '');
-  params.set(`${SHARE_PARAM_PREFIX}title`, item.title || '');
+  params.set('title', item.title || '');
+  params.set('type', listType || 'movies');
   
-  if (item.year) params.set(`${SHARE_PARAM_PREFIX}year`, String(item.year));
-  if (item.tmdbId) params.set(`${SHARE_PARAM_PREFIX}tmdbId`, String(item.tmdbId));
-  if (item.imdbId) params.set(`${SHARE_PARAM_PREFIX}imdbId`, item.imdbId);
-  if (item.poster) params.set(`${SHARE_PARAM_PREFIX}poster`, item.poster);
-  if (item.director) params.set(`${SHARE_PARAM_PREFIX}director`, item.director);
-  if (item.author) params.set(`${SHARE_PARAM_PREFIX}author`, item.author);
-  if (item.overview) {
-    // Truncate overview to keep URL reasonable
-    const shortOverview = item.overview.length > 150 
-      ? item.overview.substring(0, 147) + '...' 
-      : item.overview;
-    params.set(`${SHARE_PARAM_PREFIX}overview`, shortOverview);
-  }
-  if (item.genres && Array.isArray(item.genres)) {
-    params.set(`${SHARE_PARAM_PREFIX}genres`, item.genres.slice(0, 3).join(','));
-  }
-  if (item.rating) params.set(`${SHARE_PARAM_PREFIX}rating`, String(item.rating));
-  if (item.seriesName) params.set(`${SHARE_PARAM_PREFIX}series`, item.seriesName);
+  if (item.year) params.set('year', String(item.year));
+  if (item.poster) params.set('poster', item.poster);
+  if (item.director) params.set('director', item.director);
+  if (item.author) params.set('author', item.author);
+  if (item.tmdbId) params.set('tmdbId', String(item.tmdbId));
+  if (item.imdbId) params.set('imdbId', item.imdbId);
   
-  return `${SHARE_BASE_URL}?${params.toString()}`;
+  return `${SHARE_WORKER_URL}?${params.toString()}`;
 }
 
 // ============================================
