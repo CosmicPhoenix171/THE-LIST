@@ -448,7 +448,10 @@ function spinWheel(listType) {
   // Gather candidates from caches
   // For items in a series, only include the first unwatched entry (across ALL list types)
   const candidates = [];
-  const targetTypes = listType === 'all' 
+  
+  // Special handling for "anime" - scan ALL lists for items with anime keyword
+  // Otherwise use the selected list type
+  const targetTypes = (listType === 'all' || listType === 'anime')
     ? config.PRIMARY_LIST_TYPES 
     : [listType];
   
@@ -463,6 +466,12 @@ function spinWheel(listType) {
       if (!item) return;
       // Skip finished items
       if (item.finished || item.finishedAt) return;
+      
+      // For anime filter: include items from anime list OR items with anime keyword from other lists
+      if (listType === 'anime') {
+        const isAnimeItem = type === 'anime' || collapsibleCards.itemHasAnimeKeyword(item);
+        if (!isAnimeItem) return;
+      }
       
       if (item.seriesName) {
         // Item belongs to a series - group it (across all list types)
