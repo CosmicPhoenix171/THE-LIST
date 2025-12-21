@@ -45,24 +45,26 @@ export function parseShareUrl(urlString) {
     const url = new URL(urlString || window.location.href);
     const params = url.searchParams;
     
-    // Check if this is a share URL
-    if (!params.has(`${SHARE_PARAM_PREFIX}type`) && !params.has(`${SHARE_PARAM_PREFIX}title`)) {
-      return null;
-    }
+    // Check if this is a share URL (accept both prefixed and plain params for resilience)
+    const hasPrefixed = params.has(`${SHARE_PARAM_PREFIX}type`) || params.has(`${SHARE_PARAM_PREFIX}title`);
+    const hasPlain = params.has('type') || params.has('title');
+    if (!hasPrefixed && !hasPlain) return null;
     
     const shareData = {
-      listType: params.get(`${SHARE_PARAM_PREFIX}type`) || 'movies',
-      title: params.get(`${SHARE_PARAM_PREFIX}title`) || '',
-      year: params.get(`${SHARE_PARAM_PREFIX}year`) || '',
-      tmdbId: params.get(`${SHARE_PARAM_PREFIX}tmdbId`) || '',
-      imdbId: params.get(`${SHARE_PARAM_PREFIX}imdbId`) || '',
-      poster: params.get(`${SHARE_PARAM_PREFIX}poster`) || '',
-      director: params.get(`${SHARE_PARAM_PREFIX}director`) || '',
-      author: params.get(`${SHARE_PARAM_PREFIX}author`) || '',
-      overview: params.get(`${SHARE_PARAM_PREFIX}overview`) || '',
-      genres: params.get(`${SHARE_PARAM_PREFIX}genres`)?.split(',').filter(Boolean) || [],
-      rating: params.get(`${SHARE_PARAM_PREFIX}rating`) || '',
-      seriesName: params.get(`${SHARE_PARAM_PREFIX}series`) || '',
+      listType: params.get(`${SHARE_PARAM_PREFIX}type`) || params.get('type') || 'movies',
+      title: params.get(`${SHARE_PARAM_PREFIX}title`) || params.get('title') || '',
+      year: params.get(`${SHARE_PARAM_PREFIX}year`) || params.get('year') || '',
+      tmdbId: params.get(`${SHARE_PARAM_PREFIX}tmdbId`) || params.get('tmdbId') || '',
+      imdbId: params.get(`${SHARE_PARAM_PREFIX}imdbId`) || params.get('imdbId') || '',
+      poster: params.get(`${SHARE_PARAM_PREFIX}poster`) || params.get('poster') || '',
+      director: params.get(`${SHARE_PARAM_PREFIX}director`) || params.get('director') || '',
+      author: params.get(`${SHARE_PARAM_PREFIX}author`) || params.get('author') || '',
+      overview: params.get(`${SHARE_PARAM_PREFIX}overview`) || params.get('overview') || '',
+      genres: (params.get(`${SHARE_PARAM_PREFIX}genres`) || params.get('genres') || '')
+        .split(',')
+        .filter(Boolean),
+      rating: params.get(`${SHARE_PARAM_PREFIX}rating`) || params.get('rating') || '',
+      seriesName: params.get(`${SHARE_PARAM_PREFIX}series`) || params.get('series') || '',
     };
     
     return shareData;
