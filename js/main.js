@@ -18,6 +18,7 @@ import * as crud from './crud.js';
 import * as easterEgg from './easterEgg.js';
 import * as collapsibleCards from './collapsibleCards.js';
 import * as seriesGrouping from './seriesGrouping.js';
+import * as share from './share.js';
 import { 
   VirtualScroller, 
   ensureVirtualListController, 
@@ -107,6 +108,9 @@ export function initApp() {
   
   initBackToTop();
   ads.initializeRandomAds();
+  
+  // Check for incoming share links
+  share.checkForIncomingShare();
   
   console.info('[THE-LIST] App initialized with modular architecture');
 }

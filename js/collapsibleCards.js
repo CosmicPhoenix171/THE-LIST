@@ -23,6 +23,7 @@ import {
 import { openEditModal } from './modals.js';
 import { handleFinishRequest, deleteItem, deleteSeriesEntries, updateItem, mergeSeriesEntriesByName } from './crud.js';
 import { getUserRegion, ensureTmdbIdentity, fetchWatchProviders, refreshItemMetadata } from './metadata.js';
+import { openShareModal } from './share.js';
 import { getFirebaseDatabase } from './firebase.js';
 import { ref, update } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
@@ -1462,6 +1463,11 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
         onRefreshMetadata: (opts) => refreshItemMetadata(listType, id, item, opts),
         onMergeSeries: (seriesName) => mergeSeriesEntriesByName(listType, seriesName)
       })
+    },
+    {
+      className: 'btn info',
+      label: 'Share',
+      handler: () => openShareModal(listType, item)
     },
     {
       className: 'btn success',
