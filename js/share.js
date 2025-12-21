@@ -87,13 +87,14 @@ export function buildDiscordMessage(listType, item) {
   const series = item.seriesName ? `\n📚 **Series:** ${item.seriesName}` : '';
   
   const shareUrl = generateShareUrl(listType, item);
+  const shareLink = shareUrl ? `[Open in THE LIST](${shareUrl})` : '';
   
   const message = `🎬 **${title}**${year}
 📺 **Type:** ${typeLabel}${creatorLine}${rating}${genres}${series}
 
 ${item.overview ? `> ${item.overview.substring(0, 200)}${item.overview.length > 200 ? '...' : ''}` : ''}
 
-🔗 **Add to your list:** ${shareUrl}`;
+🔗 **Add to your list:** ${shareLink}`;
 
   return message.trim();
 }
