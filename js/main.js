@@ -499,6 +499,16 @@ function spinWheel(listType) {
   // Add standalone items
   candidates.push(...standaloneItems);
   
+  console.log('[Wheel] Debug:', {
+    listType,
+    targetTypes,
+    cacheKeys: Object.keys(state.listCaches),
+    animeCacheSize: Object.keys(state.listCaches.anime || {}).length,
+    seriesCount: seriesItems.size,
+    standaloneCount: standaloneItems.length,
+    totalCandidates: candidates.length
+  });
+  
   if (candidates.length === 0) {
     wheel.clearWheelAnimation();
     spinnerEl.innerHTML = '<span class="spin-text">No eligible items to spin.</span>';
