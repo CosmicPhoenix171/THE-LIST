@@ -30,6 +30,8 @@ export function generateShareUrl(listType, item) {
   if (item.author) params.set('author', item.author);
   if (item.tmdbId) params.set('tmdbId', String(item.tmdbId));
   if (item.imdbId) params.set('imdbId', item.imdbId);
+  // Cache-buster so Discord re-scrapes and shows latest OG tags
+  params.set('v', Date.now().toString());
   
   return `${SHARE_WORKER_URL}?${params.toString()}`;
 }
