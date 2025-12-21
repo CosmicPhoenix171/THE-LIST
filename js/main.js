@@ -515,37 +515,55 @@ function spinWheel(listType) {
 }
 
 function animateWheelSequence(candidates, chosenIndex, winner, spinnerEl, resultEl) {
-  const totalTicks = 25 + Math.floor(Math.random() * 10);
-  let tickIndex = 0;
+  const len = candidates.length;
+  if (len === 0 || !spinnerEl) return;
+
+  // Build sequence similar to old code
+  const iterations = Math.max(28, len * 5);
+  let pointer = Math.floor(Math.random() * len);
+  const sequence = [];
+  for (let i = 0; i < iterations; i++) {
+    sequence.push(candidates[pointer % len]);
+    pointer++;
+  }
+  sequence.push(winner); // End on winner
+
+  const totalDuration = 15000; // 15 seconds for dramatic effect (matches old code)
+  const stepCount = sequence.length;
+  const lastIndex = stepCount - 1;
   
-  const tick = () => {
-    if (tickIndex >= totalTicks) {
-      // Final winner
-      wheel.clearWheelAnimation();
-      spinnerEl.classList.add('hidden');
-      renderWheelWinner(winner, resultEl);
-      return;
+  // Calculate eased schedule - starts fast, slows down at end
+  const schedule = [];
+  for (let i = 0; i < stepCount; i++) {
+    if (lastIndex === 0) {
+      schedule.push(0);
+    } else {
+      const progress = i / lastIndex;
+      const eased = Math.pow(progress, 3); // Cubic easing
+      schedule.push(Math.round(eased * totalDuration));
     }
-    
-    // Show random candidate during animation
-    const randomIdx = Math.floor(Math.random() * candidates.length);
-    const preview = candidates[randomIdx];
-    spinnerEl.innerHTML = '';
-    const label = document.createElement('span');
-    label.className = 'spin-text';
-    label.textContent = preview.item?.title || 'Spinning...';
-    spinnerEl.appendChild(label);
-    
-    // Slow down towards end
-    const progress = tickIndex / totalTicks;
-    const delay = 50 + (progress * progress * 400);
-    
-    tickIndex++;
-    const timeoutId = setTimeout(tick, delay);
-    wheel.addSpinTimeout(timeoutId);
-  };
-  
-  tick();
+  }
+
+  // Animate through sequence
+  sequence.forEach((entry, idx) => {
+    const timeout = setTimeout(() => {
+      if (!spinnerEl) return;
+      const isFinal = idx === sequence.length - 1;
+      spinnerEl.innerHTML = '';
+      const span = document.createElement('span');
+      span.className = `spin-text${isFinal ? ' final' : ''}`;
+      span.textContent = entry.item?.title || '(no title)';
+      spinnerEl.appendChild(span);
+      
+      if (isFinal) {
+        spinnerEl.classList.remove('spinning');
+        wheel.stopWheelSpinAudio();
+        spinnerEl.classList.add('hidden');
+        renderWheelWinner(winner, resultEl);
+      }
+    }, schedule[idx]);
+    wheel.addSpinTimeout(timeout);
+  });
 }
 
 function renderWheelWinner(winner, resultEl) {
