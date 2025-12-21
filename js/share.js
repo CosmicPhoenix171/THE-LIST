@@ -24,6 +24,12 @@ export function generateShareUrl(listType, item) {
   params.set('title', item.title || '');
   params.set('type', listType || 'movies');
   
+  // Get current user's display name for the share
+  const currentUser = getCurrentUser();
+  if (currentUser?.displayName) {
+    params.set('user', currentUser.displayName);
+  }
+  
   if (item.year) params.set('year', String(item.year));
   if (item.finishedRating) params.set('rating', String(item.finishedRating));
   if (item.poster) params.set('poster', item.poster);
