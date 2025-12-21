@@ -525,14 +525,19 @@ export function openSharedItemModal(shareData) {
 // CHECK FOR INCOMING SHARE ON PAGE LOAD
 // ============================================
 export function checkForIncomingShare() {
+  console.log('[Share] Checking for incoming share, URL:', window.location.href);
   const shareData = parseShareUrl();
+  console.log('[Share] Parsed share data:', shareData);
   if (shareData && shareData.title) {
+    console.log('[Share] Found share with title:', shareData.title);
     // Small delay to ensure the page is ready
     setTimeout(() => {
+      console.log('[Share] Opening shared item modal, modalRoot:', modalRoot);
       openSharedItemModal(shareData);
     }, 500);
     return true;
   }
+  console.log('[Share] No valid share data found');
   return false;
 }
 
