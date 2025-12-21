@@ -446,19 +446,18 @@ function spinWheel(listType) {
   wheel.startWheelSpinAudio();
   
   // Gather candidates from caches
-  // For items in a series, only include the first unwatched entry
+  // For items in a series, only include the first unwatched entry (across ALL list types)
   const candidates = [];
   const targetTypes = listType === 'all' 
     ? config.PRIMARY_LIST_TYPES 
     : [listType];
   
-  // Group items by series and find the first unwatched in each
-  const seriesFirstUnwatched = new Map(); // key: "listType:seriesName" -> first unwatched item
+  // Group items by series across all list types and find the first unwatched in each
+  const seriesItems = new Map(); // key: seriesName -> array of items with order (across all types)
   const standaloneItems = []; // items not in a series
   
   targetTypes.forEach(type => {
     const cache = state.listCaches[type] || {};
-    const seriesItems = new Map(); // seriesName -> array of items with order
     
     Object.entries(cache).forEach(([id, item]) => {
       if (!item) return;
@@ -466,7 +465,7 @@ function spinWheel(listType) {
       if (item.finished || item.finishedAt) return;
       
       if (item.seriesName) {
-        // Item belongs to a series - group it
+        // Item belongs to a series - group it (across all list types)
         const key = item.seriesName.toLowerCase().trim();
         if (!seriesItems.has(key)) {
           seriesItems.set(key, []);
@@ -477,32 +476,28 @@ function spinWheel(listType) {
         standaloneItems.push({ id, item, listType: type });
       }
     });
-    
-    // For each series, find the first unwatched item (by seriesOrder)
-    seriesItems.forEach((items, seriesKey) => {
-      // Sort by seriesOrder (numeric)
-      items.sort((a, b) => {
-        const orderA = utils.numericSeriesOrder(a.item.seriesOrder);
-        const orderB = utils.numericSeriesOrder(b.item.seriesOrder);
-        if (orderA === null && orderB === null) return 0;
-        if (orderA === null) return 1;
-        if (orderB === null) return -1;
-        return orderA - orderB;
-      });
-      
-      // Take only the first item (lowest order number that's unwatched)
-      if (items.length > 0) {
-        const compositeKey = `${type}:${seriesKey}`;
-        if (!seriesFirstUnwatched.has(compositeKey)) {
-          seriesFirstUnwatched.set(compositeKey, items[0]);
-        }
-      }
-    });
   });
   
-  // Combine standalone items with first unwatched from each series
+  // For each series (across all types), find the first unwatched item (by seriesOrder)
+  seriesItems.forEach((items, seriesKey) => {
+    // Sort by seriesOrder (numeric) - lowest first
+    items.sort((a, b) => {
+      const orderA = utils.numericSeriesOrder(a.item.seriesOrder);
+      const orderB = utils.numericSeriesOrder(b.item.seriesOrder);
+      if (orderA === null && orderB === null) return 0;
+      if (orderA === null) return 1;
+      if (orderB === null) return -1;
+      return orderA - orderB;
+    });
+    
+    // Take only the first item (lowest order number that's unwatched)
+    if (items.length > 0) {
+      candidates.push(items[0]);
+    }
+  });
+  
+  // Add standalone items
   candidates.push(...standaloneItems);
-  seriesFirstUnwatched.forEach(item => candidates.push(item));
   
   if (candidates.length === 0) {
     wheel.clearWheelAnimation();
