@@ -23,7 +23,7 @@ import {
 import { openEditModal } from './modals.js';
 import { handleFinishRequest, deleteItem, deleteSeriesEntries, updateItem, mergeSeriesEntriesByName } from './crud.js';
 import { getUserRegion, ensureTmdbIdentity, fetchWatchProviders, refreshItemMetadata } from './metadata.js';
-import { openShareModal } from './share.js';
+import { generateShareUrl } from './share.js';
 import { getFirebaseDatabase } from './firebase.js';
 import { ref, update } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
@@ -1465,9 +1465,23 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
       })
     },
     {
-      className: 'btn info',
+      className: 'btn info share-btn',
       label: 'Share',
-      handler: () => openShareModal(listType, item)
+      handler: async (btn) => {
+        const shareUrl = generateShareUrl(listType, item);
+        if (!shareUrl) return;
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          btn.textContent = 'Copied!';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.textContent = 'Share';
+            btn.classList.remove('copied');
+          }, 2000);
+        } catch (err) {
+          console.error('Failed to copy share URL:', err);
+        }
+      }
     },
     {
       className: 'btn success',
@@ -1490,7 +1504,7 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
     const btn = createEl('button', cfg.className, { text: cfg.label });
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      cfg.handler();
+      cfg.handler(btn);
     });
     actions.appendChild(btn);
   });
