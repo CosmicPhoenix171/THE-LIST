@@ -90,14 +90,11 @@ export function buildDiscordMessage(listType, item) {
   const series = item.seriesName ? `\n📚 **Series:** ${item.seriesName}` : '';
   
   const shareUrl = generateShareUrl(listType, item);
-  const shareLink = shareUrl ? `[Open in THE LIST](${shareUrl})` : '';
   
-  const message = `🎬 **${title}**${year}
-📺 **Type:** ${typeLabel}${creatorLine}${rating}${genres}${series}
+  // Discord auto-embeds the URL using our Worker's OG tags
+  // Just include the URL on its own line for the embed to appear
+  const message = `${shareUrl}`;
 
-${item.overview ? `> ${item.overview.substring(0, 200)}${item.overview.length > 200 ? '...' : ''}` : ''}
-
-🔗 **Add to your list:** ${shareLink}`;
 
   return message.trim();
 }
