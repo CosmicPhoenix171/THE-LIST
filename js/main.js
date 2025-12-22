@@ -619,8 +619,8 @@ function initBackToTop() {
   
   const updateVisibility = () => {
     const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
-    const show = scrollTop > 400;
-    dom.backToTopBtn.classList.toggle('visible', show);
+    const shouldShow = scrollTop > 320 && dom.appRoot && !dom.appRoot.classList.contains('hidden');
+    dom.backToTopBtn.classList.toggle('hidden', !shouldShow);
   };
   
   window.addEventListener('scroll', updateVisibility, { passive: true });
