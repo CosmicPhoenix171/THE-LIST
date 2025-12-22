@@ -1931,17 +1931,29 @@ function handleSeriesTreeDrop(event) {
   const cardId = seriesTreeDragState.cardId;
   const cardElement = seriesTreeDragState.cardElement;
   const entryMap = seriesTreeDragState.entryMap;
+  
+  console.log('[SeriesTree Drop] orderedKeys:', orderedKeys);
+  console.log('[SeriesTree Drop] entryMap keys:', entryMap ? Array.from(entryMap.keys()) : 'null');
+  
   let orderedEntries = null;
   if (orderedKeys && orderedKeys.length) {
     orderedEntries = orderedKeys
-      .map(key => entryMap?.get(key) || null)
+      .map(key => {
+        const entry = entryMap?.get(key) || null;
+        if (!entry) console.warn('[SeriesTree Drop] Key not found in entryMap:', key);
+        return entry;
+      })
       .filter(Boolean);
     if ((!orderedEntries || !orderedEntries.length) && listType && cardId) {
+      console.log('[SeriesTree Drop] Falling back to getSeriesTreeEntries');
       const fallbackEntries = getSeriesTreeEntries(listType, cardId);
       const fallbackMap = new Map(fallbackEntries.map(entry => [buildSeriesTreeNodeKey(entry, listType), entry]));
       orderedEntries = orderedKeys.map(key => fallbackMap.get(key)).filter(Boolean);
     }
   }
+  
+  console.log('[SeriesTree Drop] orderedEntries count:', orderedEntries?.length);
+  
   clearSeriesTreeDragState();
   if (orderedEntries && orderedEntries.length) {
     applySeriesTreeReorder(listType, cardId, orderedEntries, cardElement);
