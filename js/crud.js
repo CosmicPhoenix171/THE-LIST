@@ -364,26 +364,76 @@ export async function mergeSeriesEntriesByName(seriesName, fallbackSeriesName = 
     alert('Series name is required to merge.');
     return;
   }
-  const entries = [];
+  
+  // Group entries by their original series name (check both main and finished caches)
+  const entriesByGroup = new Map();
+  const seenIds = new Set();
+  
+  const addEntryToGroup = (type, id, entry) => {
+    if (!entry) return;
+    const entryKey = normalizeTitleKey(entry.seriesName || '');
+    if (!entryKey || !normalizedTargets.has(entryKey)) return;
+    
+    // Avoid duplicates
+    const uniqueKey = `${type}:${id}`;
+    if (seenIds.has(uniqueKey)) return;
+    seenIds.add(uniqueKey);
+    
+    const groupKey = entryKey;
+    if (!entriesByGroup.has(groupKey)) {
+      entriesByGroup.set(groupKey, []);
+    }
+    entriesByGroup.get(groupKey).push({ listType: type, id, item: entry });
+  };
+  
+  // Check all collapsible lists (movies, tvShows, anime)
   COLLAPSIBLE_LISTS.forEach(type => {
-    const store = listCaches[type] || {};
-    Object.entries(store).forEach(([id, entry]) => {
-      if (!entry) return;
-      const entryKey = normalizeTitleKey(entry.seriesName || '');
-      if (!entryKey || !normalizedTargets.has(entryKey)) return;
-      entries.push({ listType: type, id, item: entry });
-    });
+    // Check main cache
+    const mainStore = listCaches[type] || {};
+    Object.entries(mainStore).forEach(([id, entry]) => addEntryToGroup(type, id, entry));
+    
+    // Check finished cache
+    const finishedStore = finishedCaches[type] || {};
+    Object.entries(finishedStore).forEach(([id, entry]) => addEntryToGroup(type, id, entry));
   });
-  if (!entries.length) {
+  
+  if (!entriesByGroup.size) {
     alert(`No entries found for "${targetName}".`);
     return;
   }
-  const confirmed = confirm(`Merge ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} into "${targetName}" and re-number the series?`);
-  if (!confirmed) return;
   
-  if (callbacks.compareSeriesEntries) {
-    entries.sort(callbacks.compareSeriesEntries);
-  }
+  // Sort each group by their internal order
+  entriesByGroup.forEach((groupEntries) => {
+    groupEntries.sort((a, b) => {
+      const orderA = a.item.seriesOrder ?? Infinity;
+      const orderB = b.item.seriesOrder ?? Infinity;
+      if (orderA !== orderB) return orderA - orderB;
+      // Secondary sort by year
+      const yearA = parseInt(a.item.year) || 9999;
+      const yearB = parseInt(b.item.year) || 9999;
+      if (yearA !== yearB) return yearA - yearB;
+      // Tertiary sort by title
+      return (a.item.title || '').localeCompare(b.item.title || '');
+    });
+  });
+  
+  // Combine groups: primary series first, then others sorted by earliest year
+  const groups = Array.from(entriesByGroup.entries());
+  groups.sort((a, b) => {
+    // Primary series (matching target name) comes first
+    if (a[0] === primaryNormalized) return -1;
+    if (b[0] === primaryNormalized) return 1;
+    // Otherwise sort by earliest year in group
+    const minYearA = Math.min(...a[1].map(e => parseInt(e.item.year) || 9999));
+    const minYearB = Math.min(...b[1].map(e => parseInt(e.item.year) || 9999));
+    return minYearA - minYearB;
+  });
+  
+  // Flatten into final ordered list
+  const entries = groups.flatMap(([, groupEntries]) => groupEntries);
+  
+  const confirmed = confirm(`Merge ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} into "${targetName}" and re-number the series (1 through ${entries.length})?`);
+  if (!confirmed) return;
   
   const listTypesToRebalance = new Set();
   const seriesSize = entries.length;
@@ -406,7 +456,13 @@ export async function mergeSeriesEntriesByName(seriesName, fallbackSeriesName = 
         callbacks.rebalanceSeriesOrders(type, targetName)
       ));
     }
-    alert(`Merged ${seriesSize} entr${seriesSize === 1 ? 'y' : 'ies'} in "${targetName}".`);
+    
+    // Invalidate series cache to refresh UI
+    if (callbacks.invalidateSeriesCrossListCache) {
+      callbacks.invalidateSeriesCrossListCache();
+    }
+    
+    alert(`Merged ${seriesSize} entr${seriesSize === 1 ? 'y' : 'ies'} in "${targetName}" (numbered 1-${seriesSize}).`);
   } catch (err) {
     console.error('Series merge failed', err);
     alert('Unable to merge this series right now. Please try again.');

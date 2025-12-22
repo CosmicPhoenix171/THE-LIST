@@ -1529,6 +1529,7 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
         onRefreshMetadata: (opts) => refreshItemMetadata(listType, id, item, opts),
         onMergeSeries: (targetSeriesName, originalSeriesName) => mergeSeriesEntriesByName(targetSeriesName, originalSeriesName, {
           compareSeriesEntries,
+          invalidateSeriesCrossListCache,
           updateLocalItemCaches: (lt, itemId, changes) => {
             if (listCaches[lt] && listCaches[lt][itemId]) {
               Object.assign(listCaches[lt][itemId], changes);
