@@ -1607,7 +1607,7 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
     ...(SERIES_BULK_DELETE_LISTS.has(listType) && item?.seriesName ? [{
       className: 'btn danger',
       label: 'Delete Series',
-      handler: () => deleteSeriesEntries(listType, item.seriesName)
+      handler: () => deleteSeriesEntries(listType, item.seriesName, { fromFinished: showFinishedOnly })
     }] : []),
     {
       className: 'btn ghost',

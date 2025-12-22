@@ -301,7 +301,8 @@ export async function handleFinishRequest(listType, itemId, callbacks = {}) {
 // ============================================
 // DELETE SERIES
 // ============================================
-export async function deleteSeriesEntries(listType, seriesName) {
+export async function deleteSeriesEntries(listType, seriesName, options = {}) {
+  const { fromFinished = false } = options;
   if (!SERIES_BULK_DELETE_LISTS.has(listType)) return;
   if (!currentUser) {
     alert('Not signed in');
@@ -316,7 +317,12 @@ export async function deleteSeriesEntries(listType, seriesName) {
     alert('Unable to determine which series to delete.');
     return;
   }
-  const entries = Object.entries(listCaches[listType] || {}).filter(
+  
+  // Check the appropriate cache based on fromFinished flag
+  const cache = fromFinished ? (finishedCaches[listType] || {}) : (listCaches[listType] || {});
+  const basePath = fromFinished ? `users/${currentUser.uid}/finished/${listType}` : `users/${currentUser.uid}/${listType}`;
+  
+  const entries = Object.entries(cache).filter(
     ([, item]) => normalizeTitleKey(item?.seriesName || '') === normalized
   );
   if (!entries.length) {
@@ -328,7 +334,7 @@ export async function deleteSeriesEntries(listType, seriesName) {
   
   const db = getFirebaseDatabase();
   const removals = entries.map(([id]) => {
-    const itemRef = ref(db, `users/${currentUser.uid}/${listType}/${id}`);
+    const itemRef = ref(db, `${basePath}/${id}`);
     return remove(itemRef).catch(err => {
       console.error('Series delete failed', listType, id, err);
       throw err;
