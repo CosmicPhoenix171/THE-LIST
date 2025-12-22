@@ -322,41 +322,75 @@ export function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem, provide
   const normalizedListType = listType || 'anime';
   let entries = [];
   
-  if (providedEntries && Array.isArray(providedEntries) && providedEntries.length > 0) {
-    entries = providedEntries.map(entry => entry && entry.item).filter(Boolean);
-  } else if (cardId && isCollapsibleList(normalizedListType)) {
+  // If we have a seriesName, collect entries across all list types for complete metrics
+  if (fallbackItem?.seriesName) {
+    const crossEntries = collectSeriesEntriesAcrossLists(fallbackItem.seriesName);
+    if (crossEntries && crossEntries.length > 0) {
+      entries = crossEntries.map(entry => ({ item: entry.item, listType: entry.listType })).filter(e => e.item);
+    }
+  }
+  
+  // Fallback to provided entries or group entries
+  if (!entries.length && providedEntries && Array.isArray(providedEntries) && providedEntries.length > 0) {
+    entries = providedEntries.map(entry => ({ item: entry && entry.item, listType: entry?.listType })).filter(e => e.item);
+  }
+  if (!entries.length && cardId && isCollapsibleList(normalizedListType)) {
     const groupEntries = getSeriesGroupEntries(normalizedListType, cardId);
     if (groupEntries && groupEntries.length) {
-      entries = groupEntries.map(entry => entry && entry.item).filter(Boolean);
+      entries = groupEntries.map(entry => ({ item: entry && entry.item, listType: entry?.listType })).filter(e => e.item);
     }
   }
   
   if (!entries.length && fallbackItem) {
-    entries = [fallbackItem];
+    entries = [{ item: fallbackItem, listType: normalizedListType }];
   }
   if (!entries.length) return null;
 
   const formatLabels = new Map();
   let movieCount = 0;
   let totalEpisodes = 0;
+  let totalSeasons = 0;
   let bestStatus = '';
   let bestPriority = -1;
 
-  entries.forEach(entry => {
+  entries.forEach(entryObj => {
+    const entry = entryObj.item;
+    const entryListType = entryObj.listType || normalizedListType;
     if (!entry) return;
+    
     const rawFormat = entry.animeFormat || entry.imdbType || '';
+    const isMovie = entryListType === 'movies' || 
+      (rawFormat && String(rawFormat).toUpperCase() === 'MOVIE') ||
+      isAnimeMovieEntry(entry);
+    
     if (rawFormat) {
       const normalized = String(rawFormat).toUpperCase();
       if (!formatLabels.has(normalized)) {
         formatLabels.set(normalized, formatAnimeFormatLabel(rawFormat));
       }
       if (normalized === 'MOVIE') movieCount++;
+    } else if (isMovie) {
+      movieCount++;
     }
-    const epValue = extractEpisodeCount(entry);
-    const isMovie = isAnimeMovieEntry(entry);
-    if (epValue > 0 && !isMovie) {
-      totalEpisodes += epValue;
+    
+    // Count episodes for non-movies
+    if (!isMovie) {
+      const epValue = extractEpisodeCount(entry);
+      if (epValue > 0) {
+        totalEpisodes += epValue;
+      }
+      
+      // Count seasons for TV content
+      if (entryListType === 'tvShows' || entry.tvSeasonCount || entry.tvSeasonSummaries) {
+        const sCount = getTvSeasonCount(entry);
+        if (entry.seasonNumber !== undefined) {
+          totalSeasons += 1; // Split season = 1 season
+        } else if (sCount > 0) {
+          totalSeasons += sCount;
+        }
+      }
     }
+    
     const status = (entry.animeStatus || entry.status || '').toUpperCase();
     if (status) {
       const priority = ANIME_STATUS_PRIORITY[status] || 0;
@@ -371,6 +405,7 @@ export function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem, provide
     formatLabels: Array.from(formatLabels.values()),
     movieCount,
     totalEpisodes,
+    totalSeasons,
     statusLabel: bestStatus,
   };
 }
@@ -457,6 +492,9 @@ export function buildSeriesBadgeChips(listType, cardId, item, context = {}) {
   if (metrics.movieCount > 0) {
     chips.push(`${metrics.movieCount} movie${metrics.movieCount === 1 ? '' : 's'}`);
   }
+  if (metrics.totalSeasons > 0) {
+    chips.push(`${metrics.totalSeasons} season${metrics.totalSeasons === 1 ? '' : 's'}`);
+  }
   if (metrics.totalEpisodes > 0) {
     chips.push(`${metrics.totalEpisodes} ep total`);
   }
@@ -513,6 +551,13 @@ export function buildTvStatChips(item, context = {}) {
   // Collapsed view for multi-entry series
   if (context && context.isExpanded === false) {
     let entries = context.seriesEntries;
+    
+    // If we have a seriesName, collect entries across all list types
+    if (!entries && item.seriesName) {
+      entries = collectSeriesEntriesAcrossLists(item.seriesName);
+    }
+    
+    // Fallback to same list type only
     if (!entries && context.cardId) {
       entries = getSeriesGroupEntries('tvShows', context.cardId);
     }
@@ -520,18 +565,36 @@ export function buildTvStatChips(item, context = {}) {
     if (entries && entries.length > 1) {
       let totalSeasons = 0;
       let totalEpisodes = 0;
-      
+      let movieCount = 0;
+
       entries.forEach(entry => {
         const it = entry.item;
         if (!it) return;
-        const sCount = getTvSeasonCount(it);
-        totalSeasons += (sCount > 0 ? sCount : 1);
-        totalEpisodes += getTvEpisodeCount(it);
+        
+        // Check if this entry is a movie (from movies list or has movie format)
+        const entryListType = entry.listType || 'tvShows';
+        const isMovie = entryListType === 'movies' || 
+          (it.animeFormat && it.animeFormat.toUpperCase() === 'MOVIE') ||
+          (it.imdbType && it.imdbType.toLowerCase() === 'movie');
+        
+        if (isMovie) {
+          movieCount++;
+        } else {
+          const sCount = getTvSeasonCount(it);
+          // For split seasons, each entry is 1 season
+          if (it.seasonNumber !== undefined) {
+            totalSeasons += 1;
+          } else {
+            totalSeasons += (sCount > 0 ? sCount : 1);
+          }
+          totalEpisodes += getTvEpisodeCount(it);
+        }
       });
 
       const chips = [];
-      if (totalSeasons > 0) chips.push(`${totalSeasons} seasons`);
-      if (totalEpisodes > 0) chips.push(`${totalEpisodes} episodes`);
+      if (movieCount > 0) chips.push(`${movieCount} movie${movieCount === 1 ? '' : 's'}`);
+      if (totalSeasons > 0) chips.push(`${totalSeasons} season${totalSeasons === 1 ? '' : 's'}`);
+      if (totalEpisodes > 0) chips.push(`${totalEpisodes} episode${totalEpisodes === 1 ? '' : 's'}`);
       return chips;
     }
   }
