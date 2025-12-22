@@ -943,3 +943,64 @@ export async function refreshItemMetadata(listType, itemId, item, options = {}) 
   }
 }
 
+// ============================================
+// FETCH TV SEASON DETAILS FROM TMDB
+// ============================================
+export async function fetchTmdbSeasonDetails(tmdbId, seasonNumber) {
+  if (!tmdbId || seasonNumber === undefined || seasonNumber === null) return null;
+  try {
+    const data = await tmdbFetch(`/tv/${tmdbId}/season/${seasonNumber}`, {
+      append_to_response: 'credits'
+    });
+    if (!data) return null;
+    
+    // Extract cast from credits
+    const castData = data.credits?.cast || [];
+    const cast = castData.slice(0, 15).map(actor => actor.name).filter(Boolean);
+    
+    return {
+      seasonNumber: data.season_number,
+      name: data.name || `Season ${data.season_number}`,
+      overview: data.overview || '',
+      poster: data.poster_path ? `${TMDB_IMAGE_BASE_URL}${data.poster_path}` : '',
+      airDate: data.air_date || '',
+      year: extractPrimaryYear(data.air_date || ''),
+      episodeCount: Array.isArray(data.episodes) ? data.episodes.length : 0,
+      episodes: Array.isArray(data.episodes) ? data.episodes.map(ep => ({
+        episodeNumber: ep.episode_number,
+        name: ep.name,
+        overview: ep.overview,
+        airDate: ep.air_date,
+        runtime: ep.runtime,
+        stillPath: ep.still_path ? `${TMDB_IMAGE_BASE_URL}${ep.still_path}` : '',
+      })) : [],
+      cast,
+    };
+  } catch (err) {
+    console.warn(`TMDb season ${seasonNumber} fetch failed`, err);
+    return null;
+  }
+}
+
+// ============================================
+// FETCH ALL SEASONS FOR A TV SHOW
+// ============================================
+export async function fetchAllTvSeasons(tmdbId) {
+  if (!tmdbId) return [];
+  try {
+    // First get the show details to know how many seasons
+    const showData = await tmdbFetch(`/tv/${tmdbId}`);
+    if (!showData || !Array.isArray(showData.seasons)) return [];
+    
+    // Fetch each season's details (skip specials/season 0 unless explicitly included)
+    const seasonPromises = showData.seasons
+      .filter(s => s && typeof s.season_number === 'number' && s.season_number > 0)
+      .map(s => fetchTmdbSeasonDetails(tmdbId, s.season_number));
+    
+    const seasons = await Promise.all(seasonPromises);
+    return seasons.filter(Boolean);
+  } catch (err) {
+    console.warn('Failed to fetch all TV seasons', err);
+    return [];
+  }
+}

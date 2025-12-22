@@ -157,6 +157,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .btn.ghost{background:transparent;color:var(--text-300);border:1px solid rgba(255,255,255,0.04)}
 .btn.success{background:linear-gradient(135deg,var(--success-300),#7df2c9);color:#031d16;box-shadow:0 8px 18px rgba(71,230,161,0.25)}
 .btn.info{background:linear-gradient(135deg,#5865F2,#7289da);color:#fff;box-shadow:0 8px 18px rgba(88,101,242,0.25)}
+.btn.warning{background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#1c1410;box-shadow:0 8px 18px rgba(245,158,11,0.25)}
 .btn:hover{transform:translateY(-1px)}
 .btn.danger{background:linear-gradient(135deg,var(--danger-300),#ff8787);color:#180a0a;border:0;box-shadow:0 8px 20px rgba(255,107,107,0.25)}
 .hidden{display:none}

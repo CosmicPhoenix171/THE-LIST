@@ -21,8 +21,8 @@ import {
   invalidateSeriesCrossListCache
 } from './seriesGrouping.js';
 import { openEditModal } from './modals.js';
-import { handleFinishRequest, deleteItem, deleteSeriesEntries, updateItem, mergeSeriesEntriesByName } from './crud.js';
-import { getUserRegion, ensureTmdbIdentity, fetchWatchProviders, refreshItemMetadata } from './metadata.js';
+import { handleFinishRequest, deleteItem, deleteSeriesEntries, updateItem, mergeSeriesEntriesByName, splitTvShowSeasons } from './crud.js';
+import { getUserRegion, ensureTmdbIdentity, fetchWatchProviders, refreshItemMetadata, fetchAllTvSeasons } from './metadata.js';
 import { generateShareUrl } from './share.js';
 import { getFirebaseDatabase } from './firebase.js';
 import { ref, update } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
@@ -1488,6 +1488,28 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
       label: 'Finished',
       handler: () => handleFinishRequest(listType, id)
     },
+    // Split Seasons button - only for TV shows with tmdbId and no seriesName (not already split)
+    ...(listType === 'tvShows' && item?.tmdbId && !item?.seriesName ? [{
+      className: 'btn warning',
+      label: 'Split Seasons',
+      handler: async (btn) => {
+        btn.disabled = true;
+        btn.textContent = 'Splitting...';
+        try {
+          const result = await splitTvShowSeasons(id, item, fetchAllTvSeasons);
+          if (result.success) {
+            // The page will automatically refresh from Firebase listeners
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Split Seasons';
+          }
+        } catch (err) {
+          console.error('Split seasons failed:', err);
+          btn.disabled = false;
+          btn.textContent = 'Split Seasons';
+        }
+      }
+    }] : []),
     ...(SERIES_BULK_DELETE_LISTS.has(listType) && item?.seriesName ? [{
       className: 'btn danger',
       label: 'Delete Series',

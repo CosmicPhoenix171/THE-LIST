@@ -424,3 +424,107 @@ export function updateLocalItemCaches(listType, itemId, changes) {
     Object.assign(finishedCaches[listType][itemId], changes);
   }
 }
+
+// ============================================
+// SPLIT TV SHOW INTO SEASONS
+// ============================================
+export async function splitTvShowSeasons(itemId, item, fetchAllTvSeasons) {
+  if (!currentUser) {
+    alert('Not signed in');
+    throw new Error('Not signed in');
+  }
+  
+  if (!item.tmdbId) {
+    alert('This TV show doesn\'t have TMDB data. Please refresh metadata first.');
+    return { success: false };
+  }
+  
+  const showTitle = item.title || 'Unknown Show';
+  
+  if (!confirm(`Split "${showTitle}" into individual seasons?\n\nThis will create separate entries for each season and group them together.`)) {
+    return { success: false };
+  }
+  
+  try {
+    pushNotification({ message: `Fetching season data for ${showTitle}...`, type: 'info' });
+    
+    // Fetch all season details from TMDB
+    const seasons = await fetchAllTvSeasons(item.tmdbId);
+    
+    if (!seasons || seasons.length === 0) {
+      alert('Could not fetch season data from TMDB. Please try again.');
+      return { success: false };
+    }
+    
+    pushNotification({ message: `Found ${seasons.length} seasons. Creating entries...`, type: 'info' });
+    
+    const db = getFirebaseDatabase();
+    const listRef = ref(db, `users/${currentUser.uid}/tvShows`);
+    
+    // Use the show title as the series name for grouping
+    const seriesName = showTitle;
+    
+    // Create an entry for each season
+    const createdIds = [];
+    for (let i = 0; i < seasons.length; i++) {
+      const season = seasons[i];
+      
+      // Build the season entry
+      const seasonEntry = {
+        title: `${showTitle}: ${season.name}`,
+        year: season.year || item.year || null,
+        poster: season.poster || item.poster || null,
+        plot: season.overview || item.plot || null,
+        tmdbId: item.tmdbId,
+        imdbId: item.imdbId || null,
+        seriesName: seriesName,
+        seriesOrder: season.seasonNumber,
+        seasonNumber: season.seasonNumber,
+        episodeCount: season.episodeCount || null,
+        episodes: season.episodes || [],
+        actors: season.cast?.length ? season.cast.join(', ') : (item.actors || null),
+        genres: item.genres || null,
+        hasAnimeKeyword: item.hasAnimeKeyword || false,
+        tvStatus: item.tvStatus || null,
+        tvEpisodeRuntime: item.tvEpisodeRuntime || null,
+        originalLanguage: item.originalLanguage || null,
+        addedAt: new Date().toISOString(),
+        createdAt: Date.now(),
+        splitFromId: itemId,
+      };
+      
+      // Clean up null/undefined values
+      Object.keys(seasonEntry).forEach(key => {
+        if (seasonEntry[key] === null || seasonEntry[key] === undefined) {
+          delete seasonEntry[key];
+        }
+      });
+      
+      const newRef = push(listRef);
+      await set(newRef, seasonEntry);
+      createdIds.push(newRef.key);
+    }
+    
+    // Delete the original entry
+    const originalRef = ref(db, `users/${currentUser.uid}/tvShows/${itemId}`);
+    await remove(originalRef);
+    
+    pushNotification({ 
+      message: `Split "${showTitle}" into ${seasons.length} seasons successfully!`, 
+      type: 'success' 
+    });
+    
+    return { 
+      success: true, 
+      createdIds, 
+      deletedId: itemId,
+      seasonCount: seasons.length,
+      seriesName 
+    };
+    
+  } catch (err) {
+    console.error('Split TV show failed', err);
+    alert('Failed to split TV show. Please try again.');
+    return { success: false, error: err };
+  }
+}
