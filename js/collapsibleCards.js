@@ -550,14 +550,17 @@ export function buildTvStatChips(item, context = {}) {
 
   // Collapsed view for multi-entry series
   if (context && context.isExpanded === false) {
-    let entries = context.seriesEntries;
+    let entries = null;
     
-    // If we have a seriesName, collect entries across all list types
-    if (!entries && item.seriesName) {
+    // Always use cross-list collection when we have a seriesName for complete stats
+    if (item.seriesName) {
       entries = collectSeriesEntriesAcrossLists(item.seriesName);
     }
     
-    // Fallback to same list type only
+    // Fallback to context entries or group entries
+    if (!entries || entries.length === 0) {
+      entries = context.seriesEntries;
+    }
     if (!entries && context.cardId) {
       entries = getSeriesGroupEntries('tvShows', context.cardId);
     }
@@ -1037,7 +1040,7 @@ export function buildMovieCardInfo(listType, item, context = {}) {
   info.appendChild(header);
 
   if (isCollapsibleList(listType)) {
-    const badges = buildMediaSummaryBadges(listType, item, { ...context, listType, isExpanded: true });
+    const badges = buildMediaSummaryBadges(listType, item, { ...context, listType });
     if (badges) info.appendChild(badges);
   }
 
