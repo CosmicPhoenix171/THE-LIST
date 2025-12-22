@@ -480,7 +480,7 @@ export async function splitTvShowSeasons(itemId, item, fetchAllTvSeasons) {
         seriesName: seriesName,
         seriesOrder: season.seasonNumber,
         seasonNumber: season.seasonNumber,
-        episodeCount: season.episodeCount || null,
+        tvEpisodeCount: season.episodeCount || null,
         episodes: season.episodes || [],
         actors: season.cast?.length ? season.cast.join(', ') : (item.actors || null),
         genres: item.genres || null,
