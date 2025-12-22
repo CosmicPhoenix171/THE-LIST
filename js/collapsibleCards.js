@@ -1650,13 +1650,25 @@ export async function moveSeriesTreeNode(listType, entry, direction) {
   const seriesName = entry.item.seriesName;
   if (!seriesName) return;
 
+  // Invalidate cache first to ensure fresh data
+  invalidateSeriesCrossListCache();
+  
   const entries = collectSeriesEntriesAcrossLists(seriesName);
   if (!entries || !entries.length) return;
   
   entries.sort(compareSeriesEntries);
   
-  const currentIndex = entries.findIndex(e => e.id === entry.id && (e.listType === entry.listType || (!e.listType && !entry.listType)));
-  if (currentIndex === -1) return;
+  // Find current entry - match by id and listType
+  const entryListType = entry.listType || listType;
+  const currentIndex = entries.findIndex(e => {
+    const eListType = e.listType || listType;
+    return e.id === entry.id && eListType === entryListType;
+  });
+  
+  if (currentIndex === -1) {
+    console.warn('Could not find entry in series list:', entry.id, entryListType);
+    return;
+  }
   
   const targetIndex = currentIndex + direction;
   if (targetIndex < 0 || targetIndex >= entries.length) return;
