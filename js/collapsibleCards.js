@@ -1044,6 +1044,12 @@ export function buildMovieCardInfo(listType, item, context = {}) {
     if (badges) info.appendChild(badges);
   }
 
+  // For series entries, add actions under the info section when expanded
+  if (context.isExpanded && item?.seriesName) {
+    const actions = buildMovieCardActions(listType, context.entryId || context.cardId, item);
+    if (actions) info.appendChild(actions);
+  }
+
   return info;
 }
 
@@ -1439,10 +1445,12 @@ export function buildMovieCardDetails(listType, cardId, entryId, item, context =
     details.appendChild(seriesBlock);
   }
 
-  // Add action buttons
-  const actions = buildMovieCardActions(listType, entryId || cardId, item);
-  if (actions) {
-    details.appendChild(actions);
+  // Add action buttons (skip for series entries - they're in the info section)
+  if (!item?.seriesName) {
+    const actions = buildMovieCardActions(listType, entryId || cardId, item);
+    if (actions) {
+      details.appendChild(actions);
+    }
   }
 
   return details;
