@@ -1488,8 +1488,9 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
       label: 'Finished',
       handler: () => handleFinishRequest(listType, id)
     },
-    // Split Seasons button - only for TV shows with tmdbId and no seriesName (not already split)
-    ...(listType === 'tvShows' && item?.tmdbId && !item?.seriesName ? [{
+    // Split Seasons button - only for TV shows with tmdbId that haven't already been split
+    // Shows if: is TV show, has tmdbId, and is not an already-split season (no splitFromId)
+    ...(listType === 'tvShows' && item?.tmdbId && !item?.splitFromId ? [{
       className: 'btn warning',
       label: 'Split Seasons',
       handler: async (btn) => {
