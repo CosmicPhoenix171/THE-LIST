@@ -964,6 +964,13 @@ export function buildMovieCardSummary(listType, item, context = {}) {
   const summary = createEl('div', 'movie-card-summary');
   summary.appendChild(buildMovieArtwork(listType, item, context));
   summary.appendChild(buildMovieCardInfo(listType, item, context));
+  
+  // For series entries, add actions under the info section when expanded
+  if (context.isExpanded && item?.seriesName) {
+    const actions = buildMovieCardActions(listType, context.entryId || context.cardId, item);
+    if (actions) summary.appendChild(actions);
+  }
+  
   return summary;
 }
 
@@ -1049,12 +1056,6 @@ export function buildMovieCardInfo(listType, item, context = {}) {
   if (isCollapsibleList(listType)) {
     const badges = buildMediaSummaryBadges(listType, item, { ...context, listType });
     if (badges) info.appendChild(badges);
-  }
-
-  // For series entries, add actions under the info section when expanded
-  if (context.isExpanded && item?.seriesName) {
-    const actions = buildMovieCardActions(listType, context.entryId || context.cardId, item);
-    if (actions) info.appendChild(actions);
   }
 
   return info;
