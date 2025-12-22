@@ -1727,17 +1727,28 @@ function applySeriesTreeReorder(listType, cardId, orderedEntries, cardElement) {
 function applySeriesOrderSnapshotUpdates(listType, orderMap) {
   if (!orderMap || !orderMap.size) return;
   
+  // Collect all listTypes from the orderMap keys (format: "listType:id" or "listType:title:year")
+  const listTypesToUpdate = new Set([listType]);
+  orderMap.forEach((order, key) => {
+    const colonIndex = key.indexOf(':');
+    if (colonIndex > 0) {
+      listTypesToUpdate.add(key.substring(0, colonIndex));
+    }
+  });
+  
   [listCaches, finishedCaches].forEach(cacheMap => {
-    const store = cacheMap && cacheMap[listType];
-    if (!store) return;
-    
-    Object.entries(store).forEach(([id, item]) => {
-      if (!item) return;
-      const key = buildSeriesEntryKey(listType, id, item);
-      const newOrder = orderMap.get(key);
-      if (newOrder !== undefined) {
-        item.seriesOrder = newOrder;
-      }
+    listTypesToUpdate.forEach(lt => {
+      const store = cacheMap && cacheMap[lt];
+      if (!store) return;
+      
+      Object.entries(store).forEach(([id, item]) => {
+        if (!item) return;
+        const key = buildSeriesEntryKey(lt, id, item);
+        const newOrder = orderMap.get(key);
+        if (newOrder !== undefined) {
+          item.seriesOrder = newOrder;
+        }
+      });
     });
   });
 }
