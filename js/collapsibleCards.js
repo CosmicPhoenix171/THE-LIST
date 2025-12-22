@@ -897,9 +897,16 @@ export function buildCollapsibleMovieCard(listType, id, item, positionIndex = 0,
     card.addEventListener('click', (ev) => {
       // Don't toggle if clicking on a button or link
       if (ev.target.closest('button, a, input, textarea, select')) return;
+      const wasExpanded = card.classList.contains('expanded');
       toggleCardExpansion(listType, id, {
         updateStates: () => updateCollapsibleCardStates(listType)
       });
+      // Center the card in view when expanding
+      if (!wasExpanded) {
+        requestAnimationFrame(() => {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      }
     });
   }
   if (options.isUnified) {
