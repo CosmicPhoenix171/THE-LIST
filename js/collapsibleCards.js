@@ -1527,7 +1527,17 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
       label: 'Edit',
       handler: () => openEditModal(listType, id, item, {
         onRefreshMetadata: (opts) => refreshItemMetadata(listType, id, item, opts),
-        onMergeSeries: (seriesName) => mergeSeriesEntriesByName(listType, seriesName)
+        onMergeSeries: (targetSeriesName, originalSeriesName) => mergeSeriesEntriesByName(targetSeriesName, originalSeriesName, {
+          compareSeriesEntries,
+          updateLocalItemCaches: (lt, itemId, changes) => {
+            if (listCaches[lt] && listCaches[lt][itemId]) {
+              Object.assign(listCaches[lt][itemId], changes);
+            }
+            if (finishedCaches[lt] && finishedCaches[lt][itemId]) {
+              Object.assign(finishedCaches[lt][itemId], changes);
+            }
+          }
+        })
       })
     },
     {
