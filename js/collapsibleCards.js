@@ -1658,12 +1658,14 @@ export async function moveSeriesTreeNode(listType, entry, direction) {
   
   entries.sort(compareSeriesEntries);
   
-  // Find current entry - match by id and listType
+  // Find current entry - first try exact match, then match by ID only
   const entryListType = entry.listType || listType;
-  const currentIndex = entries.findIndex(e => {
-    const eListType = e.listType || listType;
-    return e.id === entry.id && eListType === entryListType;
-  });
+  let currentIndex = entries.findIndex(e => e.id === entry.id && e.listType === entryListType);
+  
+  // Fallback: match by ID only if listType mismatch (handles cross-list entries)
+  if (currentIndex === -1) {
+    currentIndex = entries.findIndex(e => e.id === entry.id);
+  }
   
   if (currentIndex === -1) {
     console.warn('Could not find entry in series list:', entry.id, entryListType);
@@ -1863,7 +1865,28 @@ function handleSeriesTreeDragStart(event) {
   const cardId = list.dataset.cardId || node.closest('.series-tree')?.dataset.cardId || '';
   const entries = getSeriesTreeEntries(listType, cardId);
   if (!entries.length) return;
-  const entryMap = new Map(entries.map(entry => [buildSeriesTreeNodeKey(entry, listType), entry]));
+  
+  // Build entryMap by matching entries to DOM nodes by ID
+  // This ensures keys match what's stored in the DOM, avoiding mismatches
+  const entryMap = new Map();
+  const domNodes = list.querySelectorAll('.series-tree-node:not(.series-tree-placeholder)');
+  domNodes.forEach(domNode => {
+    const nodeKey = domNode.dataset.entryKey || '';
+    const nodeId = domNode.dataset.entryId || '';
+    const nodeListType = domNode.dataset.listType || listType;
+    
+    // Find matching entry by ID and listType
+    let matchingEntry = entries.find(e => e.id === nodeId && e.listType === nodeListType);
+    // Fallback: match by ID only if listType mismatch
+    if (!matchingEntry) {
+      matchingEntry = entries.find(e => e.id === nodeId);
+    }
+    
+    if (matchingEntry && nodeKey) {
+      entryMap.set(nodeKey, matchingEntry);
+    }
+  });
+  
   seriesTreeDragState.activeNode = node;
   seriesTreeDragState.listElement = list;
   seriesTreeDragState.placeholder = null;
