@@ -79,8 +79,6 @@ export function collectSeriesEntriesAcrossLists(seriesName) {
   const normalizedKey = normalizeTitleKey(seriesName);
   if (!normalizedKey) return [];
 
-  const debugSAO = seriesName === 'Sword Art Online';
-
   // IMPORTANT:
   // Grouping must not mix main-list entries with finished entries.
   // Cache entries are therefore keyed by the current view mode.
@@ -95,33 +93,6 @@ export function collectSeriesEntriesAcrossLists(seriesName) {
   
   const entries = [];
   const cacheMap = getDisplayCacheMap();
-  
-  if (debugSAO) {
-    console.log('[SAO] Looking for seriesName:', seriesName, 'normalizedKey:', normalizedKey);
-    console.log('[SAO] showFinishedOnly:', showFinishedOnly);
-    console.log('[SAO] cacheMap:', cacheMap);
-    console.log('[SAO] cacheMap actual keys:', Object.keys(cacheMap));
-    console.log('[SAO] listCaches imported:', listCaches);
-    console.log('[SAO] listCaches keys:', Object.keys(listCaches));
-    // Log all items that contain "sword art" in their title or seriesName
-    COLLAPSIBLE_LISTS.forEach(type => {
-      const pool = cacheMap[type];
-      console.log(`[SAO] Pool for ${type}:`, pool ? Object.keys(pool).length + ' items' : 'empty');
-      if (!pool) return;
-      Object.entries(pool).forEach(([id, item]) => {
-        if (item && (item.title?.toLowerCase().includes('sword art') || item.seriesName?.toLowerCase().includes('sword art'))) {
-          console.log(`[SAO] Found in ${type}:`, { 
-            id, 
-            title: item.title, 
-            seriesName: item.seriesName,
-            tvSeasonCount: item.tvSeasonCount,
-            tvEpisodeCount: item.tvEpisodeCount,
-            animeSeasonSummaries: item.animeSeasonSummaries?.length
-          });
-        }
-      });
-    });
-  }
   
   COLLAPSIBLE_LISTS.forEach(type => {
     const pool = cacheMap[type];

@@ -323,18 +323,14 @@ export function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem, provide
   let entries = [];
   const seenIds = new Set();
   
-  const debugSAO = fallbackItem?.seriesName === 'Sword Art Online';
-  
   // Helper to add entries without duplicates
-  const addEntries = (newEntries, source) => {
+  const addEntries = (newEntries) => {
     if (!newEntries || !Array.isArray(newEntries)) return;
-    if (debugSAO) console.log(`[SAO Debug] Adding from ${source}:`, newEntries.length, 'entries');
     newEntries.forEach(entry => {
       const id = entry.id || entry.item?.title;
       if (id && !seenIds.has(id)) {
         seenIds.add(id);
         entries.push({ item: entry.item, listType: entry.listType });
-        if (debugSAO) console.log(`[SAO Debug] Added: ${entry.item?.title}, listType: ${entry.listType}`);
       }
     });
   };
@@ -342,22 +338,18 @@ export function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem, provide
   // First check unified series groups (most complete for cross-list collections)
   if (cardId && seriesGroups.unified) {
     const unifiedEntries = seriesGroups.unified.get(cardId);
-    if (debugSAO) console.log('[SAO Debug] Unified entries for cardId', cardId, ':', unifiedEntries);
     if (unifiedEntries && unifiedEntries.length > 0) {
-      addEntries(unifiedEntries, 'unified');
+      addEntries(unifiedEntries);
     }
   }
   
   // Also collect by seriesName for any entries that might not be in unified groups
   if (fallbackItem?.seriesName) {
     const crossEntries = collectSeriesEntriesAcrossLists(fallbackItem.seriesName);
-    if (debugSAO) console.log('[SAO Debug] Cross entries:', crossEntries);
     if (crossEntries && crossEntries.length > 0) {
-      addEntries(crossEntries, 'crossList');
+      addEntries(crossEntries);
     }
   }
-  
-  if (debugSAO) console.log('[SAO Debug] Total entries after collection:', entries.length);
   
   // Fallback to provided entries or single-list group entries
   if (!entries.length && providedEntries && Array.isArray(providedEntries) && providedEntries.length > 0) {
