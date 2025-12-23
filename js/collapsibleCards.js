@@ -536,7 +536,6 @@ export function collectMediaBadgeChips(listType, item, context = {}) {
 
 export function buildSeriesBadgeChips(listType, cardId, item, context = {}) {
   const metrics = deriveSeriesBadgeMetrics(listType, cardId, item, context.seriesEntries);
-  console.log('[Chips] buildSeriesBadgeChips:', { listType, cardId, itemTitle: item?.title, seriesName: item?.seriesName, metrics });
   if (!metrics) return [];
   const chips = [];
   
