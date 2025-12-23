@@ -60,11 +60,18 @@ const seasonThemes = {
   },
 };
 
-// Firework colors for explosions
+// Firework colors for explosions - bright, vibrant colors
 const fireworkColors = [
-  '#ff0000', '#ff6600', '#ffff00', '#00ff00',
-  '#00ffff', '#0066ff', '#ff00ff', '#ff1493',
-  '#ffd700', '#ffffff'
+  '#ff3333', '#ff2222', // Bright red
+  '#ff9933', '#ffaa00', // Bright orange
+  '#ffff33', '#ffff66', // Bright yellow
+  '#33ff33', '#66ff66', // Bright green
+  '#33ffff', '#66ffff', // Bright cyan
+  '#3399ff', '#66aaff', // Bright blue
+  '#ff33ff', '#ff66ff', // Bright magenta
+  '#ff69b4', '#ff99cc', // Bright pink
+  '#ffdd33', '#ffee66', // Bright gold
+  '#ffffff', '#ffffcc'  // White/cream
 ];
 
 // Performance limits
@@ -397,7 +404,7 @@ function createExplosion(x, y) {
       y: y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      size: 4 + Math.random() * 4,
+      size: 6 + Math.random() * 6, // Larger particles
       radius: 2,
       opacity: 1,
       fadeRate: 0.012 + Math.random() * 0.015,
@@ -415,7 +422,7 @@ function createExplosion(x, y) {
     el.textContent = '●';
     el.style.fontSize = `${particle.size}px`;
     el.style.color = particleColor;
-    el.style.textShadow = `0 0 6px ${particleColor}, 0 0 12px ${particleColor}`;
+    el.style.textShadow = `0 0 8px ${particleColor}, 0 0 16px ${particleColor}, 0 0 24px ${particleColor}`;
     el.style.opacity = '1';
     layer.appendChild(el);
     particle.el = el;
