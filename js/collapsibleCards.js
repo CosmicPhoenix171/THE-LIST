@@ -321,33 +321,44 @@ export function getAnimeSeasonField(item) {
 export function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem, providedEntries = null) {
   const normalizedListType = listType || 'anime';
   let entries = [];
+  const seenIds = new Set();
   
-  // If we have a seriesName, collect entries across all list types for complete metrics
-  if (fallbackItem?.seriesName) {
-    const crossEntries = collectSeriesEntriesAcrossLists(fallbackItem.seriesName);
-    if (fallbackItem.seriesName === 'Sword Art Online') {
-      console.log('[Metrics] SAO Cross entries:', crossEntries?.map(e => ({ 
-        title: e.item?.title, 
-        listType: e.listType, 
-        seasonNumber: e.item?.seasonNumber,
-        tvSeasonCount: e.item?.tvSeasonCount,
-        tvEpisodeCount: e.item?.tvEpisodeCount,
-        seriesName: e.item?.seriesName
-      })));
-    }
-    if (crossEntries && crossEntries.length > 0) {
-      entries = crossEntries.map(entry => ({ item: entry.item, listType: entry.listType })).filter(e => e.item);
+  // Helper to add entries without duplicates
+  const addEntries = (newEntries) => {
+    if (!newEntries || !Array.isArray(newEntries)) return;
+    newEntries.forEach(entry => {
+      const id = entry.id || entry.item?.title;
+      if (id && !seenIds.has(id)) {
+        seenIds.add(id);
+        entries.push({ item: entry.item, listType: entry.listType });
+      }
+    });
+  };
+  
+  // First check unified series groups (most complete for cross-list collections)
+  if (cardId && seriesGroups.unified) {
+    const unifiedEntries = seriesGroups.unified.get(cardId);
+    if (unifiedEntries && unifiedEntries.length > 0) {
+      addEntries(unifiedEntries);
     }
   }
   
-  // Fallback to provided entries or group entries
+  // Also collect by seriesName for any entries that might not be in unified groups
+  if (fallbackItem?.seriesName) {
+    const crossEntries = collectSeriesEntriesAcrossLists(fallbackItem.seriesName);
+    if (crossEntries && crossEntries.length > 0) {
+      addEntries(crossEntries);
+    }
+  }
+  
+  // Fallback to provided entries or single-list group entries
   if (!entries.length && providedEntries && Array.isArray(providedEntries) && providedEntries.length > 0) {
-    entries = providedEntries.map(entry => ({ item: entry && entry.item, listType: entry?.listType })).filter(e => e.item);
+    addEntries(providedEntries);
   }
   if (!entries.length && cardId && isCollapsibleList(normalizedListType)) {
     const groupEntries = getSeriesGroupEntries(normalizedListType, cardId);
     if (groupEntries && groupEntries.length) {
-      entries = groupEntries.map(entry => ({ item: entry && entry.item, listType: entry?.listType })).filter(e => e.item);
+      addEntries(groupEntries);
     }
   }
   
@@ -355,6 +366,9 @@ export function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem, provide
     entries = [{ item: fallbackItem, listType: normalizedListType }];
   }
   if (!entries.length) return null;
+  
+  // Filter out entries without items
+  entries = entries.filter(e => e.item);
 
   const formatLabels = new Map();
   let movieCount = 0;
