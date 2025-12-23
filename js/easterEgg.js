@@ -219,12 +219,13 @@ function createSparkler(container, side) {
   
   // Position close to the countdown text
   const sideOffset = side === 'left' ? 'calc(50% - 280px)' : 'calc(50% + 240px)';
+  const rotation = side === 'left' ? 'rotate(-25deg)' : 'rotate(25deg)';
   
   sparklerContainer.style.cssText = `
     position: absolute;
     top: 42%;
     left: ${sideOffset};
-    transform: translateY(-50%);
+    transform: translateY(-50%) ${rotation};
     width: 80px;
     height: 120px;
     z-index: 2;
