@@ -70,6 +70,9 @@ const fireworkColors = [
 // Firework particles array
 let fireworkParticles = [];
 
+// Trail particles (smoke and sparkles)
+let trailParticles = [];
+
 export function getSeasonalTheme(now = new Date()) {
   const month = now.getMonth();
   const day = now.getDate();
@@ -297,11 +300,95 @@ function createExplosion(x, y) {
   }
 }
 
+function spawnTrailParticle(x, y, isSparkle) {
+  if (!layer) return;
+
+  const particle = {
+    x: x + (Math.random() - 0.5) * 6,
+    y: y + (Math.random() - 0.5) * 4,
+    vx: (Math.random() - 0.5) * 1.5,
+    vy: 0.5 + Math.random() * 1.5, // Drift downward
+    size: isSparkle ? 3 + Math.random() * 4 : 6 + Math.random() * 8,
+    opacity: isSparkle ? 1 : 0.6 + Math.random() * 0.3,
+    fadeRate: isSparkle ? 0.025 + Math.random() * 0.02 : 0.015 + Math.random() * 0.01,
+    isSparkle: isSparkle,
+    scale: 1,
+  };
+
+  const el = document.createElement('div');
+  el.className = 'tm-sprite tm-trail';
+  
+  if (isSparkle) {
+    // Sparkle particle
+    const sparkleChars = ['✦', '✧', '★', '·', '•'];
+    el.textContent = sparkleChars[Math.floor(Math.random() * sparkleChars.length)];
+    const sparkleColors = ['#ffd700', '#ffaa00', '#ffffff', '#ffff99'];
+    const color = sparkleColors[Math.floor(Math.random() * sparkleColors.length)];
+    el.style.color = color;
+    el.style.textShadow = `0 0 4px ${color}, 0 0 8px ${color}`;
+  } else {
+    // Smoke particle
+    el.textContent = '●';
+    const smokeColors = ['#888888', '#999999', '#aaaaaa', '#777777'];
+    el.style.color = smokeColors[Math.floor(Math.random() * smokeColors.length)];
+    el.style.textShadow = '0 0 8px rgba(100,100,100,0.5)';
+  }
+  
+  el.style.fontSize = `${particle.size}px`;
+  el.style.opacity = particle.opacity;
+  el.style.left = `${particle.x}px`;
+  el.style.top = `${particle.y}px`;
+  el.style.transform = 'translate(-50%, -50%)';
+  layer.appendChild(el);
+  particle.el = el;
+  trailParticles.push(particle);
+}
+
+function updateTrailParticles() {
+  for (let i = trailParticles.length - 1; i >= 0; i--) {
+    const particle = trailParticles[i];
+
+    particle.x += particle.vx;
+    particle.y += particle.vy;
+    particle.opacity -= particle.fadeRate;
+    
+    // Smoke expands as it fades
+    if (!particle.isSparkle) {
+      particle.scale += 0.02;
+    }
+
+    if (particle.opacity <= 0) {
+      if (particle.el && particle.el.parentNode) {
+        particle.el.parentNode.removeChild(particle.el);
+      }
+      trailParticles.splice(i, 1);
+    } else {
+      particle.el.style.opacity = particle.opacity;
+      particle.el.style.left = `${particle.x}px`;
+      particle.el.style.top = `${particle.y}px`;
+      if (!particle.isSparkle) {
+        particle.el.style.transform = `translate(-50%, -50%) scale(${particle.scale})`;
+      }
+    }
+  }
+}
+
 function updateFireworks() {
+  // Update trail particles
+  updateTrailParticles();
+
   // Update rockets
   for (let i = sprites.length - 1; i >= 0; i--) {
     const sprite = sprites[i];
     if (sprite.isRocket) {
+      // Spawn trail particles behind the rocket
+      if (Math.random() < 0.7) {
+        spawnTrailParticle(sprite.x, sprite.y + 5, false); // Smoke
+      }
+      if (Math.random() < 0.5) {
+        spawnTrailParticle(sprite.x, sprite.y + 3, true); // Sparkle
+      }
+
       sprite.vy += 0.05; // Slight gravity
       sprite.x += sprite.vx;
       sprite.y += sprite.vy;
@@ -507,6 +594,13 @@ export function clear() {
     }
   });
   fireworkParticles.length = 0;
+  // Clear trail particles
+  trailParticles.forEach(particle => {
+    if (particle.el && particle.el.parentNode) {
+      particle.el.parentNode.removeChild(particle.el);
+    }
+  });
+  trailParticles.length = 0;
   if (layer && layer.parentNode) {
     layer.parentNode.removeChild(layer);
     layer = null;
