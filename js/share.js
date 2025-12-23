@@ -3,7 +3,7 @@
 import { createEl } from './utils.js';
 import { modalRoot } from './dom.js';
 import { MEDIA_TYPE_LABELS } from './config.js';
-import { getCurrentUser } from './state.js';
+import { getCurrentUser, listCaches, finishedCaches, showFinishedOnly } from './state.js';
 import { addItem } from './crud.js';
 import { fetchTmdbMetadata, deriveMetadataAssignments } from './metadata.js';
 import { getFirebaseDatabase } from './firebase.js';
@@ -16,6 +16,51 @@ const SHARE_WORKER_URL = 'https://share-the-list.cosmicphoenix171.workers.dev/';
 const SHARE_BASE_URL = 'https://cosmicphoenix171.github.io/THE-LIST/';
 const SHARE_PARAM_PREFIX = 'share_';
 const SHARE_CHANNEL_NAME = 'the-list-share-channel';
+
+// ============================================
+// HELPER: CHECK IF ITEM ALREADY EXISTS IN LIST
+// ============================================
+function itemExistsInList(listType, item) {
+  // Check both main and finished caches
+  const mainCache = listCaches[listType];
+  const finishedCache = finishedCaches[listType];
+  
+  const checkInCache = (cache) => {
+    if (!cache || !Array.isArray(cache)) return false;
+    return cache.some(existing => {
+      const existingItem = existing.item || existing;
+      // Check by tmdbId first (most reliable)
+      if (item.tmdbId && existingItem.tmdbId && item.tmdbId === existingItem.tmdbId) {
+        // For TV shows, also check season number
+        if (item.seasonNumber !== undefined && existingItem.seasonNumber !== undefined) {
+          return item.seasonNumber === existingItem.seasonNumber;
+        }
+        return true;
+      }
+      // Check by imdbId as fallback
+      if (item.imdbId && existingItem.imdbId && item.imdbId === existingItem.imdbId) {
+        if (item.seasonNumber !== undefined && existingItem.seasonNumber !== undefined) {
+          return item.seasonNumber === existingItem.seasonNumber;
+        }
+        return true;
+      }
+      // Last resort: check by title + year
+      if (item.title && existingItem.title && item.year && existingItem.year) {
+        const titleMatch = item.title.toLowerCase() === existingItem.title.toLowerCase();
+        const yearMatch = String(item.year) === String(existingItem.year);
+        if (titleMatch && yearMatch) {
+          if (item.seasonNumber !== undefined && existingItem.seasonNumber !== undefined) {
+            return item.seasonNumber === existingItem.seasonNumber;
+          }
+          return true;
+        }
+      }
+      return false;
+    });
+  };
+  
+  return checkInCache(mainCache) || checkInCache(finishedCache);
+}
 
 // ============================================
 // BROADCAST CHANNEL FOR TAB COORDINATION
@@ -1158,10 +1203,21 @@ export function openSharedCollectionModal(shareData) {
         }
         
         let added = 0;
+        let skipped = 0;
         let errors = 0;
         
         for (const item of collectionData.items) {
           try {
+            // Determine list type
+            const listType = item.listType || 'movies';
+            
+            // Check if item already exists
+            if (itemExistsInList(listType, item)) {
+              console.log('[Share] Skipping duplicate:', item.title);
+              skipped++;
+              continue;
+            }
+            
             // Prepare item for adding
             const itemData = {
               title: item.title || '',
@@ -1190,8 +1246,6 @@ export function openSharedCollectionModal(shareData) {
               }
             });
             
-            // Determine list type
-            const listType = item.listType || 'movies';
             await addItem(listType, itemData);
             added++;
           } catch (err) {
@@ -1200,15 +1254,20 @@ export function openSharedCollectionModal(shareData) {
           }
         }
         
-        addBtn.textContent = `✅ Added ${added} items`;
-        addBtn.style.background = '#10b981';
-        
+        // Build result message
+        let resultText = `✅ Added ${added} item${added !== 1 ? 's' : ''}`;
+        if (skipped > 0) {
+          resultText += `, ${skipped} already in list`;
+        }
         if (errors > 0) {
-          addBtn.textContent += ` (${errors} failed)`;
+          resultText += `, ${errors} failed`;
         }
         
+        addBtn.textContent = resultText;
+        addBtn.style.background = '#10b981';
+        
         // Close modal after a brief delay
-        setTimeout(() => closeSharedItemModal(), 1500);
+        setTimeout(() => closeSharedItemModal(), 2000);
         
       } catch (err) {
         console.error('[Share] Error adding collection:', err);
