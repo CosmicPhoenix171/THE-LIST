@@ -209,6 +209,7 @@ function loadList(listType) {
   const off = onValue(listRef, (snap) => {
     const data = snap.val() || {};
     state.listCaches[listType] = data;
+    seriesGrouping.invalidateSeriesCrossListCache(); // Clear cache when new data loads
     renderUnifiedLibrary();
   }, (err) => {
     console.error('DB read error', err);
@@ -230,6 +231,7 @@ function loadFinishedList(listType) {
   
   const off = onValue(finishedRef, (snap) => {
     state.finishedCaches[listType] = snap.val() || {};
+    seriesGrouping.invalidateSeriesCrossListCache(); // Clear cache when new data loads
     if (state.showFinishedOnly) {
       renderUnifiedLibrary();
     }
