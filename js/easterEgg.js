@@ -168,6 +168,10 @@ function createNightSky() {
   `;
   nightSky.appendChild(countdownElement);
   
+  // Add sparklers on left and right
+  createSparkler(nightSky, 'left');
+  createSparkler(nightSky, 'right');
+  
   // Start countdown
   updateCountdown();
   countdownInterval = setInterval(updateCountdown, 1000);
@@ -185,6 +189,14 @@ function createNightSky() {
         0%, 100% { transform: translate(-50%, -50%) scale(1); }
         50% { transform: translate(-50%, -50%) scale(1.1); }
       }
+      @keyframes tm-sparkle-burst {
+        0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+        100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+      }
+      @keyframes tm-sparkle-glow {
+        0%, 100% { opacity: 0.6; filter: blur(0px); }
+        50% { opacity: 1; filter: blur(1px); }
+      }
     `;
     document.head.appendChild(style);
   }
@@ -197,6 +209,114 @@ function createNightSky() {
   });
   
   return nightSky;
+}
+
+let sparklerIntervals = [];
+
+function createSparkler(container, side) {
+  const sparklerContainer = document.createElement('div');
+  sparklerContainer.className = 'tm-sparkler';
+  sparklerContainer.style.cssText = `
+    position: absolute;
+    top: 50%;
+    ${side}: 15%;
+    transform: translateY(-50%);
+    width: 80px;
+    height: 120px;
+    z-index: 2;
+  `;
+  
+  // Sparkler stick
+  const stick = document.createElement('div');
+  stick.style.cssText = `
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 60px;
+    background: linear-gradient(to bottom, #888, #555);
+    border-radius: 2px;
+  `;
+  sparklerContainer.appendChild(stick);
+  
+  // Sparkler tip (glowing core)
+  const tip = document.createElement('div');
+  tip.style.cssText = `
+    position: absolute;
+    bottom: 55px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 12px;
+    background: radial-gradient(circle, #ffffff 0%, #ffd700 40%, #ff6600 70%, transparent 100%);
+    border-radius: 50%;
+    box-shadow: 0 0 15px #ffd700, 0 0 30px #ff6600, 0 0 45px #ff3300;
+    animation: tm-sparkle-glow 0.2s ease-in-out infinite;
+  `;
+  sparklerContainer.appendChild(tip);
+  
+  container.appendChild(sparklerContainer);
+  
+  // Spawn sparks continuously
+  const sparkInterval = setInterval(() => {
+    spawnSparklerSparks(sparklerContainer, side);
+  }, 50);
+  
+  sparklerIntervals.push(sparkInterval);
+}
+
+function spawnSparklerSparks(container, side) {
+  const sparkCount = 2 + Math.floor(Math.random() * 3);
+  
+  for (let i = 0; i < sparkCount; i++) {
+    const spark = document.createElement('div');
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 20 + Math.random() * 40;
+    const size = 2 + Math.random() * 3;
+    const duration = 0.3 + Math.random() * 0.4;
+    
+    const sparkColors = ['#ffffff', '#ffd700', '#ffaa00', '#ff6600', '#ffff66'];
+    const color = sparkColors[Math.floor(Math.random() * sparkColors.length)];
+    
+    const endX = Math.cos(angle) * distance;
+    const endY = Math.sin(angle) * distance - 20; // Bias upward
+    
+    spark.style.cssText = `
+      position: absolute;
+      left: 50%;
+      bottom: 60px;
+      width: ${size}px;
+      height: ${size}px;
+      background: ${color};
+      border-radius: 50%;
+      box-shadow: 0 0 ${size * 2}px ${color};
+      pointer-events: none;
+      z-index: 3;
+    `;
+    
+    container.appendChild(spark);
+    
+    // Animate the spark
+    spark.animate([
+      { 
+        transform: 'translate(-50%, 0) scale(1)', 
+        opacity: 1 
+      },
+      { 
+        transform: `translate(calc(-50% + ${endX}px), ${endY}px) scale(0.3)`, 
+        opacity: 0 
+      }
+    ], {
+      duration: duration * 1000,
+      easing: 'ease-out',
+      fill: 'forwards'
+    }).onfinish = () => {
+      if (spark.parentNode) {
+        spark.parentNode.removeChild(spark);
+      }
+    };
+  }
 }
 
 function updateCountdown() {
@@ -264,6 +384,10 @@ function removeNightSky() {
     clearInterval(countdownInterval);
     countdownInterval = null;
   }
+  // Clear sparkler intervals
+  sparklerIntervals.forEach(interval => clearInterval(interval));
+  sparklerIntervals = [];
+  
   countdownElement = null;
   
   if (nightSky) {
