@@ -122,12 +122,29 @@ export function parseShareUrl(urlString) {
     const url = new URL(urlString || window.location.href);
     const params = url.searchParams;
     
+    // Check if this is a collection share
+    const isCollection = params.has(`${SHARE_PARAM_PREFIX}collection`) || params.has('collection');
+    if (isCollection) {
+      return {
+        isCollection: true,
+        seriesName: params.get(`${SHARE_PARAM_PREFIX}series`) || params.get('series') || '',
+        count: params.get(`${SHARE_PARAM_PREFIX}count`) || params.get('count') || '',
+        movies: params.get(`${SHARE_PARAM_PREFIX}movies`) || params.get('movies') || '',
+        seasons: params.get(`${SHARE_PARAM_PREFIX}seasons`) || params.get('seasons') || '',
+        episodes: params.get(`${SHARE_PARAM_PREFIX}episodes`) || params.get('episodes') || '',
+        yearRange: params.get(`${SHARE_PARAM_PREFIX}yearRange`) || params.get('yearRange') || '',
+        poster: params.get(`${SHARE_PARAM_PREFIX}poster`) || params.get('poster') || '',
+        user: params.get(`${SHARE_PARAM_PREFIX}user`) || params.get('user') || '',
+      };
+    }
+    
     // Check if this is a share URL (accept both prefixed and plain params for resilience)
     const hasPrefixed = params.has(`${SHARE_PARAM_PREFIX}type`) || params.has(`${SHARE_PARAM_PREFIX}title`);
     const hasPlain = params.has('type') || params.has('title');
     if (!hasPrefixed && !hasPlain) return null;
     
     const shareData = {
+      isCollection: false,
       listType: params.get(`${SHARE_PARAM_PREFIX}type`) || params.get('type') || 'movies',
       title: params.get(`${SHARE_PARAM_PREFIX}title`) || params.get('title') || '',
       year: params.get(`${SHARE_PARAM_PREFIX}year`) || params.get('year') || '',
@@ -836,13 +853,153 @@ export function openSharedItemModal(shareData) {
 }
 
 // ============================================
+// SHARED COLLECTION POPUP
+// ============================================
+export function openSharedCollectionModal(shareData) {
+  closeSharedItemModal();
+  if (!modalRoot) {
+    console.error('[Share] modalRoot not available');
+    return;
+  }
+  
+  const backdrop = createEl('div', 'modal-backdrop shared-collection-modal-backdrop');
+  const modal = createEl('div', 'modal shared-collection-modal');
+  modal.style.maxWidth = '500px';
+  
+  // Header
+  const header = createEl('div', 'modal-header');
+  header.appendChild(createEl('h2', '', { text: '📚 Shared Collection' }));
+  modal.appendChild(header);
+  
+  // Collection info
+  const content = createEl('div', 'shared-collection-content');
+  content.style.cssText = 'padding: 1rem; text-align: center;';
+  
+  // Poster if available
+  if (shareData.poster) {
+    const posterImg = createEl('img', 'shared-collection-poster');
+    posterImg.src = shareData.poster;
+    posterImg.alt = shareData.seriesName;
+    posterImg.style.cssText = 'width: 120px; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 1rem;';
+    content.appendChild(posterImg);
+  }
+  
+  // Title
+  const title = createEl('h3', 'shared-collection-title');
+  title.textContent = shareData.seriesName;
+  title.style.cssText = 'margin: 0 0 0.75rem; font-size: 1.4rem;';
+  content.appendChild(title);
+  
+  // Stats
+  const stats = createEl('div', 'shared-collection-stats');
+  stats.style.cssText = 'display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-bottom: 0.75rem;';
+  
+  const movieNum = parseInt(shareData.movies, 10) || 0;
+  const seasonNum = parseInt(shareData.seasons, 10) || 0;
+  const episodeNum = parseInt(shareData.episodes, 10) || 0;
+  
+  if (movieNum > 0) {
+    const badge = createEl('span', 'collection-stat-badge');
+    badge.textContent = `🎬 ${movieNum} Movie${movieNum !== 1 ? 's' : ''}`;
+    badge.style.cssText = 'background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); padding: 0.3rem 0.65rem; border-radius: 999px; font-size: 0.85rem; color: #fbbf24;';
+    stats.appendChild(badge);
+  }
+  
+  if (seasonNum > 0) {
+    const badge = createEl('span', 'collection-stat-badge');
+    badge.textContent = `📺 ${seasonNum} Season${seasonNum !== 1 ? 's' : ''}`;
+    badge.style.cssText = 'background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.4); padding: 0.3rem 0.65rem; border-radius: 999px; font-size: 0.85rem; color: #60a5fa;';
+    stats.appendChild(badge);
+  }
+  
+  if (episodeNum > 0) {
+    const badge = createEl('span', 'collection-stat-badge');
+    badge.textContent = `📼 ${episodeNum} Episode${episodeNum !== 1 ? 's' : ''}`;
+    badge.style.cssText = 'background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); padding: 0.3rem 0.65rem; border-radius: 999px; font-size: 0.85rem; color: #34d399;';
+    stats.appendChild(badge);
+  }
+  
+  content.appendChild(stats);
+  
+  // Year range
+  if (shareData.yearRange) {
+    const yearEl = createEl('div', 'shared-collection-years');
+    yearEl.textContent = `📅 ${shareData.yearRange}`;
+    yearEl.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9rem; margin-bottom: 0.5rem;';
+    content.appendChild(yearEl);
+  }
+  
+  // Shared by
+  if (shareData.user) {
+    const userEl = createEl('div', 'shared-collection-user');
+    userEl.textContent = `Shared by ${shareData.user}`;
+    userEl.style.cssText = 'color: var(--text-muted, #888); font-size: 0.85rem; margin-top: 0.5rem;';
+    content.appendChild(userEl);
+  }
+  
+  // Info message
+  const infoEl = createEl('div', 'shared-collection-info');
+  infoEl.textContent = 'This is a collection preview. Search for individual titles to add them to your list.';
+  infoEl.style.cssText = 'color: var(--text-muted, #666); font-size: 0.8rem; margin-top: 1rem; padding: 0.75rem; background: rgba(255,255,255,0.05); border-radius: 8px;';
+  content.appendChild(infoEl);
+  
+  modal.appendChild(content);
+  
+  // Actions
+  const actions = createEl('div', 'modal-actions');
+  actions.style.cssText = 'display: flex; justify-content: center; padding: 1rem;';
+  
+  const closeBtn = createEl('button', 'btn primary', { text: 'Got it!' });
+  closeBtn.addEventListener('click', closeSharedItemModal);
+  actions.appendChild(closeBtn);
+  
+  modal.appendChild(actions);
+  
+  // Close on backdrop click
+  backdrop.addEventListener('click', (ev) => {
+    if (ev.target === backdrop) closeSharedItemModal();
+  });
+  
+  // Close on Escape
+  const keyHandler = (ev) => {
+    if (ev.key === 'Escape') closeSharedItemModal();
+  };
+  document.addEventListener('keydown', keyHandler);
+  
+  backdrop.appendChild(modal);
+  modalRoot.appendChild(backdrop);
+  
+  // Clear share params from URL
+  const cleanUrl = window.location.origin + window.location.pathname;
+  window.history.replaceState({}, document.title, cleanUrl);
+  
+  activeSharedItemModal = { backdrop, modal, keyHandler };
+}
+
+// ============================================
 // CHECK FOR INCOMING SHARE ON PAGE LOAD
 // ============================================
 export function checkForIncomingShare() {
   console.log('[Share] Checking for incoming share, URL:', window.location.href);
   const shareData = parseShareUrl();
   console.log('[Share] Parsed share data:', shareData);
-  if (shareData && shareData.title) {
+  
+  if (!shareData) {
+    console.log('[Share] No valid share data found');
+    return false;
+  }
+  
+  // Handle collection shares
+  if (shareData.isCollection && shareData.seriesName) {
+    console.log('[Share] Found collection share:', shareData.seriesName);
+    setTimeout(() => {
+      openSharedCollectionModal(shareData);
+    }, 500);
+    return true;
+  }
+  
+  // Handle single item shares
+  if (shareData.title) {
     console.log('[Share] Found share with title:', shareData.title);
     // Small delay to ensure the page is ready
     setTimeout(() => {
@@ -851,6 +1008,7 @@ export function checkForIncomingShare() {
     }, 500);
     return true;
   }
+  
   console.log('[Share] No valid share data found');
   return false;
 }
