@@ -375,18 +375,52 @@ export function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem, provide
     
     // Count episodes for non-movies
     if (!isMovie) {
-      const epValue = extractEpisodeCount(entry);
-      if (epValue > 0) {
-        totalEpisodes += epValue;
-      }
-      
-      // Count seasons for TV content
-      if (entryListType === 'tvShows' || entry.tvSeasonCount || entry.tvSeasonSummaries) {
-        const sCount = getTvSeasonCount(entry);
-        if (entry.seasonNumber !== undefined) {
-          totalSeasons += 1; // Split season = 1 season
-        } else if (sCount > 0) {
-          totalSeasons += sCount;
+      // For split season entries, only count episodes for that specific season
+      if (entry.seasonNumber !== undefined) {
+        // This is a split season - get episode count for THIS season only
+        let seasonEpCount = 0;
+        
+        // First try tvEpisodeCount (should be set correctly for split seasons)
+        const directEpCount = Number(entry.tvEpisodeCount);
+        if (Number.isFinite(directEpCount) && directEpCount > 0) {
+          seasonEpCount = directEpCount;
+        } else if (Array.isArray(entry.tvSeasonSummaries)) {
+          // Find the specific season in the summaries
+          const seasonData = entry.tvSeasonSummaries.find(
+            s => s && Number(s.seasonNumber) === Number(entry.seasonNumber)
+          );
+          if (seasonData && seasonData.episodeCount) {
+            seasonEpCount = Number(seasonData.episodeCount) || 0;
+          }
+        }
+        
+        // Fallback to animeEpisodes or other direct fields
+        if (seasonEpCount === 0) {
+          const fallbackCandidates = [entry.animeEpisodes, entry.totalEpisodes, entry.episodes];
+          for (const candidate of fallbackCandidates) {
+            const parsed = parseEpisodeValue(candidate);
+            if (parsed > 0) {
+              seasonEpCount = parsed;
+              break;
+            }
+          }
+        }
+        
+        totalEpisodes += seasonEpCount;
+        totalSeasons += 1; // Split season = 1 season
+      } else {
+        // Not a split season - use full episode count
+        const epValue = extractEpisodeCount(entry);
+        if (epValue > 0) {
+          totalEpisodes += epValue;
+        }
+        
+        // Count seasons for TV content
+        if (entryListType === 'tvShows' || entry.tvSeasonCount || entry.tvSeasonSummaries) {
+          const sCount = getTvSeasonCount(entry);
+          if (sCount > 0) {
+            totalSeasons += sCount;
+          }
         }
       }
     }
