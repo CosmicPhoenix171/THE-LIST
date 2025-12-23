@@ -156,7 +156,8 @@ function createNightSky() {
     font-family: 'Arial', sans-serif;
     font-size: clamp(2rem, 8vw, 6rem);
     font-weight: bold;
-    color: #ffd700;
+    color: transparent;
+    -webkit-text-stroke: 2px #ffd700;
     text-shadow: 
       0 0 20px rgba(255, 215, 0, 0.8),
       0 0 40px rgba(255, 215, 0, 0.6),
@@ -221,7 +222,8 @@ function updateCountdown() {
     // It's New Year!
     countdownElement.innerHTML = '🎉 Happy New Year!!! 🎉';
     countdownElement.style.animation = 'tm-celebrate 0.5s ease-in-out infinite';
-    countdownElement.style.color = '#ffffff';
+    countdownElement.style.color = 'transparent';
+    countdownElement.style.webkitTextStroke = '2px #ffffff';
     countdownElement.style.textShadow = `
       0 0 20px rgba(255, 255, 255, 0.9),
       0 0 40px rgba(255, 215, 0, 0.8),
