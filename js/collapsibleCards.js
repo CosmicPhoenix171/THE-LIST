@@ -1473,7 +1473,9 @@ export function buildAnimeDetailBlock(listType, entryId, item, options = {}) {
   const block = createEl('div', 'detail-block anime-detail-block');
   const chips = [];
   
-  if (!isAnimeMovieEntry(item)) {
+  const isMovie = isAnimeMovieEntry(item);
+  
+  if (!isMovie) {
     const episodeLabel = formatAnimeEpisodesLabel(extractEpisodeCount(item) || item.animeEpisodes);
     if (episodeLabel) chips.push(episodeLabel);
     if (item.animeDuration) chips.push(`${item.animeDuration} min/ep`);
@@ -1500,7 +1502,80 @@ export function buildAnimeDetailBlock(listType, entryId, item, options = {}) {
     block.appendChild(link);
   }
   
+  // Add episode tracker for non-movie anime
+  if (!isMovie) {
+    const tracker = buildAnimeEpisodeTracker(listType, entryId, item);
+    if (tracker) {
+      block.appendChild(tracker);
+    }
+  }
+  
   return block.children.length ? block : null;
+}
+
+// ============================================
+// BUILD ANIME EPISODE TRACKER
+// ============================================
+function buildAnimeEpisodeTracker(listType, entryId, item) {
+  if (!item || !entryId) return null;
+  
+  const totalEpisodes = extractEpisodeCount(item) || item.animeEpisodes || 0;
+  if (totalEpisodes <= 0) return null;
+  
+  const tracker = createEl('div', 'episode-tracker');
+  
+  // Current progress from item
+  const currentEpisode = item.watchingEpisode || 0;
+  
+  // Header row
+  const headerRow = createEl('div', 'episode-tracker-header');
+  headerRow.appendChild(createEl('span', 'episode-tracker-label', { text: 'Progress Tracker' }));
+  tracker.appendChild(headerRow);
+  
+  const controlsRow = createEl('div', 'episode-tracker-controls');
+  
+  // Episode selector
+  const episodeGroup = createEl('div', 'tracker-control-group');
+  episodeGroup.appendChild(createEl('label', 'tracker-label', { text: 'Episode' }));
+  
+  const episodeSelect = createEl('select', 'tracker-select tracker-episode-select');
+  episodeSelect.dataset.entryId = entryId;
+  episodeSelect.dataset.listType = listType;
+  
+  for (let i = 0; i <= totalEpisodes; i++) {
+    const opt = createEl('option');
+    opt.value = i;
+    opt.textContent = i === 0 ? 'Not started' : `Episode ${i}`;
+    if (i === currentEpisode) opt.selected = true;
+    episodeSelect.appendChild(opt);
+  }
+  
+  episodeSelect.addEventListener('change', async (e) => {
+    const newEpisode = Number(e.target.value);
+    
+    try {
+      await updateItem(listType, entryId, { watchingEpisode: newEpisode });
+      // Update progress text
+      const progressText = tracker.querySelector('.tracker-progress-text');
+      if (progressText) {
+        progressText.textContent = `${newEpisode}/${totalEpisodes} episodes`;
+      }
+    } catch (err) {
+      console.error('Failed to update episode progress:', err);
+    }
+  });
+  
+  episodeGroup.appendChild(episodeSelect);
+  controlsRow.appendChild(episodeGroup);
+  
+  // Progress indicator
+  const progressGroup = createEl('div', 'tracker-progress-group');
+  progressGroup.appendChild(createEl('span', 'tracker-progress-text', { text: `${currentEpisode}/${totalEpisodes} episodes` }));
+  controlsRow.appendChild(progressGroup);
+  
+  tracker.appendChild(controlsRow);
+  
+  return tracker;
 }
 
 // ============================================
@@ -1512,8 +1587,6 @@ export function buildTvDetailBlock(listType, entryId, item, options = {}) {
   const chips = buildTvStatChips(item, { isExpanded: true });
   const hasChips = chips.length > 0;
   
-  if (!hasChips) return null;
-  
   const block = createEl('div', 'detail-block tv-detail-block');
   if (hasChips) {
     const row = createEl('div', 'tv-stats-row');
@@ -1523,7 +1596,152 @@ export function buildTvDetailBlock(listType, entryId, item, options = {}) {
     block.appendChild(row);
   }
   
-  return block;
+  // Add episode tracker
+  const tracker = buildEpisodeTracker(listType, entryId, item);
+  if (tracker) {
+    block.appendChild(tracker);
+  }
+  
+  return block.children.length ? block : null;
+}
+
+// ============================================
+// BUILD EPISODE TRACKER
+// ============================================
+function buildEpisodeTracker(listType, entryId, item) {
+  if (!item || !entryId) return null;
+  
+  // Determine if this is a split season (has splitFromId or seasonNumber)
+  const isSplitSeason = Boolean(item.splitFromId) || (item.seasonNumber !== undefined && item.seasonNumber !== null);
+  
+  // Get season info
+  const seasons = Array.isArray(item.tvSeasonSummaries) ? item.tvSeasonSummaries.filter(s => s && s.seasonNumber !== undefined) : [];
+  const totalSeasons = isSplitSeason ? 1 : seasons.length;
+  
+  // For split seasons, get episode count from the item directly
+  // For non-split, we need to get episodes per season from tvSeasonSummaries
+  let episodesPerSeason = {};
+  if (isSplitSeason) {
+    const epCount = extractEpisodeCount(item) || item.tvEpisodeCount || 0;
+    episodesPerSeason[item.seasonNumber || 1] = epCount;
+  } else if (seasons.length) {
+    seasons.forEach(s => {
+      episodesPerSeason[s.seasonNumber] = s.episodeCount || 0;
+    });
+  }
+  
+  // Get total episode count
+  const totalEpisodes = isSplitSeason 
+    ? (extractEpisodeCount(item) || item.tvEpisodeCount || 0)
+    : (item.tvEpisodeCount || Object.values(episodesPerSeason).reduce((a, b) => a + b, 0));
+  
+  if (totalEpisodes <= 0 && totalSeasons <= 0) return null;
+  
+  const tracker = createEl('div', 'episode-tracker');
+  
+  // Current progress from item
+  const currentSeason = item.watchingSeason || 1;
+  const currentEpisode = item.watchingEpisode || 0;
+  
+  // Header row
+  const headerRow = createEl('div', 'episode-tracker-header');
+  headerRow.appendChild(createEl('span', 'episode-tracker-label', { text: 'Progress Tracker' }));
+  tracker.appendChild(headerRow);
+  
+  const controlsRow = createEl('div', 'episode-tracker-controls');
+  
+  // Season selector (only for non-split shows with multiple seasons)
+  if (!isSplitSeason && totalSeasons > 1) {
+    const seasonGroup = createEl('div', 'tracker-control-group');
+    seasonGroup.appendChild(createEl('label', 'tracker-label', { text: 'Season' }));
+    
+    const seasonSelect = createEl('select', 'tracker-select');
+    seasonSelect.dataset.entryId = entryId;
+    seasonSelect.dataset.listType = listType;
+    
+    seasons.forEach(s => {
+      const opt = createEl('option');
+      opt.value = s.seasonNumber;
+      opt.textContent = `Season ${s.seasonNumber}`;
+      if (s.seasonNumber === currentSeason) opt.selected = true;
+      seasonSelect.appendChild(opt);
+    });
+    
+    seasonSelect.addEventListener('change', async (e) => {
+      const newSeason = Number(e.target.value);
+      const episodeSelect = tracker.querySelector('.tracker-episode-select');
+      
+      // Update episode dropdown for new season
+      if (episodeSelect) {
+        const maxEps = episodesPerSeason[newSeason] || 0;
+        episodeSelect.innerHTML = '';
+        for (let i = 0; i <= maxEps; i++) {
+          const opt = createEl('option');
+          opt.value = i;
+          opt.textContent = i === 0 ? 'Not started' : `Episode ${i}`;
+          episodeSelect.appendChild(opt);
+        }
+      }
+      
+      // Save to Firebase
+      try {
+        await updateItem(listType, entryId, { watchingSeason: newSeason, watchingEpisode: 0 });
+      } catch (err) {
+        console.error('Failed to update season progress:', err);
+      }
+    });
+    
+    seasonGroup.appendChild(seasonSelect);
+    controlsRow.appendChild(seasonGroup);
+  }
+  
+  // Episode selector
+  const episodeGroup = createEl('div', 'tracker-control-group');
+  episodeGroup.appendChild(createEl('label', 'tracker-label', { text: 'Episode' }));
+  
+  const episodeSelect = createEl('select', 'tracker-select tracker-episode-select');
+  episodeSelect.dataset.entryId = entryId;
+  episodeSelect.dataset.listType = listType;
+  
+  // Get max episodes for current season
+  const maxEpisodes = isSplitSeason 
+    ? (extractEpisodeCount(item) || item.tvEpisodeCount || 0)
+    : (episodesPerSeason[currentSeason] || 0);
+  
+  for (let i = 0; i <= maxEpisodes; i++) {
+    const opt = createEl('option');
+    opt.value = i;
+    opt.textContent = i === 0 ? 'Not started' : `Episode ${i}`;
+    if (i === currentEpisode) opt.selected = true;
+    episodeSelect.appendChild(opt);
+  }
+  
+  episodeSelect.addEventListener('change', async (e) => {
+    const newEpisode = Number(e.target.value);
+    const seasonSelect = tracker.querySelector('.tracker-select:not(.tracker-episode-select)');
+    const season = seasonSelect ? Number(seasonSelect.value) : (item.seasonNumber || 1);
+    
+    try {
+      await updateItem(listType, entryId, { watchingSeason: season, watchingEpisode: newEpisode });
+    } catch (err) {
+      console.error('Failed to update episode progress:', err);
+    }
+  });
+  
+  episodeGroup.appendChild(episodeSelect);
+  controlsRow.appendChild(episodeGroup);
+  
+  // Progress indicator
+  const progressGroup = createEl('div', 'tracker-progress-group');
+  const progressText = isSplitSeason
+    ? `${currentEpisode}/${maxEpisodes} episodes`
+    : `S${currentSeason} E${currentEpisode}`;
+  progressGroup.appendChild(createEl('span', 'tracker-progress-text', { text: progressText }));
+  controlsRow.appendChild(progressGroup);
+  
+  tracker.appendChild(controlsRow);
+  
+  return tracker;
 }
 
 // ============================================
