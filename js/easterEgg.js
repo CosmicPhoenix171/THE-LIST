@@ -101,6 +101,8 @@ export function getCurrentTmTheme() {
 }
 
 let nightSky = null;
+let countdownElement = null;
+let countdownInterval = null;
 
 function createNightSky() {
   if (nightSky) return nightSky;
@@ -143,6 +145,32 @@ function createNightSky() {
     nightSky.appendChild(star);
   }
   
+  // Add countdown display
+  countdownElement = document.createElement('div');
+  countdownElement.id = 'tm-countdown';
+  countdownElement.style.cssText = `
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Arial', sans-serif;
+    font-size: clamp(2rem, 8vw, 6rem);
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 
+      0 0 20px rgba(255, 215, 0, 0.8),
+      0 0 40px rgba(255, 215, 0, 0.6),
+      0 0 60px rgba(255, 215, 0, 0.4);
+    text-align: center;
+    z-index: 1;
+    opacity: 0.9;
+  `;
+  nightSky.appendChild(countdownElement);
+  
+  // Start countdown
+  updateCountdown();
+  countdownInterval = setInterval(updateCountdown, 1000);
+  
   // Add CSS animation for twinkling
   if (!document.getElementById('tm-night-sky-styles')) {
     const style = document.createElement('style');
@@ -151,6 +179,10 @@ function createNightSky() {
       @keyframes tm-twinkle {
         0%, 100% { opacity: 0.3; transform: scale(1); }
         50% { opacity: 1; transform: scale(1.2); }
+      }
+      @keyframes tm-celebrate {
+        0%, 100% { transform: translate(-50%, -50%) scale(1); }
+        50% { transform: translate(-50%, -50%) scale(1.1); }
       }
     `;
     document.head.appendChild(style);
@@ -166,7 +198,72 @@ function createNightSky() {
   return nightSky;
 }
 
+function updateCountdown() {
+  if (!countdownElement) return;
+  
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  
+  // Target is midnight on January 1st of next year (or current year if we're before Jan 1)
+  let targetYear = currentYear;
+  if (now.getMonth() === 0 && now.getDate() <= 7) {
+    // We're in early January, target was this year's Jan 1
+    targetYear = currentYear;
+  } else {
+    // Target is next year's Jan 1
+    targetYear = currentYear + 1;
+  }
+  
+  const newYear = new Date(targetYear, 0, 1, 0, 0, 0);
+  const diff = newYear - now;
+  
+  if (diff <= 0) {
+    // It's New Year!
+    countdownElement.innerHTML = '🎉 Happy New Year!!! 🎉';
+    countdownElement.style.animation = 'tm-celebrate 0.5s ease-in-out infinite';
+    countdownElement.style.color = '#ffffff';
+    countdownElement.style.textShadow = `
+      0 0 20px rgba(255, 255, 255, 0.9),
+      0 0 40px rgba(255, 215, 0, 0.8),
+      0 0 60px rgba(255, 100, 100, 0.6),
+      0 0 80px rgba(100, 255, 100, 0.4)
+    `;
+  } else {
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    if (days > 0) {
+      countdownElement.innerHTML = `
+        <div style="font-size: 0.4em; margin-bottom: 10px; opacity: 0.8;">Countdown to ${targetYear}</div>
+        <div>${days}d ${hours}h ${minutes}m ${seconds}s</div>
+      `;
+    } else if (hours > 0) {
+      countdownElement.innerHTML = `
+        <div style="font-size: 0.4em; margin-bottom: 10px; opacity: 0.8;">Countdown to ${targetYear}</div>
+        <div>${hours}h ${minutes}m ${seconds}s</div>
+      `;
+    } else if (minutes > 0) {
+      countdownElement.innerHTML = `
+        <div style="font-size: 0.4em; margin-bottom: 10px; opacity: 0.8;">Almost there!</div>
+        <div>${minutes}m ${seconds}s</div>
+      `;
+    } else {
+      // Final countdown - just seconds!
+      countdownElement.innerHTML = `<div style="font-size: 1.5em;">${seconds}</div>`;
+      countdownElement.style.color = seconds <= 10 ? '#ff6666' : '#ffd700';
+    }
+  }
+}
+
 function removeNightSky() {
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
+  countdownElement = null;
+  
   if (nightSky) {
     nightSky.style.opacity = '0';
     setTimeout(() => {
