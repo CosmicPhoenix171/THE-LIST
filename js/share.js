@@ -13,6 +13,105 @@ import { fetchTmdbMetadata, deriveMetadataAssignments } from './metadata.js';
 const SHARE_WORKER_URL = 'https://share-the-list.cosmicphoenix171.workers.dev/';
 const SHARE_BASE_URL = 'https://cosmicphoenix171.github.io/THE-LIST/';
 const SHARE_PARAM_PREFIX = 'share_';
+const SHARE_CHANNEL_NAME = 'the-list-share-channel';
+
+// ============================================
+// BROADCAST CHANNEL FOR TAB COORDINATION
+// ============================================
+let shareChannel = null;
+let isListeningForShares = false;
+
+function initShareChannel() {
+  if (shareChannel || typeof BroadcastChannel === 'undefined') return;
+  
+  try {
+    shareChannel = new BroadcastChannel(SHARE_CHANNEL_NAME);
+    
+    shareChannel.onmessage = (event) => {
+      const { type, shareData, senderId } = event.data || {};
+      
+      if (type === 'SHARE_REQUEST' && senderId !== getTabId()) {
+        console.log('[Share] Received share request from another tab');
+        // Another tab is asking if we can handle the share
+        // Only respond if we're the "main" tab (user is logged in and app is visible)
+        if (document.visibilityState === 'visible' && modalRoot && !modalRoot.classList.contains('hidden')) {
+          // We'll handle this share
+          shareChannel.postMessage({ type: 'SHARE_ACCEPTED', senderId: getTabId() });
+          
+          // Open the appropriate modal
+          setTimeout(() => {
+            if (shareData.isCollection && shareData.seriesName) {
+              openSharedCollectionModal(shareData);
+            } else if (shareData.title) {
+              openSharedItemModal(shareData);
+            }
+          }, 100);
+        }
+      }
+    };
+    
+    console.log('[Share] BroadcastChannel initialized');
+  } catch (err) {
+    console.warn('[Share] BroadcastChannel not available:', err);
+  }
+}
+
+function getTabId() {
+  if (!window.__theListTabId) {
+    window.__theListTabId = `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  }
+  return window.__theListTabId;
+}
+
+// Try to delegate share to another open tab, returns true if delegated
+function tryDelegateShare(shareData) {
+  return new Promise((resolve) => {
+    if (!shareChannel) {
+      resolve(false);
+      return;
+    }
+    
+    let responded = false;
+    
+    const handleResponse = (event) => {
+      if (event.data?.type === 'SHARE_ACCEPTED' && !responded) {
+        responded = true;
+        console.log('[Share] Another tab accepted the share, closing this tab');
+        shareChannel.removeEventListener('message', handleResponse);
+        
+        // Clear URL params before closing
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        
+        // Try to close this tab (works if opened by script)
+        window.close();
+        
+        // If window.close() didn't work (not opened by script), just resolve
+        resolve(true);
+      }
+    };
+    
+    shareChannel.addEventListener('message', handleResponse);
+    
+    // Broadcast the share request
+    shareChannel.postMessage({ 
+      type: 'SHARE_REQUEST', 
+      shareData, 
+      senderId: getTabId() 
+    });
+    
+    // Wait a short time for response, then handle locally if no response
+    setTimeout(() => {
+      if (!responded) {
+        shareChannel.removeEventListener('message', handleResponse);
+        resolve(false);
+      }
+    }, 300);
+  });
+}
+
+// Initialize channel when module loads
+initShareChannel();
 
 // ============================================
 // GENERATE SHARE URL (uses Cloudflare Worker for Discord embeds)
@@ -979,7 +1078,7 @@ export function openSharedCollectionModal(shareData) {
 // ============================================
 // CHECK FOR INCOMING SHARE ON PAGE LOAD
 // ============================================
-export function checkForIncomingShare() {
+export async function checkForIncomingShare() {
   console.log('[Share] Checking for incoming share, URL:', window.location.href);
   const shareData = parseShareUrl();
   console.log('[Share] Parsed share data:', shareData);
@@ -987,6 +1086,13 @@ export function checkForIncomingShare() {
   if (!shareData) {
     console.log('[Share] No valid share data found');
     return false;
+  }
+  
+  // Try to delegate to another open tab first
+  const delegated = await tryDelegateShare(shareData);
+  if (delegated) {
+    console.log('[Share] Share delegated to another tab');
+    return true;
   }
   
   // Handle collection shares
