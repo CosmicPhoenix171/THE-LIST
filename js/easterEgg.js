@@ -362,15 +362,35 @@ function createExplosion(x, y) {
     }
   }
 
-  const particleCount = 25 + Math.floor(Math.random() * 15); // Reduced from 30-50
-  const color = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
-  const secondaryColor = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
+  const particleCount = 25 + Math.floor(Math.random() * 15);
   const spawnTime = performance.now();
+  
+  // Randomly choose explosion style
+  const explosionStyle = Math.floor(Math.random() * 4);
 
   for (let i = 0; i < particleCount; i++) {
     const angle = (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.3;
     const speed = 3 + Math.random() * 5;
-    const particleColor = Math.random() > 0.5 ? color : secondaryColor;
+    
+    // Different color patterns for variety
+    let particleColor;
+    switch (explosionStyle) {
+      case 0: // Rainbow - each particle gets a random color
+        particleColor = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
+        break;
+      case 1: // Gradient - colors based on angle
+        const colorIndex = Math.floor((angle / (Math.PI * 2)) * fireworkColors.length);
+        particleColor = fireworkColors[colorIndex % fireworkColors.length];
+        break;
+      case 2: // Two-tone mix
+        const color1 = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
+        const color2 = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
+        particleColor = Math.random() > 0.5 ? color1 : color2;
+        break;
+      default: // Solid with sparkle whites
+        const baseColor = fireworkColors[Math.floor(Math.random() * (fireworkColors.length - 1))];
+        particleColor = Math.random() > 0.85 ? '#ffffff' : baseColor;
+    }
 
     const particle = {
       x: x,
@@ -380,7 +400,7 @@ function createExplosion(x, y) {
       size: 4 + Math.random() * 4,
       radius: 2,
       opacity: 1,
-      fadeRate: 0.012 + Math.random() * 0.015, // Faster fade
+      fadeRate: 0.012 + Math.random() * 0.015,
       color: particleColor,
       isParticle: true,
       resting: false,
