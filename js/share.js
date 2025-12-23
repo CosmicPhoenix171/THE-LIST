@@ -78,7 +78,6 @@ function initShareChannel() {
       const { type, shareData, senderId } = event.data || {};
       
       if (type === 'SHARE_REQUEST' && senderId !== getTabId()) {
-        console.log('[Share] Received share request from another tab');
         // Another tab is asking if we can handle the share
         // Only respond if we're the "main" tab (user is logged in and app is visible)
         if (document.visibilityState === 'visible' && modalRoot && !modalRoot.classList.contains('hidden')) {
@@ -96,8 +95,6 @@ function initShareChannel() {
         }
       }
     };
-    
-    console.log('[Share] BroadcastChannel initialized');
   } catch (err) {
     console.warn('[Share] BroadcastChannel not available:', err);
   }
@@ -123,7 +120,6 @@ function tryDelegateShare(shareData) {
     const handleResponse = (event) => {
       if (event.data?.type === 'SHARE_ACCEPTED' && !responded) {
         responded = true;
-        console.log('[Share] Another tab accepted the share, closing this tab');
         shareChannel.removeEventListener('message', handleResponse);
         
         // Clear URL params before closing
@@ -239,7 +235,6 @@ async function saveSharedCollection(seriesName, entries, primaryItem) {
   
   try {
     await set(newShareRef, shareData);
-    console.log('[Share] Collection saved with ID:', shareId);
     return shareId;
   } catch (err) {
     console.error('[Share] Failed to save collection:', err);
@@ -1229,7 +1224,6 @@ export function openSharedCollectionModal(shareData) {
             
             // Check if item already exists
             if (itemExistsInList(listType, item)) {
-              console.log('[Share] Skipping duplicate:', item.title);
               skipped++;
               continue;
             }
@@ -1329,25 +1323,20 @@ export function openSharedCollectionModal(shareData) {
 // CHECK FOR INCOMING SHARE ON PAGE LOAD
 // ============================================
 export async function checkForIncomingShare() {
-  console.log('[Share] Checking for incoming share, URL:', window.location.href);
   const shareData = parseShareUrl();
-  console.log('[Share] Parsed share data:', shareData);
   
   if (!shareData) {
-    console.log('[Share] No valid share data found');
     return false;
   }
   
   // Try to delegate to another open tab first
   const delegated = await tryDelegateShare(shareData);
   if (delegated) {
-    console.log('[Share] Share delegated to another tab');
     return true;
   }
   
   // Handle collection shares
   if (shareData.isCollection && shareData.seriesName) {
-    console.log('[Share] Found collection share:', shareData.seriesName);
     setTimeout(() => {
       openSharedCollectionModal(shareData);
     }, 500);
@@ -1356,16 +1345,13 @@ export async function checkForIncomingShare() {
   
   // Handle single item shares
   if (shareData.title) {
-    console.log('[Share] Found share with title:', shareData.title);
     // Small delay to ensure the page is ready
     setTimeout(() => {
-      console.log('[Share] Opening shared item modal, modalRoot:', modalRoot);
       openSharedItemModal(shareData);
     }, 500);
     return true;
   }
   
-  console.log('[Share] No valid share data found');
   return false;
 }
 

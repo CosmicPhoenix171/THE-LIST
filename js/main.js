@@ -108,8 +108,6 @@ export function initApp() {
   
   initBackToTop();
   ads.initializeRandomAds();
-  
-  console.info('[THE-LIST] App initialized with modular architecture');
 }
 
 function setupAddModalTrigger() {
