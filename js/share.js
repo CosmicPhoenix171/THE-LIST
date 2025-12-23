@@ -980,6 +980,22 @@ export function openSharedItemModal(shareData) {
       return;
     }
     
+    // Check if item already exists in the list
+    const checkItem = {
+      tmdbId: shareData.tmdbId || null,
+      imdbId: shareData.imdbId || null,
+      title: shareData.title || '',
+      year: shareData.year || '',
+      seasonNumber: shareData.seasonNumber,
+    };
+    
+    if (itemExistsInList(shareData.listType, checkItem)) {
+      addBtn.textContent = 'Already in list!';
+      addBtn.disabled = true;
+      addBtn.style.background = '#6b7280';
+      return;
+    }
+    
     addBtn.disabled = true;
     addBtn.textContent = 'Adding...';
     
