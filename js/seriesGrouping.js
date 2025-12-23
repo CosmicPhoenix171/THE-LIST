@@ -98,7 +98,11 @@ export function collectSeriesEntriesAcrossLists(seriesName) {
   
   if (debugSAO) {
     console.log('[SAO] Looking for seriesName:', seriesName, 'normalizedKey:', normalizedKey);
-    console.log('[SAO] cacheMap keys:', Object.keys(cacheMap));
+    console.log('[SAO] showFinishedOnly:', showFinishedOnly);
+    console.log('[SAO] cacheMap:', cacheMap);
+    console.log('[SAO] cacheMap actual keys:', Object.keys(cacheMap));
+    console.log('[SAO] listCaches imported:', listCaches);
+    console.log('[SAO] listCaches keys:', Object.keys(listCaches));
     // Log all items that contain "sword art" in their title or seriesName
     COLLAPSIBLE_LISTS.forEach(type => {
       const pool = cacheMap[type];
