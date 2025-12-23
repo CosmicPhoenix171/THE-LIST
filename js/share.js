@@ -6,6 +6,8 @@ import { MEDIA_TYPE_LABELS } from './config.js';
 import { getCurrentUser } from './state.js';
 import { addItem } from './crud.js';
 import { fetchTmdbMetadata, deriveMetadataAssignments } from './metadata.js';
+import { getFirebaseDatabase } from './firebase.js';
+import { ref, push, set, get } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
 // ============================================
 // CONSTANTS
@@ -143,19 +145,110 @@ export function generateShareUrl(listType, item) {
 }
 
 // ============================================
-// GENERATE COLLECTION SHARE URL
+// SAVE SHARED COLLECTION TO FIREBASE
 // ============================================
-export function generateCollectionShareUrl(seriesName, entries, primaryItem) {
+async function saveSharedCollection(seriesName, entries, primaryItem) {
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
+    console.error('[Share] Cannot save collection - not logged in');
+    return null;
+  }
+  
+  const db = getFirebaseDatabase();
+  const sharedCollectionsRef = ref(db, `sharedCollections/${currentUser.uid}`);
+  const newShareRef = push(sharedCollectionsRef);
+  const shareId = newShareRef.key;
+  
+  // Prepare items for storage (clean up and include essential metadata)
+  const items = entries.map(e => {
+    const item = e.item || {};
+    return {
+      listType: e.listType || 'movies',
+      title: item.title || '',
+      year: item.year || '',
+      poster: item.poster || '',
+      tmdbId: item.tmdbId || null,
+      imdbId: item.imdbId || '',
+      seriesName: item.seriesName || seriesName,
+      seriesOrder: item.seriesOrder || null,
+      seasonNumber: item.seasonNumber ?? null,
+      tvEpisodeCount: item.tvEpisodeCount || item.episodeCount || null,
+      animeEpisodes: item.animeEpisodes || null,
+      runtime: item.runtime || '',
+      director: item.director || '',
+      plot: item.plot || '',
+      genres: item.genres || [],
+      imdbType: item.imdbType || '',
+    };
+  });
+  
+  const shareData = {
+    seriesName,
+    sharedBy: currentUser.displayName || currentUser.email || 'Anonymous',
+    sharedByUid: currentUser.uid,
+    sharedAt: Date.now(),
+    poster: primaryItem?.poster || entries[0]?.item?.poster || '',
+    itemCount: entries.length,
+    items,
+  };
+  
+  try {
+    await set(newShareRef, shareData);
+    console.log('[Share] Collection saved with ID:', shareId);
+    return shareId;
+  } catch (err) {
+    console.error('[Share] Failed to save collection:', err);
+    return null;
+  }
+}
+
+// ============================================
+// FETCH SHARED COLLECTION FROM FIREBASE
+// ============================================
+export async function fetchSharedCollection(userId, shareId) {
+  if (!userId || !shareId) return null;
+  
+  try {
+    const db = getFirebaseDatabase();
+    const shareRef = ref(db, `sharedCollections/${userId}/${shareId}`);
+    const snapshot = await get(shareRef);
+    
+    if (snapshot.exists()) {
+      return snapshot.val();
+    }
+    return null;
+  } catch (err) {
+    console.error('[Share] Failed to fetch collection:', err);
+    return null;
+  }
+}
+
+// ============================================
+// GENERATE COLLECTION SHARE URL (async - saves to Firebase first)
+// ============================================
+export async function generateCollectionShareUrl(seriesName, entries, primaryItem) {
   if (!seriesName || !entries?.length) return null;
+  
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
+    console.error('[Share] Cannot share collection - not logged in');
+    return null;
+  }
+  
+  // Save collection to Firebase and get share ID
+  const shareId = await saveSharedCollection(seriesName, entries, primaryItem);
+  if (!shareId) {
+    return null;
+  }
   
   const params = new URLSearchParams();
   params.set('collection', 'true');
   params.set('series', seriesName);
+  params.set('shareId', shareId);
+  params.set('uid', currentUser.uid);
   params.set('count', String(entries.length));
   
-  // Get current user's display name for the share
-  const currentUser = getCurrentUser();
-  if (currentUser?.displayName) {
+  if (currentUser.displayName) {
     params.set('user', currentUser.displayName);
   }
   
@@ -204,10 +297,10 @@ export function generateCollectionShareUrl(seriesName, entries, primaryItem) {
 // ============================================
 // BUILD COLLECTION DISCORD MESSAGE
 // ============================================
-export function buildCollectionDiscordMessage(seriesName, entries, primaryItem) {
+export async function buildCollectionDiscordMessage(seriesName, entries, primaryItem) {
   if (!seriesName || !entries?.length) return '';
   
-  const shareUrl = generateCollectionShareUrl(seriesName, entries, primaryItem);
+  const shareUrl = await generateCollectionShareUrl(seriesName, entries, primaryItem);
   
   // Just return the URL for Discord's embed
   return shareUrl || '';
@@ -227,6 +320,8 @@ export function parseShareUrl(urlString) {
       return {
         isCollection: true,
         seriesName: params.get(`${SHARE_PARAM_PREFIX}series`) || params.get('series') || '',
+        shareId: params.get(`${SHARE_PARAM_PREFIX}shareId`) || params.get('shareId') || '',
+        uid: params.get(`${SHARE_PARAM_PREFIX}uid`) || params.get('uid') || '',
         count: params.get(`${SHARE_PARAM_PREFIX}count`) || params.get('count') || '',
         movies: params.get(`${SHARE_PARAM_PREFIX}movies`) || params.get('movies') || '',
         seasons: params.get(`${SHARE_PARAM_PREFIX}seasons`) || params.get('seasons') || '',
@@ -1038,17 +1133,110 @@ export function openSharedCollectionModal(shareData) {
   
   // Info message
   const infoEl = createEl('div', 'shared-collection-info');
-  infoEl.textContent = 'This is a collection preview. Search for individual titles to add them to your list.';
   infoEl.style.cssText = 'color: var(--text-muted, #666); font-size: 0.8rem; margin-top: 1rem; padding: 0.75rem; background: rgba(255,255,255,0.05); border-radius: 8px;';
+  
+  // Check if we have Firebase data to fetch
+  const hasFirebaseData = shareData.shareId && shareData.uid;
+  const isLoggedIn = !!getCurrentUser();
+  
+  if (hasFirebaseData && isLoggedIn) {
+    infoEl.textContent = 'Click "Add Collection" to add all items from this collection to your list.';
+  } else if (hasFirebaseData && !isLoggedIn) {
+    infoEl.textContent = 'Sign in to add this collection to your list.';
+  } else {
+    infoEl.textContent = 'This is a collection preview. Search for individual titles to add them to your list.';
+  }
   content.appendChild(infoEl);
   
   modal.appendChild(content);
   
   // Actions
   const actions = createEl('div', 'modal-actions');
-  actions.style.cssText = 'display: flex; justify-content: center; padding: 1rem;';
+  actions.style.cssText = 'display: flex; justify-content: center; gap: 0.75rem; padding: 1rem;';
   
-  const closeBtn = createEl('button', 'btn primary', { text: 'Got it!' });
+  // Add Collection button (only if we have Firebase data and user is logged in)
+  if (hasFirebaseData && isLoggedIn) {
+    const addBtn = createEl('button', 'btn primary', { text: '➕ Add Collection' });
+    addBtn.style.cssText = 'background: linear-gradient(135deg, #10b981, #059669); border: none;';
+    addBtn.addEventListener('click', async () => {
+      addBtn.disabled = true;
+      addBtn.textContent = '⏳ Adding...';
+      
+      try {
+        const collectionData = await fetchSharedCollection(shareData.uid, shareData.shareId);
+        if (!collectionData || !collectionData.items || collectionData.items.length === 0) {
+          alert('Could not fetch collection data. The share link may have expired.');
+          addBtn.textContent = '❌ Failed';
+          return;
+        }
+        
+        let added = 0;
+        let errors = 0;
+        
+        for (const item of collectionData.items) {
+          try {
+            // Prepare item for adding
+            const itemData = {
+              title: item.title || '',
+              year: item.year || '',
+              poster: item.poster || '',
+              tmdbId: item.tmdbId || null,
+              imdbId: item.imdbId || '',
+              seriesName: item.seriesName || '',
+              seriesOrder: item.seriesOrder || null,
+              seasonNumber: item.seasonNumber ?? null,
+              tvEpisodeCount: item.tvEpisodeCount || null,
+              animeEpisodes: item.animeEpisodes || null,
+              runtime: item.runtime || '',
+              director: item.director || '',
+              plot: item.plot || '',
+              genres: item.genres || [],
+              imdbType: item.imdbType || '',
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            };
+            
+            // Filter out null/undefined values
+            Object.keys(itemData).forEach(key => {
+              if (itemData[key] === null || itemData[key] === undefined || itemData[key] === '') {
+                delete itemData[key];
+              }
+            });
+            
+            // Determine list type
+            const listType = item.listType || 'movies';
+            await addItem(listType, itemData);
+            added++;
+          } catch (err) {
+            console.error('[Share] Failed to add item:', item.title, err);
+            errors++;
+          }
+        }
+        
+        addBtn.textContent = `✅ Added ${added} items`;
+        addBtn.style.background = '#10b981';
+        
+        if (errors > 0) {
+          addBtn.textContent += ` (${errors} failed)`;
+        }
+        
+        // Close modal after a brief delay
+        setTimeout(() => closeSharedItemModal(), 1500);
+        
+      } catch (err) {
+        console.error('[Share] Error adding collection:', err);
+        addBtn.textContent = '❌ Error';
+        alert('Failed to add collection. Please try again.');
+      }
+    });
+    actions.appendChild(addBtn);
+  }
+  
+  const closeBtn = createEl('button', 'btn', { text: 'Close' });
+  if (!hasFirebaseData || !isLoggedIn) {
+    closeBtn.className = 'btn primary';
+    closeBtn.textContent = 'Got it!';
+  }
   closeBtn.addEventListener('click', closeSharedItemModal);
   actions.appendChild(closeBtn);
   
