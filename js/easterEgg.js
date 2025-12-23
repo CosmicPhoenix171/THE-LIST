@@ -93,11 +93,96 @@ export function getCurrentTmTheme() {
   return getSeasonalTheme();
 }
 
+let nightSky = null;
+
+function createNightSky() {
+  if (nightSky) return nightSky;
+  
+  nightSky = document.createElement('div');
+  nightSky.id = 'tm-night-sky';
+  nightSky.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(to bottom, 
+      #0a0a1a 0%, 
+      #1a1a3a 30%, 
+      #2a2a4a 60%, 
+      #1a1a2a 100%);
+    z-index: 9998;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.8s ease-in-out;
+  `;
+  
+  // Add twinkling stars
+  for (let i = 0; i < 100; i++) {
+    const star = document.createElement('div');
+    const size = Math.random() * 2 + 1;
+    star.style.cssText = `
+      position: absolute;
+      left: ${Math.random() * 100}%;
+      top: ${Math.random() * 70}%;
+      width: ${size}px;
+      height: ${size}px;
+      background: white;
+      border-radius: 50%;
+      opacity: ${0.3 + Math.random() * 0.7};
+      animation: tm-twinkle ${2 + Math.random() * 3}s ease-in-out infinite;
+      animation-delay: ${Math.random() * 2}s;
+    `;
+    nightSky.appendChild(star);
+  }
+  
+  // Add CSS animation for twinkling
+  if (!document.getElementById('tm-night-sky-styles')) {
+    const style = document.createElement('style');
+    style.id = 'tm-night-sky-styles';
+    style.textContent = `
+      @keyframes tm-twinkle {
+        0%, 100% { opacity: 0.3; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.2); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  document.body.appendChild(nightSky);
+  
+  // Fade in
+  requestAnimationFrame(() => {
+    nightSky.style.opacity = '0.95';
+  });
+  
+  return nightSky;
+}
+
+function removeNightSky() {
+  if (nightSky) {
+    nightSky.style.opacity = '0';
+    setTimeout(() => {
+      if (nightSky && nightSky.parentNode) {
+        nightSky.parentNode.removeChild(nightSky);
+      }
+      nightSky = null;
+    }, 800);
+  }
+}
+
 function ensureLayer() {
   if (layer) return layer;
   layer = document.createElement('div');
   layer.id = 'tm-rain-layer';
   document.body.appendChild(layer);
+  
+  // Add night sky for fireworks
+  const theme = getCurrentTmTheme();
+  if (theme && theme.isFirework) {
+    createNightSky();
+  }
+  
   attachPointerListeners();
   return layer;
 }
@@ -648,6 +733,8 @@ export function clear() {
     }
   });
   trailParticles.length = 0;
+  // Remove night sky
+  removeNightSky();
   if (layer && layer.parentNode) {
     layer.parentNode.removeChild(layer);
     layer = null;
