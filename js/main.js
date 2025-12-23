@@ -280,14 +280,22 @@ function initUnifiedLibraryControls() {
 }
 
 function toggleUnifiedTypeFilter(listType) {
+  console.log('[Filter] toggleUnifiedTypeFilter called with:', listType);
   if (!listType) return;
   const filters = state.unifiedFilters.types;
+  console.log('[Filter] Current filters:', [...filters]);
   if (filters.has(listType)) {
-    if (filters.size === 1) return;
+    if (filters.size === 1) {
+      console.log('[Filter] Cannot remove last filter');
+      return;
+    }
     filters.delete(listType);
+    console.log('[Filter] Removed:', listType);
   } else {
     filters.add(listType);
+    console.log('[Filter] Added:', listType);
   }
+  console.log('[Filter] Updated filters:', [...filters]);
   updateUnifiedTypeControls();
   renderUnifiedLibrary();
 }
