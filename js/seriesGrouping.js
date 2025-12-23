@@ -98,9 +98,11 @@ export function collectSeriesEntriesAcrossLists(seriesName) {
   
   if (debugSAO) {
     console.log('[SAO] Looking for seriesName:', seriesName, 'normalizedKey:', normalizedKey);
+    console.log('[SAO] cacheMap keys:', Object.keys(cacheMap));
     // Log all items that contain "sword art" in their title or seriesName
     COLLAPSIBLE_LISTS.forEach(type => {
       const pool = cacheMap[type];
+      console.log(`[SAO] Pool for ${type}:`, pool ? Object.keys(pool).length + ' items' : 'empty');
       if (!pool) return;
       Object.entries(pool).forEach(([id, item]) => {
         if (item && (item.title?.toLowerCase().includes('sword art') || item.seriesName?.toLowerCase().includes('sword art'))) {
@@ -109,7 +111,8 @@ export function collectSeriesEntriesAcrossLists(seriesName) {
             title: item.title, 
             seriesName: item.seriesName,
             tvSeasonCount: item.tvSeasonCount,
-            tvEpisodeCount: item.tvEpisodeCount
+            tvEpisodeCount: item.tvEpisodeCount,
+            animeSeasonSummaries: item.animeSeasonSummaries?.length
           });
         }
       });
