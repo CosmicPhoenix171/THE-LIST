@@ -44,6 +44,77 @@ export function generateShareUrl(listType, item) {
 }
 
 // ============================================
+// GENERATE COLLECTION SHARE URL
+// ============================================
+export function generateCollectionShareUrl(seriesName, entries, primaryItem) {
+  if (!seriesName || !entries?.length) return null;
+  
+  const params = new URLSearchParams();
+  params.set('collection', 'true');
+  params.set('series', seriesName);
+  params.set('count', String(entries.length));
+  
+  // Get current user's display name for the share
+  const currentUser = getCurrentUser();
+  if (currentUser?.displayName) {
+    params.set('user', currentUser.displayName);
+  }
+  
+  // Use the primary item's poster as the collection poster
+  if (primaryItem?.poster) {
+    params.set('poster', primaryItem.poster);
+  }
+  
+  // Count movies vs seasons/episodes
+  const movieCount = entries.filter(e => {
+    const type = e.item?.imdbType || e.listType;
+    return type === 'movie' || type === 'movies';
+  }).length;
+  const seasonCount = entries.length - movieCount;
+  
+  if (movieCount > 0) params.set('movies', String(movieCount));
+  if (seasonCount > 0) params.set('seasons', String(seasonCount));
+  
+  // Calculate total episodes if available
+  let totalEpisodes = 0;
+  entries.forEach(e => {
+    const item = e.item;
+    if (item) {
+      const eps = item.tvEpisodeCount || item.episodeCount || 
+        (Array.isArray(item.episodes) ? item.episodes.length : 0) ||
+        item.animeEpisodes || 0;
+      totalEpisodes += Number(eps) || 0;
+    }
+  });
+  if (totalEpisodes > 0) params.set('episodes', String(totalEpisodes));
+  
+  // Get year range
+  const years = entries.map(e => Number(e.item?.year)).filter(y => y > 0).sort((a, b) => a - b);
+  if (years.length) {
+    const minYear = years[0];
+    const maxYear = years[years.length - 1];
+    params.set('yearRange', minYear === maxYear ? String(minYear) : `${minYear}-${maxYear}`);
+  }
+  
+  // Cache-buster
+  params.set('v', Date.now().toString());
+  
+  return `${SHARE_WORKER_URL}?${params.toString()}`;
+}
+
+// ============================================
+// BUILD COLLECTION DISCORD MESSAGE
+// ============================================
+export function buildCollectionDiscordMessage(seriesName, entries, primaryItem) {
+  if (!seriesName || !entries?.length) return '';
+  
+  const shareUrl = generateCollectionShareUrl(seriesName, entries, primaryItem);
+  
+  // Just return the URL for Discord's embed
+  return shareUrl || '';
+}
+
+// ============================================
 // PARSE SHARE URL
 // ============================================
 export function parseShareUrl(urlString) {
@@ -252,6 +323,243 @@ export function openShareModal(listType, item) {
   const cancelBtn = createEl('button', 'btn ghost', { text: 'Close' });
   cancelBtn.addEventListener('click', closeShareModal);
   actions.appendChild(cancelBtn);
+  
+  modal.appendChild(actions);
+  
+  // Close on backdrop click
+  backdrop.addEventListener('click', (ev) => {
+    if (ev.target === backdrop) closeShareModal();
+  });
+  
+  // Close on Escape
+  const keyHandler = (ev) => {
+    if (ev.key === 'Escape') {
+      closeShareModal();
+      document.removeEventListener('keydown', keyHandler);
+    }
+  };
+  document.addEventListener('keydown', keyHandler);
+  
+  backdrop.appendChild(modal);
+  modalRoot.appendChild(backdrop);
+  
+  activeShareModal = { backdrop, modal, keyHandler };
+}
+
+// ============================================
+// OPEN COLLECTION SHARE MODAL
+// ============================================
+export function openCollectionShareModal(seriesName, entries, primaryItem) {
+  closeShareModal();
+  if (!modalRoot || !seriesName || !entries?.length) return;
+  
+  const backdrop = createEl('div', 'modal-backdrop share-modal-backdrop');
+  const modal = createEl('div', 'modal share-modal');
+  modal.style.maxWidth = '550px';
+  
+  // Header
+  const header = createEl('div', 'modal-header');
+  header.appendChild(createEl('h2', '', { text: 'Share Collection' }));
+  modal.appendChild(header);
+  
+  // Preview card
+  const preview = createEl('div', 'share-preview collection-share-preview');
+  preview.style.cssText = `
+    background: var(--card-bg, #1f1f1f);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  `;
+  
+  // Collection header with poster stack
+  const previewHeader = createEl('div', 'share-preview-header');
+  previewHeader.style.cssText = 'display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 0.75rem;';
+  
+  // Show up to 3 posters in a stack
+  const posterStack = createEl('div', 'share-poster-stack');
+  posterStack.style.cssText = 'position: relative; width: 90px; height: 130px; flex-shrink: 0;';
+  
+  const posterEntries = entries.filter(e => e.item?.poster).slice(0, 3);
+  posterEntries.forEach((entry, idx) => {
+    const img = createEl('img');
+    img.src = entry.item.poster;
+    img.alt = entry.item.title || 'Poster';
+    img.style.cssText = `
+      position: absolute;
+      width: 70px;
+      height: 105px;
+      object-fit: cover;
+      border-radius: 4px;
+      border: 2px solid var(--bg, #111);
+      left: ${idx * 10}px;
+      top: ${idx * 5}px;
+      z-index: ${3 - idx};
+    `;
+    posterStack.appendChild(img);
+  });
+  previewHeader.appendChild(posterStack);
+  
+  // Collection info
+  const infoDiv = createEl('div', 'share-collection-info');
+  infoDiv.style.flex = '1';
+  
+  const titleEl = createEl('div', 'share-preview-title');
+  titleEl.textContent = seriesName;
+  titleEl.style.cssText = 'font-weight: 600; font-size: 1.15rem; margin-bottom: 0.35rem;';
+  infoDiv.appendChild(titleEl);
+  
+  // Stats badges
+  const statsRow = createEl('div', 'share-collection-stats');
+  statsRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem;';
+  
+  const movieCount = entries.filter(e => {
+    const type = e.item?.imdbType || e.listType;
+    return type === 'movie' || type === 'movies';
+  }).length;
+  const seasonCount = entries.length - movieCount;
+  
+  if (movieCount > 0) {
+    const movieBadge = createEl('span', 'share-stat-badge');
+    movieBadge.textContent = `${movieCount} Movie${movieCount !== 1 ? 's' : ''}`;
+    movieBadge.style.cssText = 'background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); padding: 0.2rem 0.5rem; border-radius: 999px; font-size: 0.75rem; color: #fbbf24;';
+    statsRow.appendChild(movieBadge);
+  }
+  
+  if (seasonCount > 0) {
+    const seasonBadge = createEl('span', 'share-stat-badge');
+    seasonBadge.textContent = `${seasonCount} Season${seasonCount !== 1 ? 's' : ''}`;
+    seasonBadge.style.cssText = 'background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.4); padding: 0.2rem 0.5rem; border-radius: 999px; font-size: 0.75rem; color: #60a5fa;';
+    statsRow.appendChild(seasonBadge);
+  }
+  
+  // Total episodes
+  let totalEpisodes = 0;
+  entries.forEach(e => {
+    const item = e.item;
+    if (item) {
+      const eps = item.tvEpisodeCount || item.episodeCount || 
+        (Array.isArray(item.episodes) ? item.episodes.length : 0) ||
+        item.animeEpisodes || 0;
+      totalEpisodes += Number(eps) || 0;
+    }
+  });
+  if (totalEpisodes > 0) {
+    const epBadge = createEl('span', 'share-stat-badge');
+    epBadge.textContent = `${totalEpisodes} Episode${totalEpisodes !== 1 ? 's' : ''}`;
+    epBadge.style.cssText = 'background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); padding: 0.2rem 0.5rem; border-radius: 999px; font-size: 0.75rem; color: #34d399;';
+    statsRow.appendChild(epBadge);
+  }
+  
+  infoDiv.appendChild(statsRow);
+  
+  // Year range
+  const years = entries.map(e => Number(e.item?.year)).filter(y => y > 0).sort((a, b) => a - b);
+  if (years.length) {
+    const minYear = years[0];
+    const maxYear = years[years.length - 1];
+    const yearText = minYear === maxYear ? String(minYear) : `${minYear} - ${maxYear}`;
+    const yearEl = createEl('div', 'share-collection-years');
+    yearEl.textContent = yearText;
+    yearEl.style.cssText = 'color: var(--text-muted, #888); font-size: 0.85rem;';
+    infoDiv.appendChild(yearEl);
+  }
+  
+  previewHeader.appendChild(infoDiv);
+  preview.appendChild(previewHeader);
+  
+  // List of entries
+  const entriesList = createEl('div', 'share-entries-list');
+  entriesList.style.cssText = 'max-height: 180px; overflow-y: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.65rem; margin-top: 0.5rem;';
+  
+  entries.slice(0, 10).forEach((entry, idx) => {
+    const item = entry.item;
+    const row = createEl('div', 'share-entry-row');
+    row.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; font-size: 0.85rem;';
+    
+    const num = createEl('span', 'share-entry-num');
+    num.textContent = `#${idx + 1}`;
+    num.style.cssText = 'color: var(--text-muted, #888); min-width: 28px;';
+    row.appendChild(num);
+    
+    const title = createEl('span', 'share-entry-title');
+    title.textContent = item?.title || 'Unknown';
+    title.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+    row.appendChild(title);
+    
+    if (item?.year) {
+      const year = createEl('span', 'share-entry-year');
+      year.textContent = item.year;
+      year.style.cssText = 'color: var(--text-muted, #888);';
+      row.appendChild(year);
+    }
+    
+    entriesList.appendChild(row);
+  });
+  
+  if (entries.length > 10) {
+    const moreRow = createEl('div', 'share-entry-more');
+    moreRow.textContent = `+${entries.length - 10} more...`;
+    moreRow.style.cssText = 'color: var(--text-muted, #888); font-size: 0.8rem; padding: 0.35rem 0;';
+    entriesList.appendChild(moreRow);
+  }
+  
+  preview.appendChild(entriesList);
+  modal.appendChild(preview);
+  
+  // Discord message
+  const messageLabel = createEl('label', 'form-label');
+  messageLabel.textContent = 'Discord Share Link:';
+  messageLabel.style.cssText = 'display: block; margin-bottom: 0.5rem; font-weight: 500;';
+  modal.appendChild(messageLabel);
+  
+  const shareUrl = generateCollectionShareUrl(seriesName, entries, primaryItem);
+  const textarea = createEl('textarea', 'share-textarea');
+  textarea.value = shareUrl || '';
+  textarea.readOnly = true;
+  textarea.style.cssText = `
+    width: 100%;
+    min-height: 80px;
+    padding: 0.75rem;
+    background: var(--input-bg, #2a2a2a);
+    border: 1px solid var(--border, #333);
+    border-radius: 6px;
+    color: var(--text, #fff);
+    font-family: inherit;
+    font-size: 0.85rem;
+    resize: vertical;
+    margin-bottom: 1rem;
+  `;
+  modal.appendChild(textarea);
+  
+  // Actions
+  const actions = createEl('div', 'share-actions');
+  actions.style.cssText = 'display: flex; gap: 0.5rem; justify-content: flex-end;';
+  
+  // Copy Link button
+  const copyBtn = createEl('button', 'btn primary', { text: 'Copy Link' });
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      copyBtn.textContent = 'Copied!';
+      copyBtn.classList.add('success');
+      setTimeout(() => {
+        copyBtn.textContent = 'Copy Link';
+        copyBtn.classList.remove('success');
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      textarea.select();
+      document.execCommand('copy');
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => { copyBtn.textContent = 'Copy Link'; }, 2000);
+    }
+  });
+  actions.appendChild(copyBtn);
+  
+  // Close button
+  const closeBtn = createEl('button', 'btn ghost', { text: 'Close' });
+  closeBtn.addEventListener('click', closeShareModal);
+  actions.appendChild(closeBtn);
   
   modal.appendChild(actions);
   

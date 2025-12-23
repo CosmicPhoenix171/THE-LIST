@@ -23,7 +23,7 @@ import {
 import { openEditModal } from './modals.js';
 import { handleFinishRequest, deleteItem, deleteSeriesEntries, updateItem, mergeSeriesEntriesByName, splitTvShowSeasons } from './crud.js';
 import { getUserRegion, ensureTmdbIdentity, fetchWatchProviders, refreshItemMetadata, fetchAllTvSeasons } from './metadata.js';
-import { generateShareUrl } from './share.js';
+import { generateShareUrl, openCollectionShareModal } from './share.js';
 import { getFirebaseDatabase } from './firebase.js';
 import { ref, update } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
@@ -1794,6 +1794,18 @@ export function buildMovieCardActions(listType, id, item, options = {}) {
         }
       }
     },
+    // Share Collection button - only for series entries
+    ...(item?.seriesName ? [{
+      className: 'btn info share-collection-btn',
+      label: 'Share Collection',
+      handler: () => {
+        // Get all entries in this series
+        const seriesEntries = getSeriesTreeEntries(listType, id);
+        if (seriesEntries && seriesEntries.length > 0) {
+          openCollectionShareModal(item.seriesName, seriesEntries, item);
+        }
+      }
+    }] : []),
     {
       className: 'btn success',
       label: 'Finished',
