@@ -258,9 +258,14 @@ function initUnifiedLibraryControls() {
     }, 180));
   }
   
+  console.log('[Filter] typeFilterButtons count:', dom.typeFilterButtons.length);
   dom.typeFilterButtons.forEach(btn => {
     const type = btn.dataset.typeToggle;
-    btn.addEventListener('click', () => toggleUnifiedTypeFilter(type));
+    console.log('[Filter] Attaching listener to button:', type);
+    btn.addEventListener('click', () => {
+      console.log('[Filter] Button clicked:', type);
+      toggleUnifiedTypeFilter(type);
+    });
   });
   
   if (dom.finishedFilterToggle) {
