@@ -216,10 +216,14 @@ let sparklerIntervals = [];
 function createSparkler(container, side) {
   const sparklerContainer = document.createElement('div');
   sparklerContainer.className = 'tm-sparkler';
+  
+  // Position close to the countdown text
+  const sideOffset = side === 'left' ? 'calc(50% - 280px)' : 'calc(50% + 240px)';
+  
   sparklerContainer.style.cssText = `
     position: absolute;
-    top: 50%;
-    ${side}: 15%;
+    top: 42%;
+    left: ${sideOffset};
     transform: translateY(-50%);
     width: 80px;
     height: 120px;
