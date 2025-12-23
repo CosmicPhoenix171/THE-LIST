@@ -258,14 +258,9 @@ function initUnifiedLibraryControls() {
     }, 180));
   }
   
-  console.log('[Filter] typeFilterButtons count:', dom.typeFilterButtons.length);
   dom.typeFilterButtons.forEach(btn => {
     const type = btn.dataset.typeToggle;
-    console.log('[Filter] Attaching listener to button:', type);
-    btn.addEventListener('click', () => {
-      console.log('[Filter] Button clicked:', type);
-      toggleUnifiedTypeFilter(type);
-    });
+    btn.addEventListener('click', () => toggleUnifiedTypeFilter(type));
   });
   
   if (dom.finishedFilterToggle) {
@@ -285,22 +280,14 @@ function initUnifiedLibraryControls() {
 }
 
 function toggleUnifiedTypeFilter(listType) {
-  console.log('[Filter] toggleUnifiedTypeFilter called with:', listType);
   if (!listType) return;
   const filters = state.unifiedFilters.types;
-  console.log('[Filter] Current filters:', [...filters]);
   if (filters.has(listType)) {
-    if (filters.size === 1) {
-      console.log('[Filter] Cannot remove last filter');
-      return;
-    }
+    if (filters.size === 1) return;
     filters.delete(listType);
-    console.log('[Filter] Removed:', listType);
   } else {
     filters.add(listType);
-    console.log('[Filter] Added:', listType);
   }
-  console.log('[Filter] Updated filters:', [...filters]);
   updateUnifiedTypeControls();
   renderUnifiedLibrary();
 }
@@ -351,7 +338,19 @@ function renderUnifiedLibrary() {
   const unifiedEntries = collectUnifiedEntries();
   const activeTypes = state.unifiedFilters.types;
   
-  let filtered = unifiedEntries.filter(entry => activeTypes.has(entry.listType));
+  // Filter entries by type, with special handling for anime-flagged content
+  let filtered = unifiedEntries.filter(entry => {
+    const item = entry.displayItem || entry.item;
+    const isAnimeContent = collapsibleCards.itemHasAnimeKeyword(item);
+    
+    // If this is anime content (either in anime list or flagged as anime)
+    if (isAnimeContent) {
+      return activeTypes.has('anime');
+    }
+    
+    // Regular content - filter by listType
+    return activeTypes.has(entry.listType);
+  });
   
   const queryStr = state.unifiedFilters.search;
   if (queryStr) {
