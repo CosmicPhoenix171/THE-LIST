@@ -67,6 +67,12 @@ const fireworkColors = [
   '#ffd700', '#ffffff'
 ];
 
+// Performance limits
+const maxFireworkParticles = 150;
+const maxTrailParticles = 80;
+const particleMaxLifetime = 3000; // 3 seconds max lifetime
+const trailMaxLifetime = 1500; // 1.5 seconds for trails
+
 // Firework particles array
 let fireworkParticles = [];
 
@@ -261,9 +267,20 @@ function spawnFirework() {
 }
 
 function createExplosion(x, y) {
-  const particleCount = 30 + Math.floor(Math.random() * 20);
+  // Limit total particles for performance
+  if (fireworkParticles.length >= maxFireworkParticles) {
+    // Remove oldest particles to make room
+    const toRemove = Math.min(20, fireworkParticles.length - maxFireworkParticles + 25);
+    for (let i = 0; i < toRemove; i++) {
+      const p = fireworkParticles.shift();
+      if (p.el && p.el.parentNode) p.el.parentNode.removeChild(p.el);
+    }
+  }
+
+  const particleCount = 25 + Math.floor(Math.random() * 15); // Reduced from 30-50
   const color = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
   const secondaryColor = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
+  const spawnTime = performance.now();
 
   for (let i = 0; i < particleCount; i++) {
     const angle = (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.3;
@@ -278,13 +295,14 @@ function createExplosion(x, y) {
       size: 4 + Math.random() * 4,
       radius: 2,
       opacity: 1,
-      fadeRate: 0.008 + Math.random() * 0.012,
+      fadeRate: 0.012 + Math.random() * 0.015, // Faster fade
       color: particleColor,
       isParticle: true,
       resting: false,
       supported: false,
       rotation: 0,
       spin: 0,
+      spawnTime: spawnTime,
     };
 
     const el = document.createElement('div');
@@ -303,6 +321,12 @@ function createExplosion(x, y) {
 function spawnTrailParticle(x, y, isSparkle) {
   if (!layer) return;
 
+  // Limit trail particles for performance
+  if (trailParticles.length >= maxTrailParticles) {
+    const p = trailParticles.shift();
+    if (p.el && p.el.parentNode) p.el.parentNode.removeChild(p.el);
+  }
+
   const particle = {
     x: x + (Math.random() - 0.5) * 6,
     y: y + (Math.random() - 0.5) * 4,
@@ -310,9 +334,10 @@ function spawnTrailParticle(x, y, isSparkle) {
     vy: 0.5 + Math.random() * 1.5, // Drift downward
     size: isSparkle ? 3 + Math.random() * 4 : 6 + Math.random() * 8,
     opacity: isSparkle ? 1 : 0.6 + Math.random() * 0.3,
-    fadeRate: isSparkle ? 0.025 + Math.random() * 0.02 : 0.015 + Math.random() * 0.01,
+    fadeRate: isSparkle ? 0.04 + Math.random() * 0.03 : 0.025 + Math.random() * 0.02, // Faster fade
     isSparkle: isSparkle,
     scale: 1,
+    spawnTime: performance.now(),
   };
 
   const el = document.createElement('div');
@@ -345,8 +370,19 @@ function spawnTrailParticle(x, y, isSparkle) {
 }
 
 function updateTrailParticles() {
+  const now = performance.now();
   for (let i = trailParticles.length - 1; i >= 0; i--) {
     const particle = trailParticles[i];
+
+    // Force remove if exceeded max lifetime
+    const age = now - particle.spawnTime;
+    if (age > trailMaxLifetime) {
+      if (particle.el && particle.el.parentNode) {
+        particle.el.parentNode.removeChild(particle.el);
+      }
+      trailParticles.splice(i, 1);
+      continue;
+    }
 
     particle.x += particle.vx;
     particle.y += particle.vy;
@@ -407,8 +443,19 @@ function updateFireworks() {
   }
 
   // Update explosion particles
+  const now = performance.now();
   for (let i = fireworkParticles.length - 1; i >= 0; i--) {
     const particle = fireworkParticles[i];
+
+    // Force remove if exceeded max lifetime
+    const age = now - particle.spawnTime;
+    if (age > particleMaxLifetime) {
+      if (particle.el && particle.el.parentNode) {
+        particle.el.parentNode.removeChild(particle.el);
+      }
+      fireworkParticles.splice(i, 1);
+      continue;
+    }
 
     particle.vy += 0.15; // Gravity
     particle.vx *= 0.98; // Air resistance
