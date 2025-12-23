@@ -1124,6 +1124,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   transition:color .3s ease,text-shadow .3s ease;
 }
 .tm-sprite.tm-themed{animation:none}
+.tm-sprite.tm-particle,.tm-sprite.tm-trail,.tm-sprite.tm-rocket{animation:none;transition:none}
 
 @keyframes tmRainbow{
   0%{color:#ff2679;text-shadow:0 0 18px rgba(255,38,121,0.5)}
