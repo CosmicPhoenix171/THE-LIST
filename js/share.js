@@ -560,7 +560,7 @@ export function openShareModal(listType, item) {
 // ============================================
 // OPEN COLLECTION SHARE MODAL
 // ============================================
-export function openCollectionShareModal(seriesName, entries, primaryItem) {
+export async function openCollectionShareModal(seriesName, entries, primaryItem) {
   closeShareModal();
   if (!modalRoot || !seriesName || !entries?.length) return;
   
@@ -723,9 +723,9 @@ export function openCollectionShareModal(seriesName, entries, primaryItem) {
   messageLabel.style.cssText = 'display: block; margin-bottom: 0.5rem; font-weight: 500;';
   modal.appendChild(messageLabel);
   
-  const shareUrl = generateCollectionShareUrl(seriesName, entries, primaryItem);
+  const shareUrl = await generateCollectionShareUrl(seriesName, entries, primaryItem);
   const textarea = createEl('textarea', 'share-textarea');
-  textarea.value = shareUrl || '';
+  textarea.value = shareUrl || 'Failed to generate share link. Please try again.';
   textarea.readOnly = true;
   textarea.style.cssText = `
     width: 100%;
