@@ -372,8 +372,26 @@ function createExplosion(x, y) {
   const particleCount = 25 + Math.floor(Math.random() * 15);
   const spawnTime = performance.now();
   
+  // Color groups for distinct explosions
+  const colorGroups = [
+    ['#ff3333', '#ff5555', '#ff7777'], // Reds
+    ['#ff9933', '#ffaa00', '#ffcc33'], // Oranges
+    ['#ffff33', '#ffff66', '#ffffaa'], // Yellows
+    ['#33ff33', '#66ff66', '#99ff99'], // Greens
+    ['#33ffff', '#66ffff', '#99ffff'], // Cyans
+    ['#3399ff', '#66aaff', '#99ccff'], // Blues
+    ['#ff33ff', '#ff66ff', '#ff99ff'], // Magentas
+    ['#ff69b4', '#ff99cc', '#ffbbdd'], // Pinks
+    ['#ffdd33', '#ffee66', '#ffff99'], // Golds
+  ];
+  
+  // Pick a random color group for this explosion
+  const selectedGroup = colorGroups[Math.floor(Math.random() * colorGroups.length)];
+  // Sometimes pick a second contrasting group
+  const secondGroup = colorGroups[Math.floor(Math.random() * colorGroups.length)];
+  
   // Randomly choose explosion style
-  const explosionStyle = Math.floor(Math.random() * 4);
+  const explosionStyle = Math.floor(Math.random() * 3);
 
   for (let i = 0; i < particleCount; i++) {
     const angle = (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.3;
@@ -382,21 +400,19 @@ function createExplosion(x, y) {
     // Different color patterns for variety
     let particleColor;
     switch (explosionStyle) {
-      case 0: // Rainbow - each particle gets a random color
-        particleColor = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
+      case 0: // Single color group with white sparkles
+        particleColor = Math.random() > 0.15 
+          ? selectedGroup[Math.floor(Math.random() * selectedGroup.length)]
+          : '#ffffff';
         break;
-      case 1: // Gradient - colors based on angle
-        const colorIndex = Math.floor((angle / (Math.PI * 2)) * fireworkColors.length);
-        particleColor = fireworkColors[colorIndex % fireworkColors.length];
+      case 1: // Two contrasting color groups
+        const useFirst = Math.random() > 0.5;
+        const group = useFirst ? selectedGroup : secondGroup;
+        particleColor = group[Math.floor(Math.random() * group.length)];
         break;
-      case 2: // Two-tone mix
-        const color1 = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
-        const color2 = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
-        particleColor = Math.random() > 0.5 ? color1 : color2;
-        break;
-      default: // Solid with sparkle whites
-        const baseColor = fireworkColors[Math.floor(Math.random() * (fireworkColors.length - 1))];
-        particleColor = Math.random() > 0.85 ? '#ffffff' : baseColor;
+      default: // Rainbow - each particle random from all groups
+        const randomGroup = colorGroups[Math.floor(Math.random() * colorGroups.length)];
+        particleColor = randomGroup[Math.floor(Math.random() * randomGroup.length)];
     }
 
     const particle = {
