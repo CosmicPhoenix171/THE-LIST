@@ -325,6 +325,7 @@ export function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem, provide
   // If we have a seriesName, collect entries across all list types for complete metrics
   if (fallbackItem?.seriesName) {
     const crossEntries = collectSeriesEntriesAcrossLists(fallbackItem.seriesName);
+    console.log('[Metrics] Cross entries for', fallbackItem.seriesName, ':', crossEntries?.length, crossEntries?.map(e => ({ title: e.item?.title, listType: e.listType, seasonNumber: e.item?.seasonNumber })));
     if (crossEntries && crossEntries.length > 0) {
       entries = crossEntries.map(entry => ({ item: entry.item, listType: entry.listType })).filter(e => e.item);
     }
