@@ -348,9 +348,15 @@ function renderUnifiedLibrary() {
   filtered.sort((a, b) => {
     const sortMode = state.librarySortMode;
     
+    // Use seriesName for sorting if available, otherwise use title
+    const getSortTitle = (entry) => {
+      const item = entry.displayItem || entry.item;
+      return item?.seriesName || item?.title || '';
+    };
+    
     if (sortMode === 'alphaAsc' || sortMode === 'alphaDesc') {
-      const ta = utils.titleSortKey(a.displayItem?.title || '');
-      const tb = utils.titleSortKey(b.displayItem?.title || '');
+      const ta = utils.titleSortKey(getSortTitle(a));
+      const tb = utils.titleSortKey(getSortTitle(b));
       if (ta !== tb) {
         return sortMode === 'alphaAsc' ? (ta < tb ? -1 : 1) : (ta > tb ? -1 : 1);
       }
@@ -364,8 +370,8 @@ function renderUnifiedLibrary() {
       }
     }
 
-    const ta = utils.titleSortKey(a.displayItem?.title || '');
-    const tb = utils.titleSortKey(b.displayItem?.title || '');
+    const ta = utils.titleSortKey(getSortTitle(a));
+    const tb = utils.titleSortKey(getSortTitle(b));
     if (ta < tb) return -1;
     if (ta > tb) return 1;
     return 0;
