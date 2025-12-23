@@ -717,30 +717,8 @@ export async function openCollectionShareModal(seriesName, entries, primaryItem)
   preview.appendChild(entriesList);
   modal.appendChild(preview);
   
-  // Discord message
-  const messageLabel = createEl('label', 'form-label');
-  messageLabel.textContent = 'Discord Share Link:';
-  messageLabel.style.cssText = 'display: block; margin-bottom: 0.5rem; font-weight: 500;';
-  modal.appendChild(messageLabel);
-  
+  // Generate share URL
   const shareUrl = await generateCollectionShareUrl(seriesName, entries, primaryItem);
-  const textarea = createEl('textarea', 'share-textarea');
-  textarea.value = shareUrl || 'Failed to generate share link. Please try again.';
-  textarea.readOnly = true;
-  textarea.style.cssText = `
-    width: 100%;
-    min-height: 80px;
-    padding: 0.75rem;
-    background: var(--input-bg, #2a2a2a);
-    border: 1px solid var(--border, #333);
-    border-radius: 6px;
-    color: var(--text, #fff);
-    font-family: inherit;
-    font-size: 0.85rem;
-    resize: vertical;
-    margin-bottom: 1rem;
-  `;
-  modal.appendChild(textarea);
   
   // Actions
   const actions = createEl('div', 'share-actions');
@@ -749,6 +727,10 @@ export async function openCollectionShareModal(seriesName, entries, primaryItem)
   // Copy Link button
   const copyBtn = createEl('button', 'btn primary', { text: 'Copy Link' });
   copyBtn.addEventListener('click', async () => {
+    if (!shareUrl) {
+      alert('Failed to generate share link. Please try again.');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(shareUrl);
       copyBtn.textContent = 'Copied!';
@@ -759,8 +741,13 @@ export async function openCollectionShareModal(seriesName, entries, primaryItem)
       }, 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
-      textarea.select();
+      // Fallback: create temporary input
+      const tempInput = document.createElement('input');
+      tempInput.value = shareUrl;
+      document.body.appendChild(tempInput);
+      tempInput.select();
       document.execCommand('copy');
+      document.body.removeChild(tempInput);
       copyBtn.textContent = 'Copied!';
       setTimeout(() => { copyBtn.textContent = 'Copy Link'; }, 2000);
     }
