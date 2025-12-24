@@ -719,6 +719,9 @@ export function updateLibraryRuntimeStats() {
       pill.style.alignItems = 'center';
       pill.style.gap = '0.35rem';
       pill.style.transition = 'all 0.2s ease';
+      pill.style.width = 'calc(50% - 0.2rem)';
+      pill.style.justifyContent = 'center';
+      pill.style.boxSizing = 'border-box';
       
       pill.onmouseenter = () => {
         pill.style.background = 'rgba(255,255,255,0.12)';
