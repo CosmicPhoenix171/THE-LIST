@@ -632,7 +632,8 @@ function initBackToTop() {
   if (!dom.backToTopBtn) return;
   
   dom.backToTopBtn.addEventListener('click', () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Use instant scroll to avoid conflicts with virtual scroller
+    window.scrollTo({ top: 0, behavior: 'instant' });
   });
   
   const updateVisibility = () => {
