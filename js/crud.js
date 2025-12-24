@@ -531,17 +531,13 @@ export async function splitTvShowSeasons(itemId, item, fetchAllTvSeasons) {
     for (let i = 0; i < seasons.length; i++) {
       const season = seasons[i];
       
-      // Build the season entry
+      // Build the season entry - each season is its own entry, no inherited URLs
       const seasonEntry = {
         title: `${showTitle}: ${season.name}`,
         year: season.year || item.year || null,
         poster: season.poster || item.poster || null,
         plot: season.overview || item.plot || null,
         tmdbId: item.tmdbId,
-        imdbId: item.imdbId || null,
-        imdbUrl: item.imdbUrl || null,
-        trailerUrl: item.trailerUrl || null,
-        imdbRating: item.imdbRating || null,
         seriesName: seriesName,
         seriesOrder: season.seasonNumber,
         seasonNumber: season.seasonNumber,
