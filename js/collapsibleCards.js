@@ -921,8 +921,8 @@ export function buildMovieLinks(listType, item) {
     container.appendChild(anchor);
   });
   
-  // Add Watch Now section for movies
-  if (listType === 'movies' && TMDB_API_KEY) {
+  // Add Watch Now section for movies, TV shows, and anime
+  if ((listType === 'movies' || listType === 'tvShows' || listType === 'anime') && TMDB_API_KEY) {
     const watchInline = buildWatchNowSection(listType, item, true);
     if (watchInline) container.appendChild(watchInline);
   }
