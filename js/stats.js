@@ -418,6 +418,24 @@ export function computeLibraryRuntimeStats() {
     });
   };
 
+  // Track which TV series we've already counted genres for (to avoid counting split seasons multiple times)
+  const countedTvSeriesGenres = new Set();
+
+  const countItemGenresOncePerSeries = (item, listType) => {
+    // Only apply the "once per series" rule for TV shows with split seasons
+    // Movies always count separately, even if they're part of the same franchise
+    const isSplitTvSeason = listType === 'tvShows' && item.splitFromId && item.seasonNumber !== undefined;
+    if (isSplitTvSeason) {
+      const seriesKey = item.seriesName || item.tmdbId || item.splitFromId;
+      if (countedTvSeriesGenres.has(seriesKey)) {
+        return; // Already counted this TV series
+      }
+      countedTvSeriesGenres.add(seriesKey);
+    }
+    
+    countItemGenres(item);
+  };
+
   const countItemCast = (item) => {
     if (!item.actors) return;
     const actors = new Set();
@@ -459,7 +477,7 @@ export function computeLibraryRuntimeStats() {
       if (source[type]) {
         Object.values(source[type]).forEach(item => {
           if (item) {
-            countItemGenres(item);
+            countItemGenresOncePerSeries(item, type);
             countItemCastOncePerSeries(item, type);
           }
         });
