@@ -19,6 +19,7 @@ import * as easterEgg from './easterEgg.js';
 import * as collapsibleCards from './collapsibleCards.js';
 import * as seriesGrouping from './seriesGrouping.js';
 import * as share from './share.js';
+import * as alphabetScroller from './alphabetScroller.js';
 import { 
   VirtualScroller, 
   ensureVirtualListController, 
@@ -76,6 +77,7 @@ export function initApp() {
   autocomplete.initGlobalSuggestionClickHandler();
   franchise.setupFranchiseSort();
   easterEgg.bindTriggers();
+  alphabetScroller.initAlphabetScroller();
   
   // Bug report button
   bugReport.initBugReportButton({
@@ -332,6 +334,7 @@ function renderUnifiedLibrary() {
     const message = state.showFinishedOnly ? 'Loading finished entries...' : 'Loading your library...';
     destroyUnifiedVirtualizer();
     dom.combinedListEl.innerHTML = `<div class="small">${message}</div>`;
+    alphabetScroller.updateAlphabetScroller([], state.librarySortMode);
     return;
   }
 
@@ -395,6 +398,7 @@ function renderUnifiedLibrary() {
       : 'No entries match the current filters yet.';
     destroyUnifiedVirtualizer();
     dom.combinedListEl.innerHTML = `<div class="small">${emptyMessage}</div>`;
+    alphabetScroller.updateAlphabetScroller([], state.librarySortMode);
     return;
   }
 
@@ -409,6 +413,7 @@ function renderUnifiedLibrary() {
       renderItem: (entry, index) => buildUnifiedCard(entry, index),
     });
     controller?.setItems(filtered);
+    alphabetScroller.updateAlphabetScroller(filtered, state.librarySortMode);
     return;
   }
 
@@ -420,6 +425,7 @@ function renderUnifiedLibrary() {
     if (node) grid.appendChild(node);
   });
   dom.combinedListEl.appendChild(grid);
+  alphabetScroller.updateAlphabetScroller(filtered, state.librarySortMode);
 }
 
 function buildUnifiedCard(entry, index = 0) {
