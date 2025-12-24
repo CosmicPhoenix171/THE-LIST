@@ -155,6 +155,10 @@
                       <div class="input-suggest title-group">
                         <input name="title" placeholder="Title" autocomplete="off" required />
                         <div class="suggestions" data-role="title-suggestions"></div>
+                        <div class="input-suggest year-director-group vertical">
+                          <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
+                          <input name="director" placeholder="Director / Showrunner (optional)" />
+                        </div>
                       </div>
                       <div class="input-suggest actor-group hidden">
                         <input name="actor" placeholder="Actor Name" autocomplete="off" />
@@ -173,8 +177,6 @@
                         </div>
                       </div>
                       <div class="standard-fields">
-                        <input name="year" placeholder="Year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" />
-                        <input name="director" placeholder="Director / Showrunner (optional)" />
                         <input name="seriesName" placeholder="Series name (optional)" />
                         <input name="seriesOrder" placeholder="Series order" inputmode="numeric" pattern="[0-9]{1,3}" />
                         <textarea name="notes" placeholder="Notes (optional)"></textarea>
