@@ -392,7 +392,7 @@ export async function refreshAllMetadataSequential(callbacks = {}) {
       const item = cache[id];
       if (!item) continue;
       try {
-        await refreshItemMetadata(type, id, item, {});
+        await refreshItemMetadata(type, id, item, { silent: true });
         refreshed++;
       } catch (e) {
         console.error(`Failed to refresh ${type}/${id}:`, e);

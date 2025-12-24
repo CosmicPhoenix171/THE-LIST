@@ -864,14 +864,14 @@ export async function fetchWatchProviders(mediaType, tmdbId) {
 export async function refreshItemMetadata(listType, itemId, item, options = {}) {
   const supported = new Set(['movies', 'tvShows', 'books']);
   if (!supported.has(listType)) {
-    alert('Metadata refresh is only available for movies, TV, or books.');
+    if (!options.silent) alert('Metadata refresh is only available for movies, TV, or books.');
     return;
   }
   if (listType === 'anime') {
-    alert('Anime metadata refresh is no longer supported.');
+    if (!options.silent) alert('Anime metadata refresh is no longer supported.');
     return;
   }
-  const { title = '', year = '', button = null } = options;
+  const { title = '', year = '', button = null, silent = false } = options;
   const lookupTitle = title || item.title || '';
   const lookupYear = year || item.year || '';
 
@@ -926,7 +926,7 @@ export async function refreshItemMetadata(listType, itemId, item, options = {}) 
     }
 
     if (!metadata) {
-      alert('No metadata found for this title.');
+      if (!silent) alert('No metadata found for this title.');
       return;
     }
 
@@ -964,19 +964,49 @@ export async function refreshItemMetadata(listType, itemId, item, options = {}) 
           updates.actors = seasonMetadata.cast;
         }
       }
+      
+      // Recalculate badges for split season with correct data
+      const episodeCount = updates.tvEpisodeCount || item.tvEpisodeCount || 0;
+      const runtime = updates.tvEpisodeRuntime || item.tvEpisodeRuntime || null;
+      const badges = [];
+      if (episodeCount > 0) {
+        badges.push(`${episodeCount} episode${episodeCount === 1 ? '' : 's'}`);
+      }
+      if (runtime) {
+        badges.push(`${runtime} min/ep`);
+      }
+      if (badges.length) {
+        updates.cachedTvBadges = badges;
+      }
+    }
+
+    // For non-split TV shows, always recalculate cachedTvBadges to ensure proper counts
+    if (listType === 'tvShows' && !isSplitSeason) {
+      const badgeSource = {
+        tvSeasonCount: updates.tvSeasonCount ?? item.tvSeasonCount,
+        tvEpisodeCount: updates.tvEpisodeCount ?? item.tvEpisodeCount,
+        tvEpisodeRuntime: updates.tvEpisodeRuntime ?? item.tvEpisodeRuntime,
+        tvSeasonSummaries: updates.tvSeasonSummaries ?? item.tvSeasonSummaries,
+        seasonNumber: item.seasonNumber,
+        splitFromId: item.splitFromId,
+      };
+      const recalculatedBadges = computeTvBadgeStrings(badgeSource);
+      if (recalculatedBadges.length) {
+        updates.cachedTvBadges = recalculatedBadges;
+      }
     }
 
     if (!updates || Object.keys(updates).length === 0) {
-      alert('Metadata already looks up to date.');
+      if (!silent) alert('Metadata already looks up to date.');
       return;
     }
 
     await updateItem(listType, itemId, updates);
     Object.assign(item, updates);
-    alert('Metadata refreshed!');
+    if (!silent) alert('Metadata refreshed!');
   } catch (err) {
     console.error('Manual metadata refresh failed', err);
-    alert('Unable to refresh metadata right now. Please try again.');
+    if (!silent) alert('Unable to refresh metadata right now. Please try again.');
   } finally {
     setButtonState(false);
   }
