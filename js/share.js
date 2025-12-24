@@ -26,9 +26,14 @@ function itemExistsInList(listType, item) {
   const finishedCache = finishedCaches[listType];
   
   const checkInCache = (cache) => {
-    if (!cache || !Array.isArray(cache)) return false;
-    return cache.some(existing => {
-      const existingItem = existing.item || existing;
+    if (!cache || typeof cache !== 'object') return false;
+    
+    // Cache is an object keyed by ID, get the values
+    const entries = Object.values(cache);
+    if (!entries.length) return false;
+    
+    return entries.some(existingItem => {
+      if (!existingItem) return false;
       // Check by tmdbId first (most reliable)
       if (item.tmdbId && existingItem.tmdbId && item.tmdbId === existingItem.tmdbId) {
         // For TV shows, also check season number
