@@ -418,14 +418,19 @@ export function deriveSeriesBadgeMetrics(listType, cardId, fallbackItem, provide
           }
         }
         
-        // Fallback to animeEpisodes or other direct fields
+        // Fallback to animeEpisodes, episodes array, or other direct fields
         if (seasonEpCount === 0) {
-          const fallbackCandidates = [entry.animeEpisodes, entry.totalEpisodes, entry.episodes];
-          for (const candidate of fallbackCandidates) {
-            const parsed = parseEpisodeValue(candidate);
-            if (parsed > 0) {
-              seasonEpCount = parsed;
-              break;
+          // Check episodes array first (for split seasons)
+          if (Array.isArray(entry.episodes) && entry.episodes.length > 0) {
+            seasonEpCount = entry.episodes.length;
+          } else {
+            const fallbackCandidates = [entry.animeEpisodes, entry.totalEpisodes];
+            for (const candidate of fallbackCandidates) {
+              const parsed = parseEpisodeValue(candidate);
+              if (parsed > 0) {
+                seasonEpCount = parsed;
+                break;
+              }
             }
           }
         }
@@ -576,6 +581,10 @@ export function getTvEpisodeCount(item) {
   if (!item) return 0;
   const direct = Number(item.tvEpisodeCount);
   if (Number.isFinite(direct) && direct > 0) return direct;
+  // For split seasons, check the episodes array
+  if (Array.isArray(item.episodes) && item.episodes.length > 0) {
+    return item.episodes.length;
+  }
   if (Array.isArray(item.tvSeasonSummaries)) {
     return item.tvSeasonSummaries.reduce((total, season) => {
       const count = Number(season?.episodeCount);
@@ -679,14 +688,26 @@ export function computeTvBadgeStrings(source, context = {}) {
   if (!source) return [];
   const chips = [];
   
-  const seasonCount = getTvSeasonCount(source);
-  if (seasonCount > 0) {
-    chips.push(`${seasonCount} season${seasonCount === 1 ? '' : 's'}`);
-  }
+  // Check if this is a split season entry (has seasonNumber but no tvSeasonSummaries)
+  const isSplitSeason = source.seasonNumber !== undefined && source.splitFromId;
   
-  const episodeCount = getTvEpisodeCount(source);
-  if (episodeCount > 0) {
-    chips.push(`${episodeCount} episode${episodeCount === 1 ? '' : 's'}`);
+  if (isSplitSeason) {
+    // For split seasons, show episode count only (not season count - it's 1 season by definition)
+    const episodeCount = Number(source.tvEpisodeCount) || 0;
+    if (episodeCount > 0) {
+      chips.push(`${episodeCount} episode${episodeCount === 1 ? '' : 's'}`);
+    }
+  } else {
+    // For regular TV shows, show season count
+    const seasonCount = getTvSeasonCount(source);
+    if (seasonCount > 0) {
+      chips.push(`${seasonCount} season${seasonCount === 1 ? '' : 's'}`);
+    }
+    
+    const episodeCount = getTvEpisodeCount(source);
+    if (episodeCount > 0) {
+      chips.push(`${episodeCount} episode${episodeCount === 1 ? '' : 's'}`);
+    }
   }
   
   const runtimeLabel = formatTvRuntimeLabel(source);
