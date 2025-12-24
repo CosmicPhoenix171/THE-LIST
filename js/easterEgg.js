@@ -90,7 +90,7 @@ export function getSeasonalTheme(now = new Date()) {
   const month = now.getMonth();
   const day = now.getDate();
   // New Year's: December 26 - January 7
-  if ((month === 11 && day >= 20) || (month === 0 && day <= 7)) return seasonThemes.newYear;
+  if ((month === 11 && day >= 26) || (month === 0 && day <= 7)) return seasonThemes.newYear;
   if (month === 11) return seasonThemes.winter;
   if (month === 9) return seasonThemes.halloween;
   return null;
