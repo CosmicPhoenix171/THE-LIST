@@ -431,21 +431,22 @@ export function computeLibraryRuntimeStats() {
     });
   };
 
-  // Track which series we've already counted cast for (to avoid counting split seasons multiple times)
-  const countedSeriesCast = new Set();
+  // Track which TV series we've already counted cast for (to avoid counting split seasons multiple times)
+  // Only applies to TV shows - movies in the same franchise still count separately
+  const countedTvSeriesCast = new Set();
 
-  const countItemCastOncePerSeries = (item) => {
+  const countItemCastOncePerSeries = (item, listType) => {
     if (!item.actors) return;
     
-    // For split seasons, use seriesName or tmdbId as unique key
-    // Only count cast once per unique series, not per split season
-    const isSplitSeason = item.splitFromId && item.seasonNumber !== undefined;
-    if (isSplitSeason) {
+    // Only apply the "once per series" rule for TV shows with split seasons
+    // Movies always count separately, even if they're part of the same franchise
+    const isSplitTvSeason = listType === 'tvShows' && item.splitFromId && item.seasonNumber !== undefined;
+    if (isSplitTvSeason) {
       const seriesKey = item.seriesName || item.tmdbId || item.splitFromId;
-      if (countedSeriesCast.has(seriesKey)) {
-        return; // Already counted this series
+      if (countedTvSeriesCast.has(seriesKey)) {
+        return; // Already counted this TV series
       }
-      countedSeriesCast.add(seriesKey);
+      countedTvSeriesCast.add(seriesKey);
     }
     
     countItemCast(item);
@@ -459,7 +460,7 @@ export function computeLibraryRuntimeStats() {
         Object.values(source[type]).forEach(item => {
           if (item) {
             countItemGenres(item);
-            countItemCastOncePerSeries(item);
+            countItemCastOncePerSeries(item, type);
           }
         });
       }
