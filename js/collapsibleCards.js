@@ -569,6 +569,10 @@ export function buildSeriesBadgeChips(listType, cardId, item, context = {}) {
 // ============================================
 export function getTvSeasonCount(item) {
   if (!item) return 0;
+  // Split seasons are always 1 season
+  if (item.seasonNumber !== undefined && item.splitFromId) {
+    return 1;
+  }
   const direct = Number(item.tvSeasonCount);
   if (Number.isFinite(direct) && direct > 0) return direct;
   if (Array.isArray(item.tvSeasonSummaries)) {
@@ -669,7 +673,10 @@ export function buildTvStatChips(item, context = {}) {
     }
   }
 
-  if (Array.isArray(item.cachedTvBadges) && item.cachedTvBadges.length) {
+  // For split seasons, skip cachedTvBadges as they may contain wrong parent data
+  const isSplitSeason = item.seasonNumber !== undefined && item.splitFromId;
+  
+  if (!isSplitSeason && Array.isArray(item.cachedTvBadges) && item.cachedTvBadges.length) {
     const badges = item.cachedTvBadges.slice();
     const filteredBadges = badges.filter(b => {
       const lower = b.toLowerCase();
