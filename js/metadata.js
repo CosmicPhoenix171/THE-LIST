@@ -943,6 +943,14 @@ export async function refreshItemMetadata(listType, itemId, item, options = {}) 
       delete updates.tvSeasonSummaries;
       delete updates.cachedTvBadges;
       
+      // Also explicitly set these to null to remove them from the database if they exist
+      if (item.tvSeasonCount !== undefined) {
+        updates.tvSeasonCount = null;
+      }
+      if (item.tvSeasonSummaries !== undefined) {
+        updates.tvSeasonSummaries = null;
+      }
+      
       // Use season-specific episode count if available
       if (seasonMetadata) {
         if (seasonMetadata.episodeCount) {

@@ -102,10 +102,13 @@ export function collectSeriesEntriesAcrossLists(seriesName) {
       if (!item || !item.seriesName) return;
       if (normalizeTitleKey(item.seriesName) !== normalizedKey) return;
       
-      // Check for season data
-      const seasonField = Array.isArray(item.tvSeasonSummaries) && item.tvSeasonSummaries.length
+      // Split season entries are already individual seasons - don't expand their tvSeasonSummaries
+      const isSplitSeason = item.splitFromId && item.seasonNumber !== undefined;
+      
+      // Check for season data (only for non-split entries)
+      const seasonField = !isSplitSeason && Array.isArray(item.tvSeasonSummaries) && item.tvSeasonSummaries.length
         ? 'tvSeasonSummaries'
-        : (Array.isArray(item.animeSeasonSummaries) && item.animeSeasonSummaries.length ? 'animeSeasonSummaries' : null);
+        : (!isSplitSeason && Array.isArray(item.animeSeasonSummaries) && item.animeSeasonSummaries.length ? 'animeSeasonSummaries' : null);
       
       const seasons = seasonField ? item[seasonField] : null;
       
