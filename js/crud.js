@@ -552,6 +552,8 @@ export async function splitTvShowSeasons(itemId, item, fetchAllTvSeasons) {
         addedAt: new Date().toISOString(),
         createdAt: Date.now(),
         splitFromId: itemId,
+        // Preserve finished status from original item
+        finished: item.finished || false,
       };
       
       // Clean up null/undefined values
