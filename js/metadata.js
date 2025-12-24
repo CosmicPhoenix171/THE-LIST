@@ -875,6 +875,9 @@ export async function refreshItemMetadata(listType, itemId, item, options = {}) 
   const lookupTitle = title || item.title || '';
   const lookupYear = year || item.year || '';
 
+  // Check if this is a split season entry
+  const isSplitSeason = item.splitFromId && item.seasonNumber !== undefined;
+
   const setButtonState = (isBusy) => {
     if (!button) return;
     if (isBusy) {
@@ -895,6 +898,8 @@ export async function refreshItemMetadata(listType, itemId, item, options = {}) 
   setButtonState(true);
   try {
     let metadata = null;
+    let seasonMetadata = null;
+    
     if (listType === 'books') {
       metadata = await fetchGoogleBooksMetadata({
         volumeId: item.googleBooksId || '',
@@ -913,6 +918,11 @@ export async function refreshItemMetadata(listType, itemId, item, options = {}) 
         imdbId: item.imdbId || item.imdbID || '',
         tmdbId: item.tmdbId || item.tmdbID || '',
       });
+      
+      // For split seasons, also fetch season-specific data
+      if (isSplitSeason && item.tmdbId && item.seasonNumber !== undefined) {
+        seasonMetadata = await fetchTmdbSeasonDetails(item.tmdbId, item.seasonNumber);
+      }
     }
 
     if (!metadata) {
@@ -920,12 +930,41 @@ export async function refreshItemMetadata(listType, itemId, item, options = {}) 
       return;
     }
 
-    const updates = deriveMetadataAssignments(metadata, item, {
+    let updates = deriveMetadataAssignments(metadata, item, {
       overwrite: true,
       fallbackTitle: lookupTitle,
       fallbackYear: lookupYear,
       listType,
     });
+
+    // For split seasons, remove parent-level fields that shouldn't be overwritten
+    if (isSplitSeason) {
+      delete updates.tvSeasonCount;
+      delete updates.tvSeasonSummaries;
+      delete updates.cachedTvBadges;
+      
+      // Use season-specific episode count if available
+      if (seasonMetadata) {
+        if (seasonMetadata.episodeCount) {
+          updates.tvEpisodeCount = seasonMetadata.episodeCount;
+        }
+        if (seasonMetadata.episodes && seasonMetadata.episodes.length) {
+          updates.episodes = seasonMetadata.episodes;
+        }
+        if (seasonMetadata.poster) {
+          updates.poster = seasonMetadata.poster;
+        }
+        if (seasonMetadata.overview) {
+          updates.plot = seasonMetadata.overview;
+        }
+        if (seasonMetadata.year) {
+          updates.year = seasonMetadata.year;
+        }
+        if (seasonMetadata.cast && seasonMetadata.cast.length) {
+          updates.actors = seasonMetadata.cast;
+        }
+      }
+    }
 
     if (!updates || Object.keys(updates).length === 0) {
       alert('Metadata already looks up to date.');
