@@ -12,6 +12,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 import { getFirebaseDatabase } from './firebase.js';
 import { getCurrentUser, listCaches } from './state.js';
+import { refreshItemMetadata } from './metadata.js';
 import { 
   BUG_REPORT_DB_PATH, 
   GLOBAL_NOTIFICATIONS_PATH, 
@@ -369,24 +370,41 @@ export function stopGlobalNotificationsListener() {
 // METADATA REFRESH (for admin button)
 // ============================================
 export async function refreshAllMetadataSequential(callbacks = {}) {
+  const { showToast } = callbacks;
   const allTypes = PRIMARY_LIST_TYPES;
   let total = 0;
   let refreshed = 0;
+  
+  // Count total items first
+  for (const type of allTypes) {
+    const cache = listCaches[type] || {};
+    total += Object.keys(cache).length;
+  }
+  
+  if (showToast) {
+    showToast({ message: `Refreshing metadata for ${total} items...`, type: 'info' });
+  }
+  
   for (const type of allTypes) {
     const cache = listCaches[type] || {};
     const ids = Object.keys(cache);
-    total += ids.length;
     for (const id of ids) {
+      const item = cache[id];
+      if (!item) continue;
       try {
-        if (callbacks.refreshEntryMetadata) {
-          await callbacks.refreshEntryMetadata(type, id);
-        }
+        await refreshItemMetadata(type, id, item, {});
         refreshed++;
       } catch (e) {
-        // continue
+        console.error(`Failed to refresh ${type}/${id}:`, e);
+        // continue with next item
       }
     }
   }
+  
+  if (showToast) {
+    showToast({ message: `Refreshed ${refreshed} of ${total} items!`, type: 'success' });
+  }
+  
   return refreshed;
 }
 
