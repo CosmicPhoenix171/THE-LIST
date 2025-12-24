@@ -390,7 +390,9 @@ export function computeLibraryRuntimeStats() {
       books: 0
     },
     genreCounts: {},
-    castCounts: {}
+    castCounts: {},
+    decadeCounts: {},
+    totalItems: 0
   };
   if (!stats.hasAnyData) {
     return stats;
@@ -470,6 +472,28 @@ export function computeLibraryRuntimeStats() {
     countItemCast(item);
   };
 
+  // Count decade for an item
+  const countItemDecade = (item, listType) => {
+    if (!item || !item.year) return;
+    const year = parseInt(item.year, 10);
+    if (!Number.isFinite(year) || year < 1900 || year > 2100) return;
+    
+    // For split TV seasons, only count once per series
+    const isSplitTvSeason = listType === 'tvShows' && item.splitFromId && item.seasonNumber !== undefined;
+    if (isSplitTvSeason) {
+      const seriesKey = `decade_${item.seriesName || item.tmdbId || item.splitFromId}`;
+      if (countedTvSeriesGenres.has(seriesKey)) {
+        return;
+      }
+      countedTvSeriesGenres.add(seriesKey);
+    }
+    
+    const decade = Math.floor(year / 10) * 10;
+    const decadeLabel = `${decade}s`;
+    stats.decadeCounts[decadeLabel] = (stats.decadeCounts[decadeLabel] || 0) + 1;
+    stats.totalItems++;
+  };
+
   // Count genres and cast from all caches
   const allSources = [listCaches, finishedCaches];
   allSources.forEach(source => {
@@ -479,6 +503,7 @@ export function computeLibraryRuntimeStats() {
           if (item) {
             countItemGenresOncePerSeries(item, type);
             countItemCastOncePerSeries(item, type);
+            countItemDecade(item, type);
           }
         });
       }
@@ -610,10 +635,11 @@ export function updateLibraryRuntimeStats() {
     if (valueEl) valueEl.textContent = 'Runtime info unavailable';
   }
 
-  // Top Genres
+  // Top Genres (show percentages)
   const topGenres = Object.entries(stats.genreCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8);
+  const totalGenreCount = Object.values(stats.genreCounts).reduce((a, b) => a + b, 0);
 
   if (topGenres.length > 0) {
     const genreContainer = createEl('div', 'library-stat-chip genre-stats-container');
@@ -640,6 +666,7 @@ export function updateLibraryRuntimeStats() {
     list.style.justifyContent = 'center';
 
     topGenres.forEach(([genre, count]) => {
+      const percentage = totalGenreCount > 0 ? Math.round((count / totalGenreCount) * 100) : 0;
       const pill = createEl('div', 'genre-stat-pill');
       pill.style.background = 'rgba(255,255,255,0.06)';
       pill.style.border = '1px solid rgba(255,255,255,0.1)';
@@ -664,18 +691,87 @@ export function updateLibraryRuntimeStats() {
       };
 
       const nameSpan = createEl('span', '', { text: genre });
-      const countSpan = createEl('span', '', { text: formatLibraryStatNumber(count) });
-      countSpan.style.color = 'var(--text-100)';
-      countSpan.style.fontWeight = '600';
-      countSpan.style.opacity = '0.9';
+      const percentSpan = createEl('span', '', { text: `${percentage}%` });
+      percentSpan.style.color = 'var(--text-100)';
+      percentSpan.style.fontWeight = '600';
+      percentSpan.style.opacity = '0.9';
       
       pill.appendChild(nameSpan);
-      pill.appendChild(countSpan);
+      pill.appendChild(percentSpan);
       list.appendChild(pill);
     });
 
     genreContainer.appendChild(list);
     targetEl.appendChild(genreContainer);
+  }
+
+  // Top Decades
+  const topDecades = Object.entries(stats.decadeCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  if (topDecades.length > 0) {
+    const decadeContainer = createEl('div', 'library-stat-chip decade-stats-container');
+    decadeContainer.style.flexDirection = 'column';
+    decadeContainer.style.alignItems = 'stretch';
+    decadeContainer.style.gap = '0.5rem';
+    decadeContainer.style.marginTop = '0.5rem';
+    decadeContainer.style.padding = '0.75rem';
+    
+    const header = createEl('div', 'stat-header-row', { text: 'Top Decades' });
+    header.style.justifyContent = 'center';
+    header.style.fontSize = '0.85rem';
+    header.style.color = 'var(--text-300)';
+    header.style.fontWeight = '600';
+    header.style.marginBottom = '0.25rem';
+    header.style.textTransform = 'uppercase';
+    header.style.letterSpacing = '0.05em';
+    decadeContainer.appendChild(header);
+
+    const list = createEl('div', 'decade-stats-list');
+    list.style.display = 'flex';
+    list.style.flexWrap = 'wrap';
+    list.style.gap = '0.4rem';
+    list.style.justifyContent = 'center';
+
+    topDecades.forEach(([decade, count]) => {
+      const percentage = stats.totalItems > 0 ? Math.round((count / stats.totalItems) * 100) : 0;
+      const pill = createEl('div', 'decade-stat-pill');
+      pill.style.background = 'rgba(255,255,255,0.06)';
+      pill.style.border = '1px solid rgba(255,255,255,0.1)';
+      pill.style.borderRadius = '20px';
+      pill.style.padding = '0.25rem 0.6rem';
+      pill.style.fontSize = '0.75rem';
+      pill.style.color = 'var(--text-300)';
+      pill.style.display = 'flex';
+      pill.style.alignItems = 'center';
+      pill.style.gap = '0.35rem';
+      pill.style.transition = 'all 0.2s ease';
+      
+      pill.onmouseenter = () => {
+        pill.style.background = 'rgba(255,255,255,0.12)';
+        pill.style.borderColor = 'var(--primary-300)';
+        pill.style.color = 'var(--text-100)';
+      };
+      pill.onmouseleave = () => {
+        pill.style.background = 'rgba(255,255,255,0.06)';
+        pill.style.borderColor = 'rgba(255,255,255,0.1)';
+        pill.style.color = 'var(--text-300)';
+      };
+
+      const nameSpan = createEl('span', '', { text: decade });
+      const percentSpan = createEl('span', '', { text: `${percentage}%` });
+      percentSpan.style.color = 'var(--text-100)';
+      percentSpan.style.fontWeight = '600';
+      percentSpan.style.opacity = '0.9';
+      
+      pill.appendChild(nameSpan);
+      pill.appendChild(percentSpan);
+      list.appendChild(pill);
+    });
+
+    decadeContainer.appendChild(list);
+    targetEl.appendChild(decadeContainer);
   }
 
   // Top Cast
