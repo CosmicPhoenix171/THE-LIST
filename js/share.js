@@ -206,27 +206,49 @@ async function saveSharedCollection(seriesName, entries, primaryItem) {
   const shareId = newShareRef.key;
   
   // Prepare items for storage (clean up and include essential metadata)
-  const items = entries.map(e => {
-    const item = e.item || {};
-    return {
-      listType: e.listType || 'movies',
-      title: item.title || '',
-      year: item.year || '',
-      poster: item.poster || '',
-      tmdbId: item.tmdbId || null,
-      imdbId: item.imdbId || '',
-      seriesName: item.seriesName || seriesName,
-      seriesOrder: item.seriesOrder || null,
-      seasonNumber: item.seasonNumber ?? null,
-      tvEpisodeCount: item.tvEpisodeCount || item.episodeCount || null,
-      animeEpisodes: item.animeEpisodes || null,
-      runtime: item.runtime || '',
-      director: item.director || '',
-      plot: item.plot || '',
-      genres: item.genres || [],
-      imdbType: item.imdbType || '',
-    };
-  });
+  // Filter out Season 0 (Specials)
+  const items = entries
+    .filter(e => e.item?.seasonNumber !== 0)
+    .map(e => {
+      const item = e.item || {};
+      
+      // Determine the correct episode count for this entry
+      let episodeCount = null;
+      const isVirtualSeason = e.isVirtualSeason || (item.seasonNumber !== undefined && Array.isArray(item.tvSeasonSummaries));
+      
+      if (isVirtualSeason) {
+        // For virtual seasons, use episodeCount from the spread, or look it up in tvSeasonSummaries
+        episodeCount = Number(item.episodeCount) || null;
+        if (!episodeCount && Array.isArray(item.tvSeasonSummaries) && item.seasonNumber !== undefined) {
+          const seasonSummary = item.tvSeasonSummaries.find(s => s && s.seasonNumber === item.seasonNumber);
+          if (seasonSummary) {
+            episodeCount = Number(seasonSummary.episodeCount) || null;
+          }
+        }
+      } else {
+        // For regular entries, use tvEpisodeCount or episodeCount
+        episodeCount = item.tvEpisodeCount || item.episodeCount || null;
+      }
+      
+      return {
+        listType: e.listType || 'movies',
+        title: item.title || '',
+        year: item.year || '',
+        poster: item.poster || '',
+        tmdbId: item.tmdbId || null,
+        imdbId: item.imdbId || '',
+        seriesName: item.seriesName || seriesName,
+        seriesOrder: item.seriesOrder || null,
+        seasonNumber: item.seasonNumber ?? null,
+        tvEpisodeCount: episodeCount,
+        animeEpisodes: item.animeEpisodes || null,
+        runtime: item.runtime || '',
+        director: item.director || '',
+        plot: item.plot || '',
+        genres: item.genres || [],
+        imdbType: item.imdbType || '',
+      };
+    });
   
   const shareData = {
     seriesName,
@@ -234,7 +256,7 @@ async function saveSharedCollection(seriesName, entries, primaryItem) {
     sharedByUid: currentUser.uid,
     sharedAt: Date.now(),
     poster: primaryItem?.poster || entries[0]?.item?.poster || '',
-    itemCount: entries.length,
+    itemCount: items.length,
     items,
   };
   
