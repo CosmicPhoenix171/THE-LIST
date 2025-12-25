@@ -653,14 +653,21 @@ export function buildTvStatChips(item, context = {}) {
         
         if (isMovie) {
           movieCount++;
+        } else if (entry.isVirtualSeason || (it.seasonNumber !== undefined && Array.isArray(it.tvSeasonSummaries))) {
+          // Virtual season entries - each is 1 season with its own episode count
+          // Also detect virtual seasons by having both seasonNumber and tvSeasonSummaries (parent's data)
+          totalSeasons += 1;
+          // Use the season's episodeCount directly (from spread), not tvEpisodeCount (parent's total)
+          const seasonEpCount = Number(it.episodeCount) || 0;
+          totalEpisodes += seasonEpCount;
+        } else if (it.seasonNumber !== undefined) {
+          // Split season entries (no tvSeasonSummaries, just this season)
+          totalSeasons += 1;
+          totalEpisodes += getTvEpisodeCount(it);
         } else {
+          // Regular entries - get season and episode counts
           const sCount = getTvSeasonCount(it);
-          // For split seasons, each entry is 1 season
-          if (it.seasonNumber !== undefined) {
-            totalSeasons += 1;
-          } else {
-            totalSeasons += (sCount > 0 ? sCount : 1);
-          }
+          totalSeasons += (sCount > 0 ? sCount : 1);
           totalEpisodes += getTvEpisodeCount(it);
         }
       });
