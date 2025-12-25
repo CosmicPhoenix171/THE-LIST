@@ -645,6 +645,9 @@ export function buildTvStatChips(item, context = {}) {
         const it = entry.item;
         if (!it) return;
         
+        // Skip Season 0 (Specials) - TMDB includes these but they shouldn't count
+        if (it.seasonNumber === 0) return;
+        
         // Check if this entry is a movie (from movies list or has movie format)
         const entryListType = entry.listType || 'tvShows';
         const isMovie = entryListType === 'movies' || 

@@ -302,27 +302,57 @@ export async function generateCollectionShareUrl(seriesName, entries, primaryIte
     params.set('poster', primaryItem.poster);
   }
   
-  // Count movies vs seasons/episodes
-  const movieCount = entries.filter(e => {
-    const type = e.item?.imdbType || e.listType;
-    return type === 'movie' || type === 'movies';
-  }).length;
-  const seasonCount = entries.length - movieCount;
+  // Count movies, seasons, and episodes properly
+  let movieCount = 0;
+  let seasonCount = 0;
+  let totalEpisodes = 0;
+  
+  entries.forEach(e => {
+    const item = e.item;
+    if (!item) return;
+    
+    // Skip Season 0 (Specials)
+    if (item.seasonNumber === 0) return;
+    
+    const type = item.imdbType || e.listType;
+    const isMovie = type === 'movie' || type === 'movies' ||
+      (item.animeFormat && item.animeFormat.toUpperCase() === 'MOVIE');
+    
+    if (isMovie) {
+      movieCount++;
+    } else if (e.isVirtualSeason || (item.seasonNumber !== undefined && Array.isArray(item.tvSeasonSummaries))) {
+      // Virtual season entries - each is 1 season, use season's episodeCount
+      seasonCount += 1;
+      totalEpisodes += Number(item.episodeCount) || 0;
+    } else if (item.seasonNumber !== undefined) {
+      // Split season entries
+      seasonCount += 1;
+      const eps = item.tvEpisodeCount || item.episodeCount || 
+        (Array.isArray(item.episodes) ? item.episodes.length : 0) || 0;
+      totalEpisodes += Number(eps) || 0;
+    } else {
+      // Regular entries - use tvSeasonSummaries to count properly
+      if (Array.isArray(item.tvSeasonSummaries) && item.tvSeasonSummaries.length) {
+        // Count actual seasons (skip season 0)
+        item.tvSeasonSummaries.forEach(s => {
+          if (s && s.seasonNumber !== 0) {
+            seasonCount++;
+            totalEpisodes += Number(s.episodeCount) || 0;
+          }
+        });
+      } else {
+        // Fallback - count as 1 season
+        seasonCount += 1;
+        const eps = item.tvEpisodeCount || item.episodeCount || 
+          (Array.isArray(item.episodes) ? item.episodes.length : 0) ||
+          item.animeEpisodes || 0;
+        totalEpisodes += Number(eps) || 0;
+      }
+    }
+  });
   
   if (movieCount > 0) params.set('movies', String(movieCount));
   if (seasonCount > 0) params.set('seasons', String(seasonCount));
-  
-  // Calculate total episodes if available
-  let totalEpisodes = 0;
-  entries.forEach(e => {
-    const item = e.item;
-    if (item) {
-      const eps = item.tvEpisodeCount || item.episodeCount || 
-        (Array.isArray(item.episodes) ? item.episodes.length : 0) ||
-        item.animeEpisodes || 0;
-      totalEpisodes += Number(eps) || 0;
-    }
-  });
   if (totalEpisodes > 0) params.set('episodes', String(totalEpisodes));
   
   // Get year range
