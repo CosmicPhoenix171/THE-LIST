@@ -217,13 +217,10 @@ async function saveSharedCollection(seriesName, entries, primaryItem) {
       const isVirtualSeason = e.isVirtualSeason || (item.seasonNumber !== undefined && Array.isArray(item.tvSeasonSummaries));
       
       if (isVirtualSeason) {
-        // For virtual seasons, use episodeCount from the spread, or look it up in tvSeasonSummaries
+        // For virtual seasons, use episodeCount from the spread only
         episodeCount = Number(item.episodeCount) || null;
-        if (!episodeCount && Array.isArray(item.tvSeasonSummaries) && item.seasonNumber !== undefined) {
-          const seasonSummary = item.tvSeasonSummaries.find(s => s && s.seasonNumber === item.seasonNumber);
-          if (seasonSummary) {
-            episodeCount = Number(seasonSummary.episodeCount) || null;
-          }
+        if (!episodeCount) {
+          console.error('[Share] Virtual season missing episodeCount:', item.title, 'Season', item.seasonNumber);
         }
       } else {
         // For regular entries, use tvEpisodeCount or episodeCount
