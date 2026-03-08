@@ -6,6 +6,7 @@ let running = false;
 let spawnTimer = null;
 let rafId = null;
 let layer = null;
+let nextSpriteId = 0;
 let intensityMultiplier = 1;
 
 const pointerState = {
@@ -31,7 +32,7 @@ const supportAngleThreshold = 0.5;
 const supportDistanceEpsilon = 0.75;
 const spawnMinDelay = 320;
 const spawnMaxDelay = 900;
-const collisionIterations = 4;
+const collisionIterations = 2;
 const maxVerticalSpeed = 24;
 const maxHorizontalSpeed = 12;
 const pointerRadius = 48;
@@ -75,6 +76,7 @@ const fireworkColors = [
 ];
 
 // Performance limits
+const maxSprites = 300;
 const maxFireworkParticles = 150;
 const maxTrailParticles = 80;
 const particleMaxLifetime = 3000; // 3 seconds max lifetime
@@ -525,6 +527,7 @@ function spawnSprite() {
 
   const size = 20 + Math.random() * 26;
   const sprite = {
+    id: nextSpriteId++,
     size,
     radius: size / 2,
     x: Math.random() * (window.innerWidth - size) + size / 2,
@@ -546,9 +549,19 @@ function spawnSprite() {
     if (theme.glow) el.style.textShadow = theme.glow;
   }
   el.style.setProperty('--tm-spin', `${sprite.spin}deg`);
+  el.style.position = 'absolute';
+  el.style.left = '0';
+  el.style.top = '0';
+  el.style.willChange = 'transform';
   layer.appendChild(el);
   sprite.el = el;
+  sprite.synced = false;
   sprites.push(sprite);
+  // Enforce sprite cap
+  while (sprites.length > maxSprites) {
+    const old = sprites.shift();
+    if (old.el && old.el.parentNode) old.el.parentNode.removeChild(old.el);
+  }
   syncSprite(sprite);
 }
 
@@ -835,9 +848,9 @@ function updateFireworks() {
 
 function syncSprite(sprite) {
   if (!sprite.el) return;
-  sprite.el.style.left = `${sprite.x}px`;
-  sprite.el.style.top = `${sprite.y}px`;
-  sprite.el.style.transform = `translate(-50%, -50%) rotate(${sprite.rotation}deg)`;
+  if (sprite.resting && sprite.synced) return;
+  sprite.el.style.transform = `translate3d(${sprite.x}px, ${sprite.y}px, 0) translate(-50%, -50%) rotate(${sprite.rotation}deg)`;
+  sprite.synced = sprite.resting;
 }
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -864,47 +877,89 @@ function applyPointerInteractions() {
   });
 }
 
+// Spatial hash grid for O(n) collision detection
+const spatialGrid = {
+  cellSize: 50,
+  cells: new Map(),
+  clear() { this.cells.clear(); },
+  _key(cx, cy) { return (cx << 16) ^ (cy & 0xffff); },
+  insert(sprite) {
+    const cs = this.cellSize;
+    const r = sprite.radius;
+    const minCX = Math.floor((sprite.x - r) / cs);
+    const maxCX = Math.floor((sprite.x + r) / cs);
+    const minCY = Math.floor((sprite.y - r) / cs);
+    const maxCY = Math.floor((sprite.y + r) / cs);
+    for (let cx = minCX; cx <= maxCX; cx++) {
+      for (let cy = minCY; cy <= maxCY; cy++) {
+        const k = this._key(cx, cy);
+        let bucket = this.cells.get(k);
+        if (!bucket) { bucket = []; this.cells.set(k, bucket); }
+        bucket.push(sprite);
+      }
+    }
+  },
+  build(spriteList) {
+    this.clear();
+    for (let i = 0; i < spriteList.length; i++) {
+      this.insert(spriteList[i]);
+    }
+  },
+};
+
 function resolveCollisions() {
   let resolvedAny = false;
-  for (let i = 0; i < sprites.length; i++) {
-    for (let j = i + 1; j < sprites.length; j++) {
-      const a = sprites[i];
-      const b = sprites[j];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const dist = Math.hypot(dx, dy) || 0.0001;
-      const minDist = a.radius + b.radius;
-      const nx = dx / dist;
-      const ny = dy / dist;
-      if (Math.abs(ny) > supportAngleThreshold && dist - minDist <= supportDistanceEpsilon) {
-        if (ny > 0) a.supported = true;
-        if (ny < 0) b.supported = true;
+  spatialGrid.build(sprites);
+  const checked = new Set();
+  spatialGrid.cells.forEach(bucket => {
+    for (let i = 0; i < bucket.length; i++) {
+      for (let j = i + 1; j < bucket.length; j++) {
+        const a = bucket[i];
+        const b = bucket[j];
+        if (a === b) continue;
+        if (a.resting && b.resting) continue;
+        const lo = a.id < b.id ? a.id : b.id;
+        const hi = a.id < b.id ? b.id : a.id;
+        const pairKey = lo * 131072 + hi;
+        if (checked.has(pairKey)) continue;
+        checked.add(pairKey);
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy) || 0.0001;
+        const minDist = a.radius + b.radius;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        if (Math.abs(ny) > supportAngleThreshold && dist - minDist <= supportDistanceEpsilon) {
+          if (ny > 0) a.supported = true;
+          if (ny < 0) b.supported = true;
+        }
+        if (dist >= minDist) continue;
+        resolvedAny = true;
+        const overlap = (minDist - dist) / 2;
+        a.x -= nx * overlap;
+        a.y -= ny * overlap;
+        b.x += nx * overlap;
+        b.y += ny * overlap;
+        const relVelX = b.vx - a.vx;
+        const relVelY = b.vy - a.vy;
+        const velAlongNormal = relVelX * nx + relVelY * ny;
+        if (velAlongNormal > 0) continue;
+        const restitution = 0.65;
+        const impulse = -(1 + restitution) * velAlongNormal / 2;
+        const impulseX = impulse * nx;
+        const impulseY = impulse * ny;
+        a.vx -= impulseX;
+        a.vy -= impulseY;
+        b.vx += impulseX;
+        b.vy += impulseY;
+        if (Math.abs(a.vx) > wakeSpeed || Math.abs(a.vy) > wakeSpeed) a.resting = false;
+        if (Math.abs(b.vx) > wakeSpeed || Math.abs(b.vy) > wakeSpeed) b.resting = false;
+        if (ny > supportAngleThreshold) a.supported = true;
+        if (ny < -supportAngleThreshold) b.supported = true;
       }
-      if (dist >= minDist) continue;
-      resolvedAny = true;
-      const overlap = (minDist - dist) / 2;
-      a.x -= nx * overlap;
-      a.y -= ny * overlap;
-      b.x += nx * overlap;
-      b.y += ny * overlap;
-      const relVelX = b.vx - a.vx;
-      const relVelY = b.vy - a.vy;
-      const velAlongNormal = relVelX * nx + relVelY * ny;
-      if (velAlongNormal > 0) continue;
-      const restitution = 0.65;
-      const impulse = -(1 + restitution) * velAlongNormal / 2;
-      const impulseX = impulse * nx;
-      const impulseY = impulse * ny;
-      a.vx -= impulseX;
-      a.vy -= impulseY;
-      b.vx += impulseX;
-      b.vy += impulseY;
-      if (Math.abs(a.vx) > wakeSpeed || Math.abs(a.vy) > wakeSpeed) a.resting = false;
-      if (Math.abs(b.vx) > wakeSpeed || Math.abs(b.vy) > wakeSpeed) b.resting = false;
-      if (ny > supportAngleThreshold) a.supported = true;
-      if (ny < -supportAngleThreshold) b.supported = true;
     }
-  }
+  });
   return resolvedAny;
 }
 
@@ -923,16 +978,17 @@ function tick() {
     return;
   }
 
-  sprites.forEach(sprite => {
+  for (let i = 0; i < sprites.length; i++) {
+    const sprite = sprites[i];
     sprite.supported = false;
-    if (!sprite.resting) {
-      sprite.vy += gravity;
-      sprite.vx *= friction;
-      sprite.vx = clamp(sprite.vx, -maxHorizontalSpeed, maxHorizontalSpeed);
-      sprite.vy = clamp(sprite.vy, -maxVerticalSpeed, maxVerticalSpeed);
-      sprite.x += sprite.vx;
-      sprite.y += sprite.vy;
-    }
+    if (sprite.resting) continue;
+    sprite.synced = false;
+    sprite.vy += gravity;
+    sprite.vx *= friction;
+    sprite.vx = clamp(sprite.vx, -maxHorizontalSpeed, maxHorizontalSpeed);
+    sprite.vy = clamp(sprite.vy, -maxVerticalSpeed, maxVerticalSpeed);
+    sprite.x += sprite.vx;
+    sprite.y += sprite.vy;
     sprite.rotation = (sprite.rotation + sprite.spin * 0.016) % 360;
     const radius = sprite.radius;
     if (sprite.x - radius < 0) {
@@ -944,10 +1000,10 @@ function tick() {
     }
     if (sprite.y + radius > height) {
       sprite.y = height - radius;
-      if (!sprite.resting) sprite.vy *= -bounce;
+      sprite.vy *= -bounce;
       sprite.supported = true;
     }
-  });
+  }
   applyPointerInteractions();
   pointerState.vx *= pointerVelocityDecay;
   pointerState.vy *= pointerVelocityDecay;
@@ -956,18 +1012,19 @@ function tick() {
   for (let iter = 0; iter < collisionIterations; iter++) {
     if (!resolveCollisions()) break;
   }
-  sprites.forEach(sprite => {
+  for (let i = 0; i < sprites.length; i++) {
+    const sprite = sprites[i];
+    if (sprite.resting) continue;
     const settledVertically = Math.abs(sprite.vy) < settleThreshold;
     const settledHorizontally = Math.abs(sprite.vx) < settleThreshold;
     if (sprite.supported && settledVertically && settledHorizontally) {
       sprite.vx = 0;
       sprite.vy = 0;
       sprite.resting = true;
-    } else if (!sprite.supported && sprite.resting) {
-      sprite.resting = false;
+      sprite.synced = false;
     }
-  });
-  sprites.forEach(syncSprite);
+  }
+  for (let i = 0; i < sprites.length; i++) syncSprite(sprites[i]);
 }
 
 export function stop() {

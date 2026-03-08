@@ -319,9 +319,6 @@ export function signaturesMatch(candidate, existing) {
       if (!candidate.year || !existing.year || candidate.year === existing.year) return true;
     }
   }
-  if (candidate.series && existing.series && candidate.series === existing.series) {
-    if (candidate.order !== null && existing.order !== null && candidate.order === existing.order) return true;
-  }
   return false;
 }
 

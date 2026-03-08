@@ -337,6 +337,14 @@ async function addItemFromForm(listType, form, callbacks = {}) {
     if (notes) item.notes = notes;
     if (year) item.year = year;
 
+    // Read physical media checkboxes
+    const ownDVD = form.querySelector('input[name="ownDVD"]');
+    const ownBluRay = form.querySelector('input[name="ownBluRay"]');
+    const own4K = form.querySelector('input[name="own4K"]');
+    if (ownDVD?.checked) item.ownDVD = true;
+    if (ownBluRay?.checked) item.ownBluRay = true;
+    if (own4K?.checked) item.own4K = true;
+
     // Build trailer URL
     const baseTrailerUrl = buildTrailerUrl(title, year);
     if (baseTrailerUrl) item.trailerUrl = baseTrailerUrl;
@@ -593,6 +601,31 @@ export function openEditModal(listType, id, item, callbacks = {}) {
   notesGroup.appendChild(notesInput);
   form.appendChild(notesGroup);
   
+  // Physical media checkboxes
+  const mediaFormatFieldset = document.createElement('fieldset');
+  mediaFormatFieldset.className = 'media-format-group';
+  const mediaLegend = document.createElement('legend');
+  mediaLegend.textContent = 'Physical Media';
+  mediaFormatFieldset.appendChild(mediaLegend);
+  const mediaFormats = [
+    { name: 'ownDVD', label: 'DVD', checked: !!item.ownDVD },
+    { name: 'ownBluRay', label: 'Blu-Ray', checked: !!item.ownBluRay },
+    { name: 'own4K', label: '4K', checked: !!item.own4K },
+  ];
+  const mediaCheckboxInputs = {};
+  mediaFormats.forEach(fmt => {
+    const lbl = createEl('label', 'media-format-label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.name = fmt.name;
+    cb.checked = fmt.checked;
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(' ' + fmt.label));
+    mediaFormatFieldset.appendChild(lbl);
+    mediaCheckboxInputs[fmt.name] = cb;
+  });
+  form.appendChild(mediaFormatFieldset);
+  
   // Actions
   const actions = createEl('div', 'form-actions');
   
@@ -713,6 +746,9 @@ export function openEditModal(listType, id, item, callbacks = {}) {
       title: newTitle,
       notes: (notesInput.value || '').trim() || null,
       year: updatedYear || null,
+      ownDVD: mediaCheckboxInputs.ownDVD.checked || null,
+      ownBluRay: mediaCheckboxInputs.ownBluRay.checked || null,
+      own4K: mediaCheckboxInputs.own4K.checked || null,
     };
     
     if (ratingInput) {
