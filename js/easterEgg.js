@@ -6,6 +6,7 @@ let running = false;
 let spawnTimer = null;
 let rafId = null;
 let layer = null;
+let nextSpriteId = 0;
 let intensityMultiplier = 1;
 
 const pointerState = {
@@ -525,6 +526,7 @@ function spawnSprite() {
 
   const size = 20 + Math.random() * 26;
   const sprite = {
+    id: nextSpriteId++,
     size,
     radius: size / 2,
     x: Math.random() * (window.innerWidth - size) + size / 2,
@@ -864,47 +866,88 @@ function applyPointerInteractions() {
   });
 }
 
+// Spatial hash grid for O(n) collision detection
+const spatialGrid = {
+  cellSize: 50,
+  cells: new Map(),
+  clear() { this.cells.clear(); },
+  _key(cx, cy) { return (cx << 16) ^ (cy & 0xffff); },
+  insert(sprite) {
+    const cs = this.cellSize;
+    const r = sprite.radius;
+    const minCX = Math.floor((sprite.x - r) / cs);
+    const maxCX = Math.floor((sprite.x + r) / cs);
+    const minCY = Math.floor((sprite.y - r) / cs);
+    const maxCY = Math.floor((sprite.y + r) / cs);
+    for (let cx = minCX; cx <= maxCX; cx++) {
+      for (let cy = minCY; cy <= maxCY; cy++) {
+        const k = this._key(cx, cy);
+        let bucket = this.cells.get(k);
+        if (!bucket) { bucket = []; this.cells.set(k, bucket); }
+        bucket.push(sprite);
+      }
+    }
+  },
+  build(spriteList) {
+    this.clear();
+    for (let i = 0; i < spriteList.length; i++) {
+      this.insert(spriteList[i]);
+    }
+  },
+};
+
 function resolveCollisions() {
   let resolvedAny = false;
-  for (let i = 0; i < sprites.length; i++) {
-    for (let j = i + 1; j < sprites.length; j++) {
-      const a = sprites[i];
-      const b = sprites[j];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const dist = Math.hypot(dx, dy) || 0.0001;
-      const minDist = a.radius + b.radius;
-      const nx = dx / dist;
-      const ny = dy / dist;
-      if (Math.abs(ny) > supportAngleThreshold && dist - minDist <= supportDistanceEpsilon) {
-        if (ny > 0) a.supported = true;
-        if (ny < 0) b.supported = true;
+  spatialGrid.build(sprites);
+  const checked = new Set();
+  spatialGrid.cells.forEach(bucket => {
+    for (let i = 0; i < bucket.length; i++) {
+      for (let j = i + 1; j < bucket.length; j++) {
+        const a = bucket[i];
+        const b = bucket[j];
+        if (a === b) continue;
+        const lo = a.id < b.id ? a.id : b.id;
+        const hi = a.id < b.id ? b.id : a.id;
+        const pairKey = lo * 131072 + hi;
+        if (checked.has(pairKey)) continue;
+        checked.add(pairKey);
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy) || 0.0001;
+        const minDist = a.radius + b.radius;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        if (Math.abs(ny) > supportAngleThreshold && dist - minDist <= supportDistanceEpsilon) {
+          if (ny > 0) a.supported = true;
+          if (ny < 0) b.supported = true;
+        }
+        if (dist >= minDist) continue;
+        resolvedAny = true;
+        const overlap = (minDist - dist) / 2;
+        a.x -= nx * overlap;
+        a.y -= ny * overlap;
+        b.x += nx * overlap;
+        b.y += ny * overlap;
+        const relVelX = b.vx - a.vx;
+        const relVelY = b.vy - a.vy;
+        const velAlongNormal = relVelX * nx + relVelY * ny;
+        if (velAlongNormal > 0) continue;
+        const restitution = 0.65;
+        const impulse = -(1 + restitution) * velAlongNormal / 2;
+        const impulseX = impulse * nx;
+        const impulseY = impulse * ny;
+        a.vx -= impulseX;
+        a.vy -= impulseY;
+        b.vx += impulseX;
+        b.vy += impulseY;
+        if (Math.abs(a.vx) > wakeSpeed || Math.abs(a.vy) > wakeSpeed) a.resting = false;
+        if (Math.abs(b.vx) > wakeSpeed || Math.abs(b.vy) > wakeSpeed) b.resting = false;
+        if (ny > supportAngleThreshold) a.supported = true;
+        if (ny < -supportAngleThreshold) b.supported = true;
       }
-      if (dist >= minDist) continue;
-      resolvedAny = true;
-      const overlap = (minDist - dist) / 2;
-      a.x -= nx * overlap;
-      a.y -= ny * overlap;
-      b.x += nx * overlap;
-      b.y += ny * overlap;
-      const relVelX = b.vx - a.vx;
-      const relVelY = b.vy - a.vy;
-      const velAlongNormal = relVelX * nx + relVelY * ny;
-      if (velAlongNormal > 0) continue;
-      const restitution = 0.65;
-      const impulse = -(1 + restitution) * velAlongNormal / 2;
-      const impulseX = impulse * nx;
-      const impulseY = impulse * ny;
-      a.vx -= impulseX;
-      a.vy -= impulseY;
-      b.vx += impulseX;
-      b.vy += impulseY;
-      if (Math.abs(a.vx) > wakeSpeed || Math.abs(a.vy) > wakeSpeed) a.resting = false;
-      if (Math.abs(b.vx) > wakeSpeed || Math.abs(b.vy) > wakeSpeed) b.resting = false;
-      if (ny > supportAngleThreshold) a.supported = true;
-      if (ny < -supportAngleThreshold) b.supported = true;
     }
-  }
+  });
   return resolvedAny;
 }
 
