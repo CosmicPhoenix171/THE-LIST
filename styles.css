@@ -1113,7 +1113,7 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
 .finish-rating-actions .btn{flex:1}
 .finish-rating-actions .btn.success:disabled{opacity:.55;cursor:not-allowed;transform:none}
 
-#tm-rain-layer{position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden}
+#tm-rain-layer{position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden;contain:layout style size}
 .tm-sprite{
   position:absolute;
   left:0;
@@ -1123,7 +1123,9 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   color:#ff0080;
   text-shadow:0 0 18px rgba(255,0,128,0.45);
   will-change:transform;
+  contain:layout style;
   user-select:none;
+  pointer-events:none;
   animation:tmRainbow 4.8s linear infinite;
   transition:color .3s ease,text-shadow .3s ease;
 }
