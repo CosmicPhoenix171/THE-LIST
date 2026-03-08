@@ -1359,3 +1359,24 @@ h1{margin:0 0 .35rem 0;font-size:1.8rem;letter-spacing:.4px}
   background: rgba(255, 107, 107, 0.1);
 }
 
+/* Physical Media Format Checkboxes */
+.media-format-group{border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:.55rem .75rem;display:flex;align-items:center;gap:.85rem;margin:0}
+.media-format-group legend{font-size:.78rem;color:var(--text-300);font-weight:600;padding:0 .35rem}
+.media-format-label{display:flex;align-items:center;gap:.35rem;font-size:.82rem;color:var(--text-200);cursor:pointer;white-space:nowrap}
+.media-format-label input[type="checkbox"]{width:1rem;height:1rem;accent-color:var(--primary-300);cursor:pointer;margin:0}
+.add-form .media-format-group{grid-column:1 / -1}
+.edit-form .media-format-group{margin-top:.25rem}
+
+/* Physical media badges on cards */
+.physical-media-badges{display:flex;gap:.35rem;flex-wrap:wrap;align-items:center}
+.physical-media-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:999px;letter-spacing:.04em;cursor:default}
+.physical-media-badge.badge-dvd{background:rgba(180,140,255,0.15);color:#c4a0ff;border:1px solid rgba(180,140,255,0.25)}
+.physical-media-badge.badge-bluray{background:rgba(60,160,255,0.15);color:#60b8ff;border:1px solid rgba(60,160,255,0.25)}
+.physical-media-badge.badge-4k{background:rgba(255,200,60,0.15);color:#ffd054;border:1px solid rgba(255,200,60,0.25)}
+
+/* Editable physical media checkboxes on cards */
+.card-media-formats{display:flex;gap:.65rem;align-items:center;padding:.25rem 0}
+.card-media-format-label{display:flex;align-items:center;gap:.3rem;font-size:.78rem;color:var(--text-300);cursor:pointer;user-select:none}
+.card-media-format-label input[type="checkbox"]{width:.9rem;height:.9rem;accent-color:var(--primary-300);cursor:pointer;margin:0}
+.card-media-format-label.checked{color:var(--text-100);font-weight:600}
+

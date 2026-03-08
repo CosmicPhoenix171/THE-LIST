@@ -1154,6 +1154,9 @@ export function buildMovieCardInfo(listType, item, context = {}) {
     if (badges) info.appendChild(badges);
   }
 
+  const physicalBadges = buildPhysicalMediaBadges(item);
+  if (physicalBadges) info.appendChild(physicalBadges);
+
   return info;
 }
 
@@ -1549,6 +1552,12 @@ export function buildMovieCardDetails(listType, cardId, entryId, item, context =
     details.appendChild(seriesBlock);
   }
 
+  // Physical media editable checkboxes
+  const mediaFormats = buildCardMediaFormats(listType, entryId || cardId, item);
+  if (mediaFormats) {
+    details.appendChild(mediaFormats);
+  }
+
   // Add action buttons (skip for series entries - they're in the info section)
   if (!item?.seriesName) {
     const actions = buildMovieCardActions(listType, entryId || cardId, item);
@@ -1842,6 +1851,64 @@ function buildEpisodeTracker(listType, entryId, item) {
 
 // ============================================
 // BUILD MOVIE CARD ACTIONS
+// ============================================
+// ============================================
+// PHYSICAL MEDIA BADGES (COLLAPSED VIEW)
+// ============================================
+export function buildPhysicalMediaBadges(item) {
+  if (!item) return null;
+  const owned = [];
+  if (item.ownDVD) owned.push({ cls: 'badge-dvd', label: 'DVD' });
+  if (item.ownBluRay) owned.push({ cls: 'badge-bluray', label: 'Blu-Ray' });
+  if (item.own4K) owned.push({ cls: 'badge-4k', label: '4K' });
+  if (!owned.length) return null;
+  const row = createEl('div', 'physical-media-badges');
+  owned.forEach(b => row.appendChild(createEl('span', `physical-media-badge ${b.cls}`, { text: b.label })));
+  return row;
+}
+
+// ============================================
+// PHYSICAL MEDIA EDITABLE CHECKBOXES ON CARD
+// ============================================
+export function buildCardMediaFormats(listType, itemId, item) {
+  if (listType === 'books') return null;
+  const row = createEl('div', 'card-media-formats detail-block');
+  const formats = [
+    { key: 'ownDVD', label: 'DVD' },
+    { key: 'ownBluRay', label: 'Blu-Ray' },
+    { key: 'own4K', label: '4K' },
+  ];
+  formats.forEach(fmt => {
+    const lbl = createEl('label', 'card-media-format-label' + (item[fmt.key] ? ' checked' : ''));
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!item[fmt.key];
+    cb.addEventListener('click', (ev) => ev.stopPropagation());
+    cb.addEventListener('change', () => {
+      const checked = cb.checked;
+      item[fmt.key] = checked || null;
+      lbl.classList.toggle('checked', checked);
+      const changes = { [fmt.key]: checked || null };
+      if (item.finishedAt) {
+        const db = getFirebaseDatabase();
+        const uid = currentUser?.uid;
+        if (uid) {
+          const itemRef = ref(db, `users/${uid}/finished/${listType}/${itemId}`);
+          update(itemRef, changes);
+        }
+      } else {
+        updateItem(listType, itemId, changes);
+      }
+    });
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(' ' + fmt.label));
+    row.appendChild(lbl);
+  });
+  return row;
+}
+
+// ============================================
+// MOVIE CARD ACTIONS
 // ============================================
 export function buildMovieCardActions(listType, id, item, options = {}) {
   const { variant = 'details' } = options;
